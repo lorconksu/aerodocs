@@ -36,6 +36,20 @@ export function LoginTOTPPage() {
     }
   }
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (!pasted) return
+    const newDigits = [...digits]
+    for (let i = 0; i < pasted.length; i++) {
+      newDigits[i] = pasted[i]
+    }
+    setDigits(newDigits)
+    const nextEmpty = pasted.length < 6 ? pasted.length : 5
+    inputRefs.current[nextEmpty]?.focus()
+    if (newDigits.every(d => d)) submitCode(newDigits.join(''))
+  }
+
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
     if (e.key === 'Backspace' && !digits[index] && index > 0) {
       inputRefs.current[index - 1]?.focus()
@@ -86,6 +100,7 @@ export function LoginTOTPPage() {
             value={digit}
             onChange={(e) => handleDigitChange(i, e.target.value)}
             onKeyDown={(e) => handleKeyDown(i, e)}
+            onPaste={handlePaste}
             className="w-10 h-12 bg-elevated border border-border rounded text-center text-lg font-mono text-text-primary focus:outline-none focus:border-accent"
             autoFocus={i === 0}
             disabled={loading}
