@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { apiFetch } from '@/lib/api'
+import { getAvatarColor, setAvatarColor, AVATAR_COLORS } from '@/lib/avatar'
 import type { ChangePasswordRequest, User, Role, TOTPDisableRequest } from '@/types/api'
 import { CreateUserModal } from '@/pages/create-user-modal'
 
@@ -12,6 +14,7 @@ function ProfileTab() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordErrors, setPasswordErrors] = useState<string[]>([])
   const [success, setSuccess] = useState('')
+  const [avatarColor, setAvatarColorState] = useState(() => getAvatarColor(user?.username ?? ''))
 
   const validatePassword = (pw: string) => {
     const errors: string[] = []
@@ -57,6 +60,38 @@ function ProfileTab() {
 
   return (
     <div className="max-w-lg space-y-6">
+      {/* Avatar */}
+      <div>
+        <h3 className="text-sm font-semibold text-text-primary mb-3">Avatar</h3>
+        <div className="bg-surface border border-border rounded p-4">
+          <div className="flex items-center gap-4 mb-3">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-white shrink-0"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {user?.username?.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div className="text-sm text-text-primary font-medium">{user?.username}</div>
+              <div className="text-xs text-text-muted">Choose a color for your avatar</div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {AVATAR_COLORS.map(color => (
+              <button
+                key={color}
+                onClick={() => { setAvatarColor(color); setAvatarColorState(color) }}
+                className={`w-7 h-7 rounded-full transition-all ${
+                  avatarColor === color ? 'ring-2 ring-offset-2 ring-offset-surface ring-white scale-110' : 'hover:scale-110'
+                }`}
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Account Info */}
       <div>
         <h3 className="text-sm font-semibold text-text-primary mb-3">Account Info</h3>
@@ -399,7 +434,11 @@ function UsersTab() {
 export function SettingsPage() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [activeTab, setActiveTab] = useState<'profile' | 'users'>('profile')
+  const [searchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'profile' | 'users'>(
+    tabFromUrl === 'users' && isAdmin ? 'users' : 'profile'
+  )
 
   return (
     <div>
