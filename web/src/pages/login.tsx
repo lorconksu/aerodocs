@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '@/lib/api'
-import type { LoginRequest, LoginResponse } from '@/types/api'
+import type { LoginRequest, LoginResponse, AuthStatusResponse } from '@/types/api'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -9,6 +9,14 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    apiFetch<AuthStatusResponse>('/auth/status')
+      .then(resp => {
+        if (!resp.initialized) navigate('/setup', { replace: true })
+      })
+      .catch(() => {})
+  }, [navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
