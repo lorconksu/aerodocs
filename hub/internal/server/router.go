@@ -49,7 +49,7 @@ func (s *Server) routes() http.Handler {
 
 	// Public install endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
-	mux.Handle("GET /install/agent-{os}-{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
+	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
 
 	// SPA catch-all — serves embedded frontend, falls back to index.html
 	mux.Handle("/", s.spaHandler())

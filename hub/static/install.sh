@@ -38,7 +38,7 @@ fi
 
 # Extract HTTP URL from Hub address for binary download
 HUB_HOST=$(echo "$HUB" | cut -d: -f1)
-DOWNLOAD_URL="https://${HUB_HOST}/install/agent-${OS}-${ARCH}"
+DOWNLOAD_URL="https://${HUB_HOST}/install/${OS}/${ARCH}"
 
 echo "==> Downloading AeroDocs Agent (${OS}-${ARCH})..."
 curl -sSL "$DOWNLOAD_URL" -o /usr/local/bin/aerodocs-agent
