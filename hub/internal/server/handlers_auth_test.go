@@ -98,6 +98,66 @@ func TestRegisterBlocked_AfterFirstUser(t *testing.T) {
 	}
 }
 
+func TestChangePassword_Success(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	body, _ := json.Marshal(model.ChangePasswordRequest{
+		CurrentPassword: "MyP@ssw0rd!234",
+		NewPassword:     "NewP@ssw0rd!567",
+	})
+	req := httptest.NewRequest("PUT", "/api/auth/password", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["status"] != "password updated" {
+		t.Fatalf("expected status 'password updated', got '%s'", resp["status"])
+	}
+}
+
+func TestChangePassword_WrongCurrent(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	body, _ := json.Marshal(model.ChangePasswordRequest{
+		CurrentPassword: "WrongP@ssword!1",
+		NewPassword:     "NewP@ssw0rd!567",
+	})
+	req := httptest.NewRequest("PUT", "/api/auth/password", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChangePassword_PolicyViolation(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	body, _ := json.Marshal(model.ChangePasswordRequest{
+		CurrentPassword: "MyP@ssw0rd!234",
+		NewPassword:     "short",
+	})
+	req := httptest.NewRequest("PUT", "/api/auth/password", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestLogin_InvalidCredentials(t *testing.T) {
 	s := testServer(t)
 

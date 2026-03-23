@@ -43,6 +43,83 @@ func TestLogAndListAudit(t *testing.T) {
 	}
 }
 
+func TestListAuditWithDateRange(t *testing.T) {
+	s := testStore(t)
+
+	// Insert entries directly with controlled timestamps
+	db := s.DB()
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a1', 'user.login', '2026-03-01 10:00:00')`)
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a2', 'user.login', '2026-03-15 10:00:00')`)
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a3', 'user.login', '2026-03-25 10:00:00')`)
+
+	// Filter from March 10 to March 20
+	from := "2026-03-10T00:00:00Z"
+	to := "2026-03-20T23:59:59Z"
+	entries, total, err := s.ListAuditLogs(model.AuditFilter{
+		From:  &from,
+		To:    &to,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].ID != "a2" {
+		t.Fatalf("expected entry a2, got %s", entries[0].ID)
+	}
+}
+
+func TestListAuditWithFromOnly(t *testing.T) {
+	s := testStore(t)
+
+	db := s.DB()
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a1', 'user.login', '2026-03-01 10:00:00')`)
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a2', 'user.login', '2026-03-15 10:00:00')`)
+
+	from := "2026-03-10T00:00:00Z"
+	entries, total, err := s.ListAuditLogs(model.AuditFilter{
+		From:  &from,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+	if len(entries) != 1 || entries[0].ID != "a2" {
+		t.Fatalf("expected entry a2")
+	}
+}
+
+func TestListAuditWithToOnly(t *testing.T) {
+	s := testStore(t)
+
+	db := s.DB()
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a1', 'user.login', '2026-03-01 10:00:00')`)
+	db.Exec(`INSERT INTO audit_logs (id, action, created_at) VALUES ('a2', 'user.login', '2026-03-15 10:00:00')`)
+
+	to := "2026-03-10T23:59:59Z"
+	entries, total, err := s.ListAuditLogs(model.AuditFilter{
+		To:    &to,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+	if len(entries) != 1 || entries[0].ID != "a1" {
+		t.Fatalf("expected entry a1")
+	}
+}
+
 func TestListAuditWithFilter(t *testing.T) {
 	s := testStore(t)
 

@@ -31,6 +31,12 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("user_id"); v != "" {
 		filter.UserID = &v
 	}
+	if v := q.Get("from"); v != "" {
+		filter.From = &v
+	}
+	if v := q.Get("to"); v != "" {
+		filter.To = &v
+	}
 
 	entries, total, err := s.store.ListAuditLogs(filter)
 	if err != nil {
