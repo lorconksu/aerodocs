@@ -1,0 +1,44 @@
+package server
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/wyiu/aerodocs/hub/internal/auth"
+)
+
+func (s *Server) routes() http.Handler {
+	mux := http.NewServeMux()
+
+	loginLimiter := newRateLimiter(5, 60*time.Second)
+
+	// Public auth endpoints (rate-limited)
+	mux.Handle("GET /api/auth/status", loggingMiddleware(http.HandlerFunc(s.handleAuthStatus)))
+	mux.Handle("POST /api/auth/register", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleRegister))))
+	mux.Handle("POST /api/auth/login", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLogin))))
+	mux.Handle("POST /api/auth/login/totp", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLoginTOTP))))
+
+	// Refresh endpoint (token in body)
+	mux.Handle("POST /api/auth/refresh", loggingMiddleware(http.HandlerFunc(s.handleRefresh)))
+
+	// Setup-token-protected endpoints
+	mux.Handle("POST /api/auth/totp/setup", loggingMiddleware(s.authMiddleware(auth.TokenTypeSetup, http.HandlerFunc(s.handleTOTPSetup))))
+	mux.Handle("POST /api/auth/totp/enable", loggingMiddleware(s.authMiddleware(auth.TokenTypeSetup, http.HandlerFunc(s.handleTOTPEnable))))
+
+	// Access-token-protected endpoints
+	mux.Handle("GET /api/auth/me", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleMe))))
+	mux.Handle("POST /api/auth/totp/disable", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleTOTPDisable)))))
+
+	// Admin endpoints
+	mux.Handle("GET /api/users", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListUsers)))))
+	mux.Handle("POST /api/users", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleCreateUser)))))
+	mux.Handle("GET /api/audit-logs", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListAuditLogs)))))
+
+	// SPA catch-all — placeholder until frontend is embedded
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		respondJSON(w, http.StatusOK, map[string]string{"status": "AeroDocs Hub — frontend not yet embedded"})
+	}))
+
+	// Apply CORS globally
+	return s.corsMiddleware(mux)
+}
