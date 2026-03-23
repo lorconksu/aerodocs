@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, ScrollText, Settings, LogOut } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
+import { Logo } from '@/components/logo'
 
 export function AppShell() {
   const { user, logout } = useAuth()
@@ -22,7 +23,7 @@ export function AppShell() {
       {/* Top Telemetry Bar */}
       <header className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between text-xs">
         <div className="flex items-center gap-4">
-          <span className="font-bold text-sm tracking-[0.1em] text-text-primary">AERODOCS</span>
+          <Logo className="text-sm [&_svg]:w-5 [&_svg]:h-5 [&_span]:text-sm" />
           <span className="text-text-faint">|</span>
           <span className="text-text-muted uppercase tracking-widest text-[10px]">Fleet Health</span>
           <span className="text-status-online">● 0 Online</span>
