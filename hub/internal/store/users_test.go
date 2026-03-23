@@ -97,6 +97,36 @@ func TestUpdateUserTOTP(t *testing.T) {
 	}
 }
 
+func TestUpdateUserRole(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleViewer,
+	})
+
+	if err := s.UpdateUserRole("u1", model.RoleAdmin); err != nil {
+		t.Fatalf("update role: %v", err)
+	}
+
+	user, err := s.GetUserByID("u1")
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if user.Role != model.RoleAdmin {
+		t.Fatalf("expected role 'admin', got '%s'", user.Role)
+	}
+}
+
+func TestUpdateUserRole_NonexistentUser(t *testing.T) {
+	s := testStore(t)
+
+	err := s.UpdateUserRole("nonexistent", model.RoleAdmin)
+	if err == nil {
+		t.Fatal("expected error for nonexistent user")
+	}
+}
+
 func TestListUsers(t *testing.T) {
 	s := testStore(t)
 
