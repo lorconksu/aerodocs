@@ -43,4 +43,6 @@ const (
 	AuditServerDeleted      = "server.deleted"
 	AuditServerBatchDeleted = "server.batch_deleted"
 	AuditServerRegistered   = "server.registered"
+	AuditServerConnected    = "server.connected"
+	AuditServerDisconnected = "server.disconnected"
 )
