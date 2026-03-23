@@ -17,6 +17,50 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, users)
 }
 
+func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
+	targetID := r.PathValue("id")
+	if targetID == "" {
+		respondError(w, http.StatusBadRequest, "missing user id")
+		return
+	}
+
+	var req model.UpdateRoleRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Role != model.RoleAdmin && req.Role != model.RoleViewer {
+		respondError(w, http.StatusBadRequest, "role must be 'admin' or 'viewer'")
+		return
+	}
+
+	adminID := UserIDFromContext(r.Context())
+	if adminID == targetID {
+		respondError(w, http.StatusBadRequest, "cannot change your own role")
+		return
+	}
+
+	if err := s.store.UpdateUserRole(targetID, req.Role); err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	user, err := s.store.GetUserByID(targetID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to fetch updated user")
+		return
+	}
+
+	ip := clientIP(r)
+	s.store.LogAudit(model.AuditEntry{
+		ID: uuid.NewString(), UserID: &adminID,
+		Action: model.AuditUserRoleUpdated, Target: &targetID, IPAddress: &ip,
+	})
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"user": user})
+}
+
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req model.CreateUserRequest
 	if err := decodeJSON(r, &req); err != nil {
