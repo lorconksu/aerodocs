@@ -87,3 +87,41 @@ export interface AuditLogResponse {
 export interface ApiError {
   error: string
 }
+
+export type ServerStatus = 'pending' | 'online' | 'offline'
+
+export interface Server {
+  id: string
+  name: string
+  hostname: string | null
+  ip_address: string | null
+  os: string | null
+  status: ServerStatus
+  agent_version: string | null
+  labels: string
+  last_seen_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ServerListResponse {
+  servers: Server[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CreateServerRequest {
+  name: string
+  labels?: string
+}
+
+export interface CreateServerResponse {
+  server: Server
+  registration_token: string
+  install_command: string
+}
+
+export interface BatchDeleteRequest {
+  ids: string[]
+}
