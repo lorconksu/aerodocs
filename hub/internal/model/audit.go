@@ -15,6 +15,8 @@ type AuditEntry struct {
 type AuditFilter struct {
 	UserID *string
 	Action *string
+	From   *string // ISO 8601 datetime
+	To     *string // ISO 8601 datetime
 	Limit  int
 	Offset int
 }
@@ -30,4 +32,6 @@ const (
 	AuditUserTOTPDisabled    = "user.totp_disabled"
 	AuditUserCreated         = "user.created"
 	AuditUserTOTPReset       = "user.totp_reset"
+	AuditUserPasswordChanged = "user.password_changed"
+	AuditUserRoleUpdated     = "user.role_updated"
 )
