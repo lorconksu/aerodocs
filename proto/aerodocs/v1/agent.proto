@@ -1,0 +1,78 @@
+syntax = "proto3";
+package aerodocs.v1;
+option go_package = "github.com/wyiu/aerodocs/proto/aerodocs/v1";
+
+service AgentService {
+  // Bidirectional stream — agent connects, Hub sends commands, agent responds
+  rpc Connect(stream AgentMessage) returns (stream HubMessage);
+}
+
+// Messages from Agent → Hub
+message AgentMessage {
+  oneof payload {
+    Heartbeat heartbeat = 1;
+    RegisterAgent register = 2;
+    // Stubs for sub-projects 4-6
+    FileListResponse file_list_response = 10;
+    LogStreamChunk log_stream_chunk = 11;
+    FileUploadAck file_upload_ack = 12;
+  }
+}
+
+// Messages from Hub → Agent
+message HubMessage {
+  oneof payload {
+    HeartbeatAck heartbeat_ack = 1;
+    RegisterAck register_ack = 2;
+    // Stubs for sub-projects 4-6
+    FileListRequest file_list_request = 10;
+    LogStreamRequest log_stream_request = 11;
+    FileUploadRequest file_upload_request = 12;
+  }
+}
+
+message Heartbeat {
+  string server_id = 1;
+  int64 timestamp = 2;
+  SystemInfo system_info = 3;
+}
+
+message HeartbeatAck {
+  int64 timestamp = 1;
+}
+
+message RegisterAgent {
+  string token = 1;
+  string hostname = 2;
+  string ip_address = 3;
+  string os = 4;
+  string agent_version = 5;
+}
+
+message RegisterAck {
+  bool success = 1;
+  string server_id = 2;
+  string error = 3;
+}
+
+message SystemInfo {
+  double cpu_percent = 1;
+  double memory_percent = 2;
+  double disk_percent = 3;
+  int64 uptime_seconds = 4;
+}
+
+// Stubs — defined now, implemented in sub-projects 4-6
+message FileListRequest { string path = 1; }
+message FileListResponse { repeated FileNode files = 1; }
+message FileNode {
+  string name = 1;
+  string path = 2;
+  bool is_dir = 3;
+  int64 size = 4;
+  bool readable = 5;
+}
+message LogStreamRequest { string path = 1; int64 offset = 2; string grep = 3; }
+message LogStreamChunk { bytes data = 1; int64 offset = 2; }
+message FileUploadRequest { string path = 1; bytes chunk = 2; bool done = 3; }
+message FileUploadAck { bool success = 1; string error = 2; }
