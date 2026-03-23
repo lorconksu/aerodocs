@@ -34,10 +34,8 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("POST /api/users", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleCreateUser)))))
 	mux.Handle("GET /api/audit-logs", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListAuditLogs)))))
 
-	// SPA catch-all — placeholder until frontend is embedded
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		respondJSON(w, http.StatusOK, map[string]string{"status": "AeroDocs Hub — frontend not yet embedded"})
-	}))
+	// SPA catch-all — serves embedded frontend, falls back to index.html
+	mux.Handle("/", s.spaHandler())
 
 	// Apply CORS globally
 	return s.corsMiddleware(mux)
