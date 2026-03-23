@@ -6,6 +6,7 @@ export interface User {
   email: string
   role: Role
   totp_enabled: boolean
+  avatar: string | null
   created_at: string
   updated_at: string
 }

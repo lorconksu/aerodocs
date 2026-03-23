@@ -22,14 +22,14 @@ func (s *Store) CreateUser(u *model.User) error {
 
 func (s *Store) GetUserByID(id string) (*model.User, error) {
 	return s.scanUser(s.db.QueryRow(
-		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, avatar, created_at, updated_at
 		 FROM users WHERE id = ?`, id,
 	))
 }
 
 func (s *Store) GetUserByUsername(username string) (*model.User, error) {
 	return s.scanUser(s.db.QueryRow(
-		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, avatar, created_at, updated_at
 		 FROM users WHERE username = ?`, username,
 	))
 }
@@ -84,6 +84,17 @@ func (s *Store) UpdateUserRole(userID string, role model.Role) error {
 	return nil
 }
 
+func (s *Store) UpdateUserAvatar(userID string, avatar *string) error {
+	_, err := s.db.Exec(
+		"UPDATE users SET avatar = ?, updated_at = datetime('now') WHERE id = ?",
+		avatar, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update avatar: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) UpdateUserPassword(userID, passwordHash string) error {
 	_, err := s.db.Exec(
 		"UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
@@ -97,7 +108,7 @@ func (s *Store) UpdateUserPassword(userID, passwordHash string) error {
 
 func (s *Store) ListUsers() ([]model.User, error) {
 	rows, err := s.db.Query(
-		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, avatar, created_at, updated_at
 		 FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -120,7 +131,7 @@ func (s *Store) scanUser(row *sql.Row) (*model.User, error) {
 	var u model.User
 	var createdAt, updatedAt string
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role,
-		&u.TOTPSecret, &u.TOTPEnabled, &createdAt, &updatedAt)
+		&u.TOTPSecret, &u.TOTPEnabled, &u.Avatar, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("user not found")
 	}
@@ -136,7 +147,7 @@ func (s *Store) scanUserRow(rows *sql.Rows) (*model.User, error) {
 	var u model.User
 	var createdAt, updatedAt string
 	err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role,
-		&u.TOTPSecret, &u.TOTPEnabled, &createdAt, &updatedAt)
+		&u.TOTPSecret, &u.TOTPEnabled, &u.Avatar, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("scan user row: %w", err)
 	}
