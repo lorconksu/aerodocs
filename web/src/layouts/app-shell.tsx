@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { LayoutDashboard, ScrollText, Settings, LogOut } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
@@ -46,7 +46,7 @@ export function AppShell() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-text-secondary">{user?.username}</span>
+          <Link to="/settings" className="text-text-secondary hover:text-text-primary transition-colors">{user?.username}</Link>
           <button
             onClick={handleLogout}
             className="text-text-muted hover:text-text-primary transition-colors"

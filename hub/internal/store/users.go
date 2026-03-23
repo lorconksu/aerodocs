@@ -51,6 +51,21 @@ func (s *Store) UpdateUserTOTP(userID string, secret *string, enabled bool) erro
 	return nil
 }
 
+func (s *Store) DeleteUser(userID string) error {
+	result, err := s.db.Exec("DELETE FROM users WHERE id = ?", userID)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete user rows: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
 func (s *Store) UpdateUserRole(userID string, role model.Role) error {
 	result, err := s.db.Exec(
 		"UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?",

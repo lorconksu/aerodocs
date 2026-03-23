@@ -61,6 +61,33 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"user": user})
 }
 
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	targetID := r.PathValue("id")
+	if targetID == "" {
+		respondError(w, http.StatusBadRequest, "missing user id")
+		return
+	}
+
+	adminID := UserIDFromContext(r.Context())
+	if adminID == targetID {
+		respondError(w, http.StatusBadRequest, "cannot delete your own account")
+		return
+	}
+
+	if err := s.store.DeleteUser(targetID); err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	ip := clientIP(r)
+	s.store.LogAudit(model.AuditEntry{
+		ID: uuid.NewString(), UserID: &adminID,
+		Action: model.AuditUserDeleted, Target: &targetID, IPAddress: &ip,
+	})
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "user deleted"})
+}
+
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req model.CreateUserRequest
 	if err := decodeJSON(r, &req); err != nil {
