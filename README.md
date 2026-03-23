@@ -1,6 +1,8 @@
-# AeroDocs
+<h1 align="center">AeroDocs</h1>
 
-![AeroDocs](web/public/aerodoc-vertical.png)
+<p align="center">
+  <img src="web/public/aerodoc-vertical.png" alt="AeroDocs" width="160" />
+</p>
 
 A self-hosted infrastructure observability and documentation platform. Monitor server fleets, tail logs in real-time, browse remote file systems, and securely transfer files — all from a single web interface.
 
