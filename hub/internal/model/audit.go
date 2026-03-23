@@ -31,3 +31,11 @@ const (
 	AuditUserCreated         = "user.created"
 	AuditUserTOTPReset       = "user.totp_reset"
 )
+
+const (
+	AuditServerCreated      = "server.created"
+	AuditServerUpdated      = "server.updated"
+	AuditServerDeleted      = "server.deleted"
+	AuditServerBatchDeleted = "server.batch_deleted"
+	AuditServerRegistered   = "server.registered"
+)
