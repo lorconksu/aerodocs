@@ -304,6 +304,50 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req model.ChangePasswordRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	user, err := s.store.GetUserByID(userID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if !auth.ComparePassword(user.PasswordHash, req.CurrentPassword) {
+		respondError(w, http.StatusUnauthorized, "invalid current password")
+		return
+	}
+
+	if err := auth.ValidatePasswordPolicy(req.NewPassword); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	if err := s.store.UpdateUserPassword(userID, hash); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update password")
+		return
+	}
+
+	ip := clientIP(r)
+	s.store.LogAudit(model.AuditEntry{
+		ID: uuid.NewString(), UserID: &userID,
+		Action: model.AuditUserPasswordChanged, IPAddress: &ip,
+	})
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "password updated"})
+}
+
 func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 	var req model.TOTPDisableRequest
 	if err := decodeJSON(r, &req); err != nil {
