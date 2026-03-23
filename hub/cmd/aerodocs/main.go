@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	hub "github.com/wyiu/aerodocs/hub"
 	"github.com/wyiu/aerodocs/hub/internal/server"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
@@ -46,10 +47,11 @@ func runServer() error {
 	}
 
 	srv := server.New(server.Config{
-		Addr:      *addr,
-		Store:     st,
-		JWTSecret: jwtSecret,
-		IsDev:     *dev,
+		Addr:       *addr,
+		Store:      st,
+		JWTSecret:  jwtSecret,
+		IsDev:      *dev,
+		FrontendFS: &hub.FrontendFS,
 	})
 
 	// Graceful shutdown

@@ -9,6 +9,9 @@ bin/
 web/node_modules/
 web/dist/
 
+# Build artifacts (embedded frontend copy)
+hub/web/dist/
+
 # IDE
 .idea/
 .vscode/
