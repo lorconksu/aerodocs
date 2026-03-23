@@ -51,6 +51,24 @@ func (s *Store) UpdateUserTOTP(userID string, secret *string, enabled bool) erro
 	return nil
 }
 
+func (s *Store) UpdateUserRole(userID string, role model.Role) error {
+	result, err := s.db.Exec(
+		"UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?",
+		role, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update role: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update role rows: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
 func (s *Store) UpdateUserPassword(userID, passwordHash string) error {
 	_, err := s.db.Exec(
 		"UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
