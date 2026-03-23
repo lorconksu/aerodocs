@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Upload, X } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { apiFetch } from '@/lib/api'
 import { getAvatarColor, setAvatarColor, AVATAR_COLORS } from '@/lib/avatar'
@@ -15,6 +16,48 @@ function ProfileTab() {
   const [passwordErrors, setPasswordErrors] = useState<string[]>([])
   const [success, setSuccess] = useState('')
   const [avatarColor, setAvatarColorState] = useState(() => getAvatarColor(user?.username ?? ''))
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { login } = useAuth()
+
+  const avatarMutation = useMutation({
+    mutationFn: (avatar: string) =>
+      apiFetch<{ status: string }>('/auth/avatar', {
+        method: 'PUT',
+        body: JSON.stringify({ avatar }),
+      }),
+    onSuccess: () => {
+      // Refresh user data to get updated avatar
+      apiFetch<User>('/auth/me').then(updatedUser => {
+        const accessToken = localStorage.getItem('aerodocs_access_token')
+        const refreshToken = localStorage.getItem('aerodocs_refresh_token')
+        if (accessToken && refreshToken) {
+          login(accessToken, refreshToken, updatedUser)
+        }
+      })
+    },
+  })
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) return
+    if (file.size > 500 * 1024) {
+      alert('Image must be under 500KB. Resize to 128x128 or 256x256 for best results.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      avatarMutation.mutate(dataUrl)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveAvatar = () => {
+    avatarMutation.mutate('')
+  }
 
   const validatePassword = (pw: string) => {
     const errors: string[] = []
@@ -64,30 +107,78 @@ function ProfileTab() {
       <div>
         <h3 className="text-sm font-semibold text-text-primary mb-3">Avatar</h3>
         <div className="bg-surface border border-border rounded p-4">
-          <div className="flex items-center gap-4 mb-3">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-white shrink-0"
-              style={{ backgroundColor: avatarColor }}
-            >
-              {user?.username?.charAt(0).toUpperCase()}
-            </div>
-            <div>
+          <div className="flex items-center gap-4 mb-4">
+            {user?.avatar ? (
+              <img src={user.avatar} alt="" className="w-14 h-14 rounded-full object-cover shrink-0" />
+            ) : (
+              <div
+                className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white shrink-0"
+                style={{ backgroundColor: avatarColor }}
+              >
+                {user?.username?.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1">
               <div className="text-sm text-text-primary font-medium">{user?.username}</div>
-              <div className="text-xs text-text-muted">Choose a color for your avatar</div>
+              <div className="text-xs text-text-muted mt-0.5">
+                {user?.avatar ? 'Custom image' : 'Using initial with color'}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={avatarMutation.isPending}
+                  className="flex items-center gap-1.5 bg-elevated border border-border rounded px-3 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <Upload className="w-3 h-3" />
+                  {avatarMutation.isPending ? 'Uploading...' : 'Upload image'}
+                </button>
+                {user?.avatar && (
+                  <button
+                    onClick={handleRemoveAvatar}
+                    disabled={avatarMutation.isPending}
+                    className="flex items-center gap-1 text-xs text-text-muted hover:text-status-error transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                    Remove
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
             </div>
           </div>
-          <div className="flex gap-2">
-            {AVATAR_COLORS.map(color => (
-              <button
-                key={color}
-                onClick={() => { setAvatarColor(color); setAvatarColorState(color) }}
-                className={`w-7 h-7 rounded-full transition-all ${
-                  avatarColor === color ? 'ring-2 ring-offset-2 ring-offset-surface ring-white scale-110' : 'hover:scale-110'
-                }`}
-                style={{ backgroundColor: color }}
-                title={color}
-              />
-            ))}
+
+          {avatarMutation.isError && (
+            <div className="bg-status-error/10 border border-status-error/20 text-status-error text-xs rounded px-3 py-2 mb-3">
+              {avatarMutation.error instanceof Error ? avatarMutation.error.message : 'Failed to update avatar'}
+            </div>
+          )}
+
+          <div className="border-t border-border pt-3">
+            <div className="text-xs text-text-muted mb-2">
+              {user?.avatar ? 'Fallback color (used if image is removed):' : 'Default color:'}
+            </div>
+            <div className="flex gap-2">
+              {AVATAR_COLORS.map(color => (
+                <button
+                  key={color}
+                  onClick={() => { setAvatarColor(color); setAvatarColorState(color) }}
+                  className={`w-6 h-6 rounded-full transition-all ${
+                    avatarColor === color ? 'ring-2 ring-offset-2 ring-offset-surface ring-white scale-110' : 'hover:scale-110'
+                  }`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-text-faint mt-3">
+            For best results, use a square image (128x128 or 256x256 px), PNG or JPG, under 500KB.
           </div>
         </div>
       </div>
@@ -439,6 +530,11 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'users'>(
     tabFromUrl === 'users' && isAdmin ? 'users' : 'profile'
   )
+
+  useEffect(() => {
+    if (tabFromUrl === 'profile') setActiveTab('profile')
+    else if (tabFromUrl === 'users' && isAdmin) setActiveTab('users')
+  }, [tabFromUrl, isAdmin])
 
   return (
     <div>

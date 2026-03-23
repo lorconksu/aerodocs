@@ -219,6 +219,33 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, user)
 }
 
+func (s *Server) handleUpdateAvatar(w http.ResponseWriter, r *http.Request) {
+	var req model.UpdateAvatarRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate the avatar is a reasonable data URL (max ~500KB base64)
+	if len(req.Avatar) > 700000 {
+		respondError(w, http.StatusBadRequest, "avatar image too large (max 500KB)")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	var avatar *string
+	if req.Avatar != "" {
+		avatar = &req.Avatar
+	}
+
+	if err := s.store.UpdateUserAvatar(userID, avatar); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update avatar")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "avatar updated"})
+}
+
 func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 	user, err := s.store.GetUserByID(userID)

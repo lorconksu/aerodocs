@@ -48,12 +48,16 @@ export function AppShell() {
         </div>
         <div className="flex items-center gap-2">
           <Link to="/settings?tab=profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity" title="Profile settings">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-              style={{ backgroundColor: getAvatarColor(user?.username ?? '') }}
-            >
-              {user?.username?.charAt(0).toUpperCase()}
-            </div>
+            {user?.avatar ? (
+              <img src={user.avatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+            ) : (
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                style={{ backgroundColor: getAvatarColor(user?.username ?? '') }}
+              >
+                {user?.username?.charAt(0).toUpperCase()}
+              </div>
+            )}
             <span className="text-text-secondary text-xs">{user?.username}</span>
           </Link>
           <button
