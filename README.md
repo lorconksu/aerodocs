@@ -1,5 +1,3 @@
-<h1 align="center">AeroDocs</h1>
-
 <p align="center">
   <img src="web/public/aerodoc-vertical.png" alt="AeroDocs" width="160" />
 </p>
