@@ -84,6 +84,20 @@ export interface AuditLogResponse {
   offset: number
 }
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+export interface UpdateRoleRequest {
+  role: Role
+}
+
+export interface TOTPDisableRequest {
+  user_id: string
+  admin_totp_code: string
+}
+
 export interface ApiError {
   error: string
 }

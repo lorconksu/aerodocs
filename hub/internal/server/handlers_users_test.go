@@ -50,6 +50,94 @@ func registerAndGetAdminToken(t *testing.T, s *Server) string {
 	return authResp.AccessToken
 }
 
+func TestUpdateUserRole_Success(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	// Create a viewer user first
+	createBody, _ := json.Marshal(model.CreateUserRequest{
+		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+	})
+	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", "Bearer "+token)
+	createRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(createRec, createReq)
+
+	var createResp model.CreateUserResponse
+	json.NewDecoder(createRec.Body).Decode(&createResp)
+
+	// Update role to admin
+	body, _ := json.Marshal(model.UpdateRoleRequest{Role: model.RoleAdmin})
+	req := httptest.NewRequest("PUT", "/api/users/"+createResp.User.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	user := resp["user"].(map[string]interface{})
+	if user["role"] != "admin" {
+		t.Fatalf("expected role 'admin', got '%v'", user["role"])
+	}
+}
+
+func TestUpdateUserRole_CannotChangeOwnRole(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	// Get own user ID from /api/auth/me
+	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+token)
+	meRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(meRec, meReq)
+
+	var me model.User
+	json.NewDecoder(meRec.Body).Decode(&me)
+
+	// Try to change own role
+	body, _ := json.Marshal(model.UpdateRoleRequest{Role: model.RoleViewer})
+	req := httptest.NewRequest("PUT", "/api/users/"+me.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateUserRole_InvalidRole(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	// Create a user first
+	createBody, _ := json.Marshal(model.CreateUserRequest{
+		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+	})
+	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", "Bearer "+token)
+	createRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(createRec, createReq)
+
+	var createResp model.CreateUserResponse
+	json.NewDecoder(createRec.Body).Decode(&createResp)
+
+	// Try invalid role
+	body := []byte(`{"role": "superadmin"}`)
+	req := httptest.NewRequest("PUT", "/api/users/"+createResp.User.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateUser(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
