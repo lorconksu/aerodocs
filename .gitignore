@@ -1,1 +1,18 @@
 .superpowers/
+
+# Go
+hub/aerodocs
+agent/aerodocs-agent
+bin/
+
+# Node
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
