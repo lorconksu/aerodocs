@@ -36,14 +36,6 @@ type CreateServerResponse struct {
 	InstallCommand    string `json:"install_command"`
 }
 
-type RegisterAgentRequest struct {
-	Token        string `json:"token"`
-	Hostname     string `json:"hostname"`
-	IPAddress    string `json:"ip_address"`
-	OS           string `json:"os"`
-	AgentVersion string `json:"agent_version"`
-}
-
 type BatchDeleteRequest struct {
 	IDs []string `json:"ids"`
 }
