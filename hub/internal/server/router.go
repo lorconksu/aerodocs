@@ -28,6 +28,7 @@ func (s *Server) routes() http.Handler {
 	// Access-token-protected endpoints
 	mux.Handle("GET /api/auth/me", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleMe))))
 	mux.Handle("PUT /api/auth/password", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleChangePassword))))
+	mux.Handle("PUT /api/auth/avatar", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleUpdateAvatar))))
 	mux.Handle("POST /api/auth/totp/disable", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleTOTPDisable)))))
 
 	// Admin endpoints

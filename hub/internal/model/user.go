@@ -17,8 +17,13 @@ type User struct {
 	Role         Role      `json:"role"`
 	TOTPSecret   *string   `json:"-"`
 	TOTPEnabled  bool      `json:"totp_enabled"`
+	Avatar       *string   `json:"avatar"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type UpdateAvatarRequest struct {
+	Avatar string `json:"avatar"`
 }
 
 type CreateUserRequest struct {
