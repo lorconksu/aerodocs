@@ -1,11 +1,24 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, ScrollText, Settings, LogOut } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
+import { apiFetch } from '@/lib/api'
+import type { ServerListResponse } from '@/types/api'
 
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+
+  const { data: serverData } = useQuery({
+    queryKey: ['servers'],
+    queryFn: () => apiFetch<ServerListResponse>('/servers?limit=1000'),
+  })
+
+  const servers = serverData?.servers ?? []
+  const onlineCount = servers.filter((s) => s.status === 'online').length
+  const offlineCount = servers.filter((s) => s.status === 'offline').length
+  const pendingCount = servers.filter((s) => s.status === 'pending').length
 
   const handleLogout = () => {
     logout()
@@ -26,8 +39,11 @@ export function AppShell() {
           <Logo layout="horizontal" className="w-28" />
           <span className="text-text-faint">|</span>
           <span className="text-text-muted uppercase tracking-widest text-[10px]">Fleet Health</span>
-          <span className="text-status-online">● 0 Online</span>
-          <span className="text-status-offline">● 0 Offline</span>
+          <span className="text-status-online">● {onlineCount} Online</span>
+          <span className="text-status-offline">● {offlineCount} Offline</span>
+          {pendingCount > 0 && (
+            <span className="text-status-warning">● {pendingCount} Pending</span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-text-secondary">{user?.username}</span>
