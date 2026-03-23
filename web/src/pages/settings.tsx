@@ -167,6 +167,14 @@ function UsersTab() {
     },
   })
 
+  const deleteUserMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<{ status: string }>(`/users/${userId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+
   const disableTotpMutation = useMutation({
     mutationFn: (data: TOTPDisableRequest) =>
       apiFetch<{ status: string }>('/auth/totp/disable', {
@@ -268,14 +276,29 @@ function UsersTab() {
                   </td>
                   <td className="px-4 py-2 text-text-muted text-xs">{formatDate(u.created_at)}</td>
                   <td className="px-4 py-2">
-                    {u.id !== currentUser?.id && u.totp_enabled && (
-                      <button
-                        onClick={() => setDisableTotpUserId(u.id)}
-                        className="text-xs text-status-warning hover:text-status-error transition-colors"
-                      >
-                        Disable 2FA
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {u.id !== currentUser?.id && u.totp_enabled && (
+                        <button
+                          onClick={() => setDisableTotpUserId(u.id)}
+                          className="text-xs text-status-warning hover:text-status-error transition-colors"
+                        >
+                          Disable 2FA
+                        </button>
+                      )}
+                      {u.id !== currentUser?.id && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete user "${u.username}"? This cannot be undone.`)) {
+                              deleteUserMutation.mutate(u.id)
+                            }
+                          }}
+                          disabled={deleteUserMutation.isPending}
+                          className="text-xs text-text-muted hover:text-status-error transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

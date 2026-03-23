@@ -34,6 +34,7 @@ const (
 	AuditUserTOTPReset       = "user.totp_reset"
 	AuditUserPasswordChanged = "user.password_changed"
 	AuditUserRoleUpdated     = "user.role_updated"
+	AuditUserDeleted         = "user.deleted"
 )
 
 const (
