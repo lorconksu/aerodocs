@@ -10,6 +10,7 @@ import { SetupPage } from '@/pages/setup'
 import { SetupTOTPPage } from '@/pages/setup-totp'
 import { DashboardPage } from '@/pages/dashboard'
 import { AuditLogsPage } from '@/pages/audit-logs'
+import { SettingsPage } from '@/pages/settings'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -44,7 +45,7 @@ function AppRoutes() {
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/audit-logs" element={<AuditLogsPage />} />
-        <Route path="/settings" element={<div className="text-text-muted text-sm">Settings — sub-project 7</div>} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/servers/:id" element={<div className="text-text-muted text-sm">Server detail — sub-project 4</div>} />
       </Route>
     </Routes>
