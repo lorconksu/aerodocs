@@ -10,6 +10,8 @@ import (
 	"syscall"
 
 	hub "github.com/wyiu/aerodocs/hub"
+	"github.com/wyiu/aerodocs/hub/internal/connmgr"
+	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
 	"github.com/wyiu/aerodocs/hub/internal/server"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
@@ -33,6 +35,8 @@ func runServer() error {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "aerodocs.db", "SQLite database path")
 	dev := flag.Bool("dev", false, "enable development mode (CORS)")
+	grpcAddr := flag.String("grpc-addr", ":9090", "gRPC listen address")
+	agentBinDir := flag.String("agent-bin-dir", "./bin", "directory containing agent binaries")
 	flag.Parse()
 
 	st, err := store.New(*dbPath)
@@ -46,13 +50,32 @@ func runServer() error {
 		return fmt.Errorf("init JWT secret: %w", err)
 	}
 
+	cm := connmgr.New()
+
 	srv := server.New(server.Config{
-		Addr:       *addr,
-		Store:      st,
-		JWTSecret:  jwtSecret,
-		IsDev:      *dev,
-		FrontendFS: &hub.FrontendFS,
+		Addr:        *addr,
+		Store:       st,
+		JWTSecret:   jwtSecret,
+		IsDev:       *dev,
+		FrontendFS:  &hub.FrontendFS,
+		AgentBinDir: *agentBinDir,
 	})
+
+	grpcSrv := grpcserver.New(grpcserver.Config{
+		Addr:    *grpcAddr,
+		Store:   st,
+		ConnMgr: cm,
+	})
+
+	// Start heartbeat monitor
+	stopHeartbeat := make(chan struct{})
+	grpcSrv.StartHeartbeatMonitor(stopHeartbeat)
+
+	// Start gRPC server in background
+	grpcErrCh := make(chan error, 1)
+	go func() {
+		grpcErrCh <- grpcSrv.Start()
+	}()
 
 	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -61,6 +84,8 @@ func runServer() error {
 	go func() {
 		<-ctx.Done()
 		fmt.Println("\nShutting down...")
+		close(stopHeartbeat)
+		grpcSrv.Stop()
 		srv.Shutdown(context.Background())
 	}()
 
