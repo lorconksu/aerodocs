@@ -221,6 +221,66 @@ func (s *Store) ActivateServer(id, hostname, ip, os, agentVersion string) error 
 	return nil
 }
 
+func (s *Store) UpdateServerStatus(id, status string) error {
+	result, err := s.db.Exec(
+		"UPDATE servers SET status = ?, updated_at = datetime('now') WHERE id = ?",
+		status, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update server status: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("server not found")
+	}
+	return nil
+}
+
+func (s *Store) UpdateServerLastSeen(id string, systemInfo *model.SystemInfo) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	result, err := s.db.Exec(
+		"UPDATE servers SET last_seen_at = ?, updated_at = datetime('now') WHERE id = ?",
+		now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update server last seen: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("server not found")
+	}
+	return nil
+}
+
+func (s *Store) GetOnlineServersNotIn(activeIDs []string) ([]model.Server, error) {
+	query := `SELECT id, name, hostname, ip_address, os, status, registration_token, token_expires_at,
+	                 agent_version, labels, last_seen_at, created_at, updated_at
+	          FROM servers WHERE status = 'online'`
+	var args []interface{}
+	if len(activeIDs) > 0 {
+		placeholders := make([]string, len(activeIDs))
+		for i, id := range activeIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		query += " AND id NOT IN (" + strings.Join(placeholders, ",") + ")"
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query stale servers: %w", err)
+	}
+	defer rows.Close()
+	var servers []model.Server
+	for rows.Next() {
+		srv, err := s.scanServerRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, *srv)
+	}
+	return servers, rows.Err()
+}
+
 func (s *Store) scanServer(row *sql.Row) (*model.Server, error) {
 	var srv model.Server
 	var createdAt, updatedAt string

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -236,51 +238,25 @@ func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *Server) handleRegisterAgent(w http.ResponseWriter, r *http.Request) {
-	var req model.RegisterAgentRequest
-	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if req.Token == "" {
-		respondError(w, http.StatusBadRequest, "token is required")
-		return
-	}
-
-	// Hash the raw token to look up the server
-	hash := sha256.Sum256([]byte(req.Token))
-	tokenHash := fmt.Sprintf("%x", hash)
-
-	srv, err := s.store.GetServerByToken(tokenHash)
-	if err != nil {
-		respondError(w, http.StatusUnauthorized, "invalid or expired registration token")
-		return
-	}
-
-	// Check if token is expired
-	if srv.TokenExpiresAt != nil {
-		expiresAt, err := time.Parse("2006-01-02 15:04:05", *srv.TokenExpiresAt)
-		if err == nil && time.Now().UTC().After(expiresAt) {
-			respondError(w, http.StatusUnauthorized, "invalid or expired registration token")
-			return
-		}
-	}
-
-	// Activate the server
-	if err := s.store.ActivateServer(srv.ID, req.Hostname, req.IPAddress, req.OS, req.AgentVersion); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to activate server")
-		return
-	}
-
-	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID:     uuid.NewString(),
-		Action: model.AuditServerRegistered, Target: &srv.ID, IPAddress: &ip,
-	})
-
-	respondJSON(w, http.StatusOK, map[string]string{
-		"server_id": srv.ID,
-		"status":    "online",
-	})
+func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/install.sh")
 }
+
+func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {
+	osName := r.PathValue("os")
+	arch := r.PathValue("arch")
+	if osName != "linux" || (arch != "amd64" && arch != "arm64") {
+		respondError(w, http.StatusNotFound, "unsupported platform")
+		return
+	}
+	filename := fmt.Sprintf("aerodocs-agent-%s-%s", osName, arch)
+	binaryPath := filepath.Join(s.agentBinDir, filename)
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		respondError(w, http.StatusNotFound, "agent binary not found")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	http.ServeFile(w, r, binaryPath)
+}
+
