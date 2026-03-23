@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
 import { apiFetch } from '@/lib/api'
+import { getAvatarColor } from '@/lib/avatar'
 import type { ServerListResponse } from '@/types/api'
 
 export function AppShell() {
@@ -45,8 +46,16 @@ export function AppShell() {
             <span className="text-status-warning">● {pendingCount} Pending</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <Link to="/settings" className="text-text-secondary hover:text-text-primary transition-colors">{user?.username}</Link>
+        <div className="flex items-center gap-2">
+          <Link to="/settings?tab=profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity" title="Profile settings">
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+              style={{ backgroundColor: getAvatarColor(user?.username ?? '') }}
+            >
+              {user?.username?.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-text-secondary text-xs">{user?.username}</span>
+          </Link>
           <button
             onClick={handleLogout}
             className="text-text-muted hover:text-text-primary transition-colors"
