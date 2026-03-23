@@ -267,6 +267,68 @@ func TestGetServerByToken_NotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateServerStatus(t *testing.T) {
+	s := testStore(t)
+	s.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "pending", Labels: "{}"})
+	if err := s.UpdateServerStatus("s1", "online"); err != nil {
+		t.Fatalf("update status: %v", err)
+	}
+	got, _ := s.GetServerByID("s1")
+	if got.Status != "online" {
+		t.Fatalf("expected status 'online', got '%s'", got.Status)
+	}
+}
+
+func TestUpdateServerStatus_NotFound(t *testing.T) {
+	s := testStore(t)
+	err := s.UpdateServerStatus("nonexistent", "online")
+	if err == nil {
+		t.Fatal("expected error for missing server")
+	}
+}
+
+func TestUpdateServerLastSeen(t *testing.T) {
+	s := testStore(t)
+	s.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "online", Labels: "{}"})
+	if err := s.UpdateServerLastSeen("s1", nil); err != nil {
+		t.Fatalf("update last seen: %v", err)
+	}
+	got, _ := s.GetServerByID("s1")
+	if got.LastSeenAt == nil {
+		t.Fatal("expected last_seen_at to be set")
+	}
+}
+
+func TestGetOnlineServersNotIn(t *testing.T) {
+	s := testStore(t)
+	s.CreateServer(&model.Server{ID: "s1", Name: "a", Status: "online", Labels: "{}"})
+	s.CreateServer(&model.Server{ID: "s2", Name: "b", Status: "online", Labels: "{}"})
+	s.CreateServer(&model.Server{ID: "s3", Name: "c", Status: "offline", Labels: "{}"})
+	stale, err := s.GetOnlineServersNotIn([]string{"s1"})
+	if err != nil {
+		t.Fatalf("get stale: %v", err)
+	}
+	if len(stale) != 1 {
+		t.Fatalf("expected 1 stale server, got %d", len(stale))
+	}
+	if stale[0].ID != "s2" {
+		t.Fatalf("expected s2 to be stale, got %s", stale[0].ID)
+	}
+}
+
+func TestGetOnlineServersNotIn_EmptyActiveList(t *testing.T) {
+	s := testStore(t)
+	s.CreateServer(&model.Server{ID: "s1", Name: "a", Status: "online", Labels: "{}"})
+	s.CreateServer(&model.Server{ID: "s2", Name: "b", Status: "offline", Labels: "{}"})
+	stale, err := s.GetOnlineServersNotIn([]string{})
+	if err != nil {
+		t.Fatalf("get stale: %v", err)
+	}
+	if len(stale) != 1 {
+		t.Fatalf("expected 1 stale server (s1), got %d", len(stale))
+	}
+}
+
 func TestActivateServer(t *testing.T) {
 	s := testStore(t)
 
