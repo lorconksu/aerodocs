@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -234,5 +236,27 @@ func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request
 		"status":  "deleted",
 		"deleted": len(req.IDs),
 	})
+}
+
+func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/install.sh")
+}
+
+func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {
+	osName := r.PathValue("os")
+	arch := r.PathValue("arch")
+	if osName != "linux" || (arch != "amd64" && arch != "arm64") {
+		respondError(w, http.StatusNotFound, "unsupported platform")
+		return
+	}
+	filename := fmt.Sprintf("aerodocs-agent-%s-%s", osName, arch)
+	binaryPath := filepath.Join(s.agentBinDir, filename)
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		respondError(w, http.StatusNotFound, "agent binary not found")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	http.ServeFile(w, r, binaryPath)
 }
 

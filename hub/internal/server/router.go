@@ -47,6 +47,10 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("PUT /api/servers/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateServer)))))
 	mux.Handle("DELETE /api/servers/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteServer)))))
 
+	// Public install endpoints (no auth required)
+	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
+	mux.Handle("GET /install/agent-{os}-{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
+
 	// SPA catch-all — serves embedded frontend, falls back to index.html
 	mux.Handle("/", s.spaHandler())
 
