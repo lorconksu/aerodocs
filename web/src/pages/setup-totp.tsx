@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { Copy, Check } from 'lucide-react'
 import { apiFetchWithToken } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import type { TOTPSetupResponse, TOTPEnableRequest, AuthResponse } from '@/types/api'
@@ -14,6 +15,7 @@ export function SetupTOTPPage() {
   const [digits, setDigits] = useState(['', '', '', '', '', ''])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const hasFetched = useRef(false)
 
@@ -34,6 +36,20 @@ export function SetupTOTPPage() {
     setDigits(newDigits)
     if (value && index < 5) inputRefs.current[index + 1]?.focus()
     if (newDigits.every(d => d) && index === 5) submitCode(newDigits.join(''))
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (!pasted) return
+    const newDigits = [...digits]
+    for (let i = 0; i < pasted.length; i++) {
+      newDigits[i] = pasted[i]
+    }
+    setDigits(newDigits)
+    const nextEmpty = pasted.length < 6 ? pasted.length : 5
+    inputRefs.current[nextEmpty]?.focus()
+    if (newDigits.every(d => d)) submitCode(newDigits.join(''))
   }
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
@@ -82,7 +98,21 @@ export function SetupTOTPPage() {
           </div>
 
           <div className="bg-elevated border border-border rounded px-3 py-2 mb-4">
-            <div className="text-text-muted text-[10px] uppercase tracking-widest mb-1">Manual Entry Key</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-text-muted text-[10px] uppercase tracking-widest">Manual Entry Key</div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(totpData.secret)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                className="flex items-center gap-1 text-text-muted hover:text-text-primary text-[10px] uppercase tracking-wider transition-colors"
+              >
+                {copied ? <Check className="w-3 h-3 text-status-online" /> : <Copy className="w-3 h-3" />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
             <code className="text-text-primary text-xs font-mono break-all select-all">{totpData.secret}</code>
           </div>
 
@@ -95,6 +125,7 @@ export function SetupTOTPPage() {
                 value={digit}
                 onChange={(e) => handleDigitChange(i, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(i, e)}
+                onPaste={handlePaste}
                 className="w-10 h-12 bg-elevated border border-border rounded text-center text-lg font-mono text-text-primary focus:outline-none focus:border-accent"
                 autoFocus={i === 0}
                 disabled={loading}
