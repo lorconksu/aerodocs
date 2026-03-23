@@ -32,6 +32,14 @@ func (s *Store) ListAuditLogs(filter model.AuditFilter) ([]model.AuditEntry, int
 		where = append(where, "action = ?")
 		args = append(args, *filter.Action)
 	}
+	if filter.From != nil {
+		where = append(where, "created_at >= ?")
+		args = append(args, *filter.From)
+	}
+	if filter.To != nil {
+		where = append(where, "created_at <= ?")
+		args = append(args, *filter.To)
+	}
 
 	whereClause := ""
 	if len(where) > 0 {
