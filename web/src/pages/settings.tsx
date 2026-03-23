@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, X } from 'lucide-react'
@@ -525,16 +525,13 @@ function UsersTab() {
 export function SettingsPage() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<'profile' | 'users'>(
-    tabFromUrl === 'users' && isAdmin ? 'users' : 'profile'
-  )
+  const activeTab = (tabFromUrl === 'users' && isAdmin) ? 'users' : 'profile'
 
-  useEffect(() => {
-    if (tabFromUrl === 'profile') setActiveTab('profile')
-    else if (tabFromUrl === 'users' && isAdmin) setActiveTab('users')
-  }, [tabFromUrl, isAdmin])
+  const setActiveTab = (tab: 'profile' | 'users') => {
+    setSearchParams({ tab }, { replace: true })
+  }
 
   return (
     <div>
