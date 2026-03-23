@@ -1,0 +1,49 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/wiki/**'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Checkout wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync wiki content
+        run: |
+          # Copy wiki pages
+          cp docs/wiki/*.md wiki/
+
+          # Copy screenshots referenced by wiki pages
+          mkdir -p wiki/screenshots
+          cp docs/screenshots/*.png wiki/screenshots/
+
+          # Fix image paths in wiki pages (../screenshots/ -> screenshots/)
+          cd wiki
+          sed -i 's|\.\./screenshots/|screenshots/|g' *.md
+
+      - name: Push to wiki
+        run: |
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to sync"
+          else
+            git commit -m "Sync wiki from docs/wiki/"
+            git push
+          fi
