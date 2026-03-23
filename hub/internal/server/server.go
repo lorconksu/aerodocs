@@ -13,27 +13,30 @@ import (
 )
 
 type Server struct {
-	httpServer *http.Server
-	store      *store.Store
-	jwtSecret  string
-	isDev      bool
-	frontendFS *embed.FS
+	httpServer  *http.Server
+	store       *store.Store
+	jwtSecret   string
+	isDev       bool
+	frontendFS  *embed.FS
+	agentBinDir string
 }
 
 type Config struct {
-	Addr       string
-	Store      *store.Store
-	JWTSecret  string
-	IsDev      bool
-	FrontendFS *embed.FS
+	Addr        string
+	Store       *store.Store
+	JWTSecret   string
+	IsDev       bool
+	FrontendFS  *embed.FS
+	AgentBinDir string
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		store:      cfg.Store,
-		jwtSecret:  cfg.JWTSecret,
-		isDev:      cfg.IsDev,
-		frontendFS: cfg.FrontendFS,
+		store:       cfg.Store,
+		jwtSecret:   cfg.JWTSecret,
+		isDev:       cfg.IsDev,
+		frontendFS:  cfg.FrontendFS,
+		agentBinDir: cfg.AgentBinDir,
 	}
 
 	mux := s.routes()
