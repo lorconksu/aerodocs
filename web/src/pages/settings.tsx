@@ -150,6 +150,8 @@ function UsersTab() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [disableTotpUserId, setDisableTotpUserId] = useState<string | null>(null)
   const [adminTotpCode, setAdminTotpCode] = useState('')
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null)
+  const [deleteUsername, setDeleteUsername] = useState('')
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -172,6 +174,8 @@ function UsersTab() {
       apiFetch<{ status: string }>(`/users/${userId}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      setDeleteUserId(null)
+      setDeleteUsername('')
     },
   })
 
@@ -287,12 +291,7 @@ function UsersTab() {
                       )}
                       {u.id !== currentUser?.id && (
                         <button
-                          onClick={() => {
-                            if (confirm(`Delete user "${u.username}"? This cannot be undone.`)) {
-                              deleteUserMutation.mutate(u.id)
-                            }
-                          }}
-                          disabled={deleteUserMutation.isPending}
+                          onClick={() => { setDeleteUserId(u.id); setDeleteUsername(u.username) }}
                           className="text-xs text-text-muted hover:text-status-error transition-colors"
                         >
                           Delete
@@ -355,6 +354,41 @@ function UsersTab() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {deleteUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-sm">
+            <h3 className="text-sm font-semibold text-text-primary mb-2">Delete User</h3>
+            <p className="text-text-muted text-xs mb-4">
+              Are you sure you want to delete <span className="text-text-primary font-medium">"{deleteUsername}"</span>? This cannot be undone.
+            </p>
+
+            {deleteUserMutation.isError && (
+              <div className="bg-status-error/10 border border-status-error/20 text-status-error text-xs rounded px-3 py-2 mb-3">
+                {deleteUserMutation.error instanceof Error ? deleteUserMutation.error.message : 'Failed to delete user'}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setDeleteUserId(null); setDeleteUsername(''); deleteUserMutation.reset() }}
+                className="flex-1 border border-border rounded py-2 text-sm text-text-secondary hover:bg-elevated transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteUserMutation.mutate(deleteUserId)}
+                disabled={deleteUserMutation.isPending}
+                className="flex-1 bg-status-error hover:bg-status-error/80 text-white text-sm font-semibold rounded py-2 transition-colors disabled:opacity-50"
+              >
+                {deleteUserMutation.isPending ? 'Deleting...' : 'Delete User'}
+              </button>
+            </div>
           </div>
         </div>
       )}
