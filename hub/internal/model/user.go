@@ -56,6 +56,15 @@ type TOTPDisableRequest struct {
 	AdminTOTPCode string `json:"admin_totp_code"`
 }
 
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+type UpdateRoleRequest struct {
+	Role Role `json:"role"`
+}
+
 type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
