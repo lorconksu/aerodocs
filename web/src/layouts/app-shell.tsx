@@ -23,7 +23,7 @@ export function AppShell() {
       {/* Top Telemetry Bar */}
       <header className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between text-xs">
         <div className="flex items-center gap-4">
-          <Logo className="text-sm [&_svg]:w-5 [&_svg]:h-5 [&_span]:text-sm" />
+          <Logo layout="horizontal" className="w-28" />
           <span className="text-text-faint">|</span>
           <span className="text-text-muted uppercase tracking-widest text-[10px]">Fleet Health</span>
           <span className="text-status-online">● 0 Online</span>
