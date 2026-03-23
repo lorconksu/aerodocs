@@ -1,10 +1,22 @@
 # AeroDocs
 
+![AeroDocs](web/public/aerodoc-vertical.png)
+
 A self-hosted infrastructure observability and documentation platform. Monitor server fleets, tail logs in real-time, browse remote file systems, and securely transfer files — all from a single web interface.
 
 ## Why AeroDocs?
 
 Engineers shouldn't need direct SSH access to every machine just to read logs or check documentation. AeroDocs provides a secure, auditable web interface that replaces ad-hoc terminal sessions with a structured command center — reducing risk, saving time, and keeping a clear audit trail of who accessed what.
+
+## Screenshots
+
+| Fleet Dashboard | Add Server |
+|---|---|
+| ![Fleet Dashboard](docs/screenshots/05-fleet-dashboard.png) | ![Add Server Modal](docs/screenshots/06-add-server-modal.png) |
+
+| Audit Logs | Settings |
+|---|---|
+| ![Audit Logs](docs/screenshots/07-audit-logs.png) | ![Settings Profile](docs/screenshots/08-settings-profile.png) |
 
 ## Architecture
 
@@ -73,7 +85,7 @@ aerodocs/
 ├── web/           # React frontend (Vite SPA)
 │   └── src/       # Components, pages, hooks, styles
 ├── proto/         # Shared gRPC .proto definitions
-├── docs/          # Design specs and implementation plans
+├── docs/          # Screenshots, engineering docs, user wiki
 └── Makefile       # Build orchestration
 ```
 
@@ -89,7 +101,7 @@ aerodocs/
 
 ```bash
 # Clone the repository
-git clone https://github.com/lorconksu/aerodocs.git
+git clone https://github.com/wyiu/aerodocs.git
 cd aerodocs
 
 # Start the Go backend (API on :8080)
@@ -132,6 +144,11 @@ make test
 - Immutable audit log of all actions
 - Path sanitization to prevent directory traversal attacks
 - CLI break-glass for emergency admin recovery
+
+## Documentation
+
+- [Engineering Docs](docs/engineering/) — Architecture, deployment, and development guides
+- [User Wiki](docs/wiki/) — End-user documentation
 
 ## License
 
