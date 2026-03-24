@@ -2,6 +2,8 @@
 
 The Server Detail page is the per-server workspace in AeroDocs. Open it by clicking a server name on the [[Fleet Dashboard]].
 
+![Server Detail — File Tree](../screenshots/10-server-detail-filetree.png)
+
 ---
 
 ## Page Overview
@@ -88,6 +90,8 @@ Click **Stop** to end the tail session. The console retains the lines that were 
 ---
 
 ## Dropzone
+
+![Dropzone](../screenshots/11-server-detail-dropzone.png)
 
 The Dropzone lets you transfer files from your local machine to the server without SCP, SFTP, or any other external tool.
 
