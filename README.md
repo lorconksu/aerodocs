@@ -24,28 +24,32 @@ AeroDocs uses a **Hub-and-Spoke** model:
 
 ```mermaid
 graph LR
-    Browser["Browser (React SPA)"] -->|REST + WebSocket| Hub["AeroDocs Hub (Go)"]
-    Hub -->|gRPC| Agent1["Agent (Server 1)"]
-    Hub -->|gRPC| Agent2["Agent (Server 2)"]
-    Hub -->|gRPC| Agent3["Agent (Server N)"]
+    Browser["Browser (React SPA)"] -->|HTTP REST + SSE| Traefik["Traefik (Reverse Proxy)"]
+    Traefik -->|HTTP :8081| Hub["AeroDocs Hub (Go)"]
+    Traefik -->|gRPC :9090| Hub
     Hub --- DB[(SQLite)]
+    Hub -->|gRPC bidirectional stream| Agent1["Agent (Server 1)"]
+    Hub -->|gRPC bidirectional stream| Agent2["Agent (Server 2)"]
+    Hub -->|gRPC bidirectional stream| Agent3["Agent (Server N)"]
+    Agent1 -.->|"via Traefik (optional)"| Traefik
 ```
 
-- **Hub** — Central Go server. Serves the web UI, exposes REST APIs, manages the SQLite database, and enforces all authentication and permissions. Every request flows through the Hub.
-- **Agent** — Lightweight Go binary installed on each remote server. Takes orders exclusively from the Hub. Agents never communicate with each other, and users never interact with agents directly.
+- **Hub** — Central Go server. Serves the web UI, exposes REST APIs, manages the SQLite database, and enforces all authentication and permissions. Every request flows through the Hub. Runs two listeners: HTTP on `:8081` and gRPC on `:9090`.
+- **Agent** — Lightweight Go binary installed on each remote server. Maintains a persistent bidirectional gRPC stream to the Hub, executing file, log, and upload commands on demand. Agents never communicate with each other, and users never interact with agents directly.
 - **Frontend** — React SPA embedded directly into the Hub binary via `go:embed`. Single-binary deployment with zero external dependencies.
+- **Traefik** — Reverse proxy that handles TLS termination and routes both HTTP and gRPC traffic to the Hub.
 
 ## Features
 
-- **Fleet Dashboard** — At-a-glance health overview of all connected servers with mass actions
-- **Server Onboarding** — Single `curl` command to install and register a new agent
-- **"Honest" File Tree** — Browse remote file systems with full visibility — binaries and forbidden paths are shown but greyed out, never hidden
-- **Live Log Tailing** — Real-time log streaming with built-in grep/filter and reverse infinite scroll
-- **Markdown Rendering** — Documentation files (`.md`) render as formatted text; log files display as raw monospaced output
-- **Quarantined Dropzone** — Drag-and-drop file uploads restricted to a sandboxed directory
+- **Fleet Dashboard** — At-a-glance health overview of all connected servers with live status, search, filter, and mass actions
+- **Server Onboarding** — Single `curl` command to install and register a new agent; Agent connects back to Hub via gRPC bidirectional stream with exponential backoff reconnection
+- **"Honest" File Tree** — Browse remote file systems with full visibility — binaries and forbidden paths are shown but greyed out, never hidden; syntax highlighting for 16 languages via highlight.js
+- **Markdown Rendering** — Documentation files (`.md`) render as formatted text with Mermaid diagram support; log and binary files display as raw monospaced output
+- **Live Log Tailing** — Real-time log streaming over SSE with server-side grep/filter, pause/resume, and terminal-like UI
+- **Quarantined Dropzone** — Admin-only drag-and-drop file uploads via chunked transfer to `/tmp/aerodocs-dropzone/` staging directory on the target server
 - **Mandatory 2FA** — TOTP-based two-factor authentication required for all users
-- **Role-Based Access** — Admin and Viewer roles with per-server, per-folder permissions
-- **Immutable Audit Log** — Every action is permanently recorded — who did what, when, and from where
+- **Role-Based Access** — Admin and Viewer roles with per-server, per-path permissions enforced at both Hub and Agent layers
+- **Immutable Audit Log** — Every action permanently recorded with 23 event types — who did what, when, and from where
 - **CLI Break-Glass** — Emergency TOTP reset via direct command-line access on the Hub server
 
 ## Tech Stack
@@ -55,9 +59,10 @@ graph LR
 |-----------|-----------|
 | Language | Go 1.22+ |
 | Database | SQLite (via `modernc.org/sqlite`, pure Go) |
-| Auth | JWT (access/refresh tokens) + TOTP |
-| Hub↔Agent | gRPC |
-| Hub↔Browser | REST + WebSocket |
+| Auth | JWT (access/refresh/setup/totp tokens) + TOTP |
+| Hub↔Agent | Protocol Buffers / gRPC (bidirectional stream) |
+| Hub↔Browser | REST + SSE (Server-Sent Events) |
+| Reverse Proxy | Traefik (TLS termination, HTTP + gRPC routing) |
 
 ### Frontend
 | Component | Technology |
@@ -66,8 +71,11 @@ graph LR
 | Build | Vite |
 | Styling | Tailwind CSS v4 + shadcn/ui (heavily customized) |
 | Routing | React Router v7 |
-| Server State | TanStack Query |
+| Server State | TanStack Query (10s polling for server status) |
 | Icons | lucide-react |
+| Syntax Highlighting | highlight.js (16 languages) |
+| Markdown Rendering | react-markdown + remark-gfm |
+| Diagram Rendering | mermaid |
 
 ### Deployment
 Single binary. The React frontend is compiled by Vite and embedded into the Go binary at build time via `go:embed`. No Node.js runtime, no separate web server, no external database — just one file.
@@ -76,17 +84,33 @@ Single binary. The React frontend is compiled by Vite and embedded into the Go b
 
 ```
 aerodocs/
-├── hub/           # Go backend (Hub server)
-│   ├── cmd/       # Entry points (server, CLI admin commands)
-│   └── internal/  # Server, auth, store, models, migrations
-├── agent/         # Go agent (deployed on remote servers)
-│   ├── cmd/       # Agent entry point
-│   └── internal/  # Agent logic
-├── web/           # React frontend (Vite SPA)
-│   └── src/       # Components, pages, hooks, styles
-├── proto/         # Shared gRPC .proto definitions
-├── docs/          # Screenshots, engineering docs, user wiki
-└── Makefile       # Build orchestration
+├── hub/                    # Go backend (Hub server)
+│   ├── cmd/                # Entry points (server, CLI admin commands)
+│   └── internal/
+│       ├── server/         # HTTP handlers, middleware, router
+│       ├── grpcserver/     # gRPC server, handler, pending requests, log sessions
+│       ├── connmgr/        # Agent connection manager
+│       ├── auth/           # JWT, TOTP, bcrypt
+│       ├── store/          # SQLite data access layer
+│       ├── model/          # Domain types and constants
+│       └── migrate/        # SQL migrations (auto-run on startup)
+├── agent/                  # Go agent (deployed on remote servers)
+│   ├── cmd/                # Agent entry point
+│   └── internal/
+│       ├── client/         # gRPC client, reconnection loop, message dispatch
+│       ├── filebrowser/    # Directory listing, file reading, path validation
+│       ├── logtailer/      # Poll-based log tailing with grep filter
+│       ├── dropzone/       # Chunked file upload to staging directory
+│       ├── heartbeat/      # System metrics collection
+│       ├── sysinfo/        # OS/CPU/memory/disk info
+│       └── auth/           # Agent token handling
+├── web/                    # React frontend (Vite SPA)
+│   └── src/                # Components, pages, hooks, styles
+├── proto/                  # Protocol Buffer definitions
+│   └── aerodocs/v1/        # agent.proto (AgentService gRPC contract)
+├── scripts/                # Deployment scripts (deploy.sh)
+├── docs/                   # Screenshots, engineering docs, user wiki
+└── Makefile                # Build orchestration
 ```
 
 ## Development
@@ -104,7 +128,7 @@ aerodocs/
 git clone https://github.com/wyiu/aerodocs.git
 cd aerodocs
 
-# Start the Go backend (API on :8080)
+# Start the Go backend (HTTP on :8080)
 make dev-hub
 
 # In a separate terminal, start the Vite dev server (UI on :5173)
@@ -113,26 +137,47 @@ make dev-web
 
 The Vite dev server proxies `/api` requests to the Go backend automatically.
 
+### Generate Protobuf Code
+
+```bash
+make proto
+```
+
+Requires `protoc` and the Go gRPC plugins. Run this after modifying `proto/aerodocs/v1/agent.proto`.
+
 ### Build for Production
 
 ```bash
 make build
 ```
 
-This compiles the frontend, embeds it into the Go binary, and outputs `bin/aerodocs`.
+This generates protobuf code, compiles the frontend, embeds it into the Go binary, builds the agent for linux/amd64 and linux/arm64, and outputs binaries to `bin/`.
 
 ### Run Production Binary
 
 ```bash
-./bin/aerodocs --addr :8080 --db aerodocs.db
+./bin/aerodocs --addr :8081 --grpc-addr :9090 --db aerodocs.db
 ```
 
 On first run, navigate to the web UI to create the initial admin account and set up 2FA.
 
+### Deploy
+
+```bash
+./scripts/deploy.sh
+```
+
 ### Run Tests
 
 ```bash
+# All tests
 make test
+
+# Hub tests only
+make test-hub
+
+# Agent tests only
+make test-agent
 ```
 
 ## Security
