@@ -21,17 +21,43 @@ cd web && npm install && cd ..
 
 ---
 
+## Proto Generation
+
+The agent-hub gRPC contract is defined in `proto/aerodocs/v1/agent.proto`. After modifying the proto file, regenerate the Go bindings.
+
+**Prerequisites:**
+
+```bash
+# Install protoc (Protocol Buffers compiler)
+# On Ubuntu/Debian:
+apt install -y protobuf-compiler
+
+# Install the Go plugins
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```
+
+**Generate:**
+
+```bash
+make proto
+```
+
+This runs `protoc` with the `--go_out` and `--go-grpc_out` flags, writing generated files alongside the proto source.
+
+---
+
 ## Running in Development
 
 The development environment runs two processes — open two terminal windows.
 
-**Terminal 1 — Hub (API server on :8080):**
+**Terminal 1 — Hub (HTTP on :8080, gRPC on :9090):**
 
 ```bash
 make dev-hub
 ```
 
-This runs `go run ./cmd/aerodocs/ --dev --addr :8080` from the `hub/` directory. The `--dev` flag enables permissive CORS so the Vite dev server can make cross-origin API requests, and disables serving the embedded frontend (Vite handles that instead).
+This runs `go run ./cmd/aerodocs/ --dev --addr :8080 --grpc-addr :9090` from the `hub/` directory. The `--dev` flag enables permissive CORS so the Vite dev server can make cross-origin API requests, and disables serving the embedded frontend (Vite handles that instead). Both the HTTP API and gRPC agent listener start together.
 
 **Terminal 2 — Vite dev server (UI on :5173):**
 
@@ -83,6 +109,61 @@ This runs `go test ./...` from the `hub/` directory. The test suite covers:
 
 There are no frontend tests at this time.
 
+### Agent tests
+
+```bash
+make test-agent
+```
+
+Runs `go test ./...` from the `agent/` directory.
+
+---
+
+## Building the Agent
+
+The agent is cross-compiled for the two supported targets:
+
+```bash
+make build-agent
+```
+
+This produces:
+- `bin/aerodocs-agent-linux-amd64`
+- `bin/aerodocs-agent-linux-arm64`
+
+Place these in the Hub's `--agent-bin-dir` so they are served via `/install/{os}/{arch}`.
+
+---
+
+## Testing with a Local Agent
+
+To exercise the full Hub + Agent stack locally:
+
+**Terminal 1 — Start the Hub:**
+
+```bash
+./bin/aerodocs \
+  --addr :8080 \
+  --grpc-addr :9090 \
+  --db test.db \
+  --dev
+```
+
+**In the UI:**
+
+1. Create a server record (Admin → Servers → Add Server).
+2. Copy the registration token shown on the server detail page.
+
+**Terminal 2 — Run the agent:**
+
+```bash
+./bin/aerodocs-agent-linux-amd64 \
+  --hub localhost:9090 \
+  --token <REGISTRATION_TOKEN>
+```
+
+The agent connects over insecure gRPC (no TLS — detected automatically because the hub address is an IP/localhost). The server status in the UI will change to `online` within a few seconds.
+
 ---
 
 ## Project Structure Walkthrough
@@ -90,6 +171,10 @@ There are no frontend tests at this time.
 ```
 aerodocs/
 ├── Makefile                    # Build orchestration
+├── proto/
+│   └── aerodocs/
+│       └── v1/
+│           └── agent.proto     # gRPC service definition for Hub-Agent communication
 ├── hub/
 │   ├── embed.go                # go:embed directive pointing at web/dist
 │   ├── go.mod / go.sum
@@ -102,6 +187,8 @@ aerodocs/
 │       │   ├── jwt.go          # Token generation and validation
 │       │   ├── password.go     # bcrypt helpers + password policy
 │       │   └── totp.go         # TOTP secret generation + code verification
+│       ├── connmgr/            # Agent connection manager (active streams + SendMu)
+│       ├── grpcserver/         # gRPC server, Connect handler, PendingRequests, LogSessions
 │       ├── migrate/
 │       │   ├── migrate.go      # Migration runner
 │       │   └── migrations/     # Numbered .sql files (001_, 002_, ...)
@@ -124,6 +211,18 @@ aerodocs/
 │           ├── servers.go      # Server CRUD
 │           ├── audit.go        # Audit log writes and queries
 │           └── config.go       # Key-value config store
+├── agent/
+│   ├── go.mod / go.sum
+│   ├── cmd/
+│   │   └── aerodocs-agent/
+│   │       └── main.go         # Entry point: flags, config load/save, wiring
+│   └── internal/
+│       ├── client/             # gRPC stream client with reconnect backoff
+│       ├── dropzone/           # Chunked file upload receiver
+│       ├── filebrowser/        # Directory listing and file reading
+│       ├── heartbeat/          # Periodic heartbeat sender (15s interval)
+│       ├── logtailer/          # Poll-based file tailing with grep support
+│       └── sysinfo/            # CPU, memory, disk, uptime collection
 └── web/
     ├── vite.config.ts
     ├── package.json

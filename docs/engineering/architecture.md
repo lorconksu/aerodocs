@@ -94,6 +94,119 @@ hub/
 
 ---
 
+## Agent Architecture
+
+Agents connect to the Hub via a **persistent bidirectional gRPC stream** — the agent dials out, not the Hub. This means agents work behind NAT and firewalls without requiring inbound port forwarding.
+
+### Proto definition
+
+The service contract is defined at `proto/aerodocs/v1/agent.proto`. The single RPC is:
+
+```proto
+service AgentService {
+  rpc Connect(stream AgentMessage) returns (stream HubMessage) {}
+}
+```
+
+The stream carries a union of typed messages in both directions:
+
+**Agent → Hub message types:**
+
+| Message | Purpose |
+|---------|---------|
+| `Heartbeat` | Periodic liveness ping (every 15 seconds) |
+| `Register` | Initial registration with token + sysinfo |
+| `FileListResponse` | Directory listing result (response to hub request) |
+| `FileReadResponse` | File content result (response to hub request) |
+| `LogStreamChunk` | One chunk of tailed log output |
+| `LogStreamStop` | Signals the agent stopped tailing (EOF or error) |
+| `FileUploadAck` | Acknowledgement of a received file chunk |
+| `FileDeleteResponse` | Result of a file deletion request |
+
+**Hub → Agent message types:**
+
+| Message | Purpose |
+|---------|---------|
+| `HeartbeatAck` | Acknowledges a heartbeat |
+| `RegisterAck` | Confirms successful registration |
+| `FileListRequest` | Request a directory listing at a given path |
+| `FileReadRequest` | Request file content at a given path |
+| `LogStreamRequest` | Start tailing a file (with optional grep filter) |
+| `FileUploadRequest` | Send a file chunk to the agent (chunked transfer) |
+| `FileDeleteRequest` | Request deletion of a file |
+
+### Request-response correlation
+
+All request messages carry a `request_id` field (UUID). The Hub stores an in-flight callback in a `PendingRequests` map (`map[string]chan proto.Message`) keyed by `request_id`. When the agent sends a response with the matching `request_id`, the Hub resolves the pending channel and unblocks the waiting HTTP handler.
+
+### Heartbeat monitor
+
+The Hub runs a heartbeat monitor that:
+- Ticks every **15 seconds**
+- Marks a connected agent as stale if its last heartbeat was more than **30 seconds** ago
+- Sets the server status to `offline` in the database for stale agents
+
+### Agent reconnect behavior
+
+The agent reconnects with **exponential backoff** — starting at 1 second and capping at 60 seconds. On reconnect, it re-sends a `Register` message so the Hub can update sysinfo and reset the connection state.
+
+---
+
+## Agent Package Structure
+
+The agent binary is a separate Go module under `agent/`:
+
+```
+agent/
+├── cmd/
+│   └── aerodocs-agent/
+│       └── main.go           # Entry point: flag parsing, config load/save, wiring
+└── internal/
+    ├── client/               # gRPC stream client with reconnect backoff
+    ├── heartbeat/            # Periodic heartbeat sender (15s interval)
+    ├── sysinfo/              # CPU, memory, disk, and uptime collection
+    ├── filebrowser/          # Directory listing and file reading
+    ├── logtailer/            # Poll-based file tailing with optional grep filter
+    └── dropzone/             # Chunked file upload receiver
+```
+
+### Agent package responsibilities
+
+| Package | Responsibility |
+|---------|---------------|
+| `cmd/aerodocs-agent` | Parses `--hub` and `--token` flags, loads/saves `/etc/aerodocs/agent.conf`, creates and wires all components |
+| `client` | Opens the bidirectional gRPC stream, handles all incoming `HubMessage` types by dispatching to the appropriate internal package, manages reconnect backoff |
+| `heartbeat` | Sends a `Heartbeat` message to the hub on a 15-second ticker |
+| `sysinfo` | Collects CPU usage, memory usage, disk usage, and system uptime; populates the `Register` message |
+| `filebrowser` | Handles `FileListRequest` (directory listing) and `FileReadRequest` (file content, base64-encoded) |
+| `logtailer` | Handles `LogStreamRequest` — polls the target file for new lines and streams `LogStreamChunk` messages; supports optional grep filtering |
+| `dropzone` | Handles `FileUploadRequest` — receives chunked file transfers and writes them to a local staging directory |
+
+### Agent configuration
+
+On first run the agent stores its assigned `server_id` and `hub_url` to `/etc/aerodocs/agent.conf` (JSON). On subsequent runs it loads from this file, skipping re-registration if already registered.
+
+---
+
+## Hub gRPC Packages
+
+Two new packages under `hub/internal/` support the agent gRPC layer:
+
+```
+hub/internal/
+├── grpcserver/    # gRPC server, Connect handler, PendingRequests map, LogSessions map
+└── connmgr/       # Connection manager — tracks active agent streams, SendMu for concurrent write safety
+```
+
+### Package responsibilities
+
+| Package | Responsibility |
+|---------|---------------|
+| `grpcserver` | Implements `AgentService.Connect` — reads incoming `AgentMessage` frames, resolves pending requests, manages log sessions, and dispatches heartbeats. Owns the `PendingRequests map[string]chan proto.Message` and `LogSessions map[string]context.CancelFunc`. |
+| `connmgr` | Stores the active gRPC send stream for each connected server. Wraps sends with a `sync.Mutex` (`SendMu`) to prevent concurrent write races on the stream. Provides `SendToServer(serverID, msg)` used by HTTP handlers to forward requests to agents. |
+
+---
+
 ## Authentication Flow
 
 AeroDocs uses four distinct JWT token types, each valid for a limited time and accepted only at specific endpoints.
@@ -267,3 +380,20 @@ Internal migration tracking table. Managed by the `migrate` package.
 | DELETE | `/api/servers/{id}` | `access` + admin | Delete a server |
 | POST | `/api/servers/batch-delete` | `access` + admin | Delete multiple servers by ID array |
 | POST | `/api/servers/register` | None | Agent self-registration using a registration token |
+
+### Agent operation endpoints
+
+| Method | Path | Auth required | Description |
+|--------|------|--------------|-------------|
+| GET | `/api/servers/{id}/files` | `access` | List directory contents (`?path=` query param) |
+| GET | `/api/servers/{id}/files/read` | `access` | Read file content as base64 (`?path=` query param) |
+| GET | `/api/servers/{id}/logs/tail` | `access` | SSE log streaming (`?path=&grep=` query params) |
+| POST | `/api/servers/{id}/upload` | `access` + admin | Multipart file upload to server dropzone |
+| GET | `/api/servers/{id}/dropzone` | `access` + admin | List files in server dropzone |
+| DELETE | `/api/servers/{id}/dropzone` | `access` + admin | Delete a dropped file (`?filename=` query param) |
+| GET | `/api/servers/{id}/paths` | `access` + admin | List all path permissions for a server |
+| POST | `/api/servers/{id}/paths` | `access` + admin | Grant a user path access on a server |
+| DELETE | `/api/servers/{id}/paths/{pathId}` | `access` + admin | Revoke a path permission |
+| GET | `/api/servers/{id}/my-paths` | `access` | List the current user's allowed paths on a server |
+| GET | `/install.sh` | None | Agent install script (one-command install) |
+| GET | `/install/{os}/{arch}` | None | Download agent binary for the specified OS and architecture |

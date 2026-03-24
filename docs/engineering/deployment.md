@@ -37,17 +37,23 @@ The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no s
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--addr` | `:8080` | Listen address and port |
+| `--addr` | `:8080` | HTTP listen address and port |
+| `--grpc-addr` | `:9090` | gRPC listen address for agent connections |
 | `--db` | `aerodocs.db` | Path to the SQLite database file |
+| `--agent-bin-dir` | `` | Directory containing agent binaries served via `/install/{os}/{arch}` |
 | `--dev` | `false` | Enable development mode (permissive CORS, no embedded frontend served) |
 
 **Example:**
 
 ```bash
-./bin/aerodocs --addr 127.0.0.1:8080 --db /var/lib/aerodocs/aerodocs.db
+./bin/aerodocs \
+  --addr 127.0.0.1:8080 \
+  --grpc-addr 0.0.0.0:9090 \
+  --db /var/lib/aerodocs/aerodocs.db \
+  --agent-bin-dir /opt/aerodocs/agent-bins
 ```
 
-Bind to `127.0.0.1` (loopback only) when running behind a reverse proxy — do not expose the Hub directly on a public interface.
+Bind HTTP to `127.0.0.1` (loopback only) when running behind a reverse proxy. The gRPC port (`9090`) must be reachable by agents — bind to `0.0.0.0` or the server's public interface.
 
 On first run, migrations execute automatically and the database file is created. Navigate to your domain in a browser to complete initial setup.
 
@@ -67,14 +73,18 @@ Type=simple
 User=aerodocs
 Group=aerodocs
 WorkingDirectory=/opt/aerodocs
-ExecStart=/opt/aerodocs/bin/aerodocs --addr 127.0.0.1:8080 --db /var/lib/aerodocs/aerodocs.db
+ExecStart=/opt/aerodocs/bin/aerodocs \
+  --addr 127.0.0.1:8080 \
+  --grpc-addr 0.0.0.0:9090 \
+  --db /var/lib/aerodocs/aerodocs.db \
+  --agent-bin-dir /opt/aerodocs/agent-bins
 Restart=on-failure
 RestartSec=5s
 
 # Harden the service
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/aerodocs
+ReadWritePaths=/var/lib/aerodocs /opt/aerodocs/agent-bins
 PrivateTmp=true
 
 [Install]
@@ -101,13 +111,14 @@ systemctl status aerodocs
 
 ## Reverse Proxy with Traefik
 
-AeroDocs is designed to run behind Traefik. Use Traefik's file provider to define a router and service for AeroDocs.
+AeroDocs is designed to run behind Traefik. Traefik handles both HTTP (the web UI and REST API) and gRPC (agent connections) routing.
 
 Create `/etc/traefik/dynamic/aerodocs.yml`:
 
 ```yaml
 http:
   routers:
+    # HTTP and REST API traffic
     aerodocs:
       rule: "Host(`aerodocs.example.com`)"
       entryPoints:
@@ -116,14 +127,29 @@ http:
         certResolver: letsencrypt
       service: aerodocs
 
+    # gRPC traffic from agents (path prefix matches the proto package)
+    aerodocs-grpc:
+      rule: "Host(`aerodocs.example.com`) && PathPrefix(`/aerodocs.v1.`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: aerodocs-grpc
+
   services:
     aerodocs:
       loadBalancer:
         servers:
           - url: "http://127.0.0.1:8080"
+
+    # h2c (cleartext HTTP/2) is required for gRPC backends without TLS
+    aerodocs-grpc:
+      loadBalancer:
+        servers:
+          - url: "h2c://127.0.0.1:9090"
 ```
 
-Traefik handles TLS termination (Let's Encrypt) and proxies traffic to the Hub. The Hub only sees plain HTTP on the loopback interface.
+Traefik handles TLS termination (Let's Encrypt). The Hub sees plain HTTP on port 8080 and cleartext gRPC (h2c) on port 9090. The `PathPrefix('/aerodocs.v1.')` matcher routes agent gRPC connections correctly because gRPC uses the proto package path as the HTTP/2 `:path` header.
 
 Make sure your main `traefik.yml` has the file provider enabled:
 
@@ -133,6 +159,101 @@ providers:
     directory: /etc/traefik/dynamic
     watch: true
 ```
+
+---
+
+## Agent Deployment
+
+Agents are lightweight Go binaries deployed on each managed server. They dial out to the Hub's gRPC port — no inbound firewall rules are needed on the agent host.
+
+### One-command install (recommended)
+
+The Hub serves an install script and the agent binaries. On the managed server, run:
+
+```bash
+curl -sSL https://aerodocs.example.com/install.sh | sudo bash -s -- \
+  --token <REGISTRATION_TOKEN> \
+  --hub aerodocs.example.com:443
+```
+
+The script will:
+1. Detect the OS and CPU architecture
+2. Download the correct agent binary from `/install/{os}/{arch}`
+3. Write the configuration to `/etc/aerodocs/agent.conf`
+4. Install and enable a systemd service for the agent
+
+### Manual install
+
+If you prefer not to pipe to bash:
+
+```bash
+# Download the binary (example: linux/amd64)
+curl -Lo /usr/local/bin/aerodocs-agent \
+  https://aerodocs.example.com/install/linux/amd64
+chmod +x /usr/local/bin/aerodocs-agent
+
+# Run directly
+/usr/local/bin/aerodocs-agent \
+  --hub aerodocs.example.com:443 \
+  --token <REGISTRATION_TOKEN>
+```
+
+### Agent configuration file
+
+After first registration, the agent writes its assigned `server_id` and `hub_url` to:
+
+```
+/etc/aerodocs/agent.conf
+```
+
+Example contents (JSON):
+
+```json
+{
+  "server_id": "550e8400-e29b-41d4-a716-446655440000",
+  "hub_url": "aerodocs.example.com:443"
+}
+```
+
+On restart, the agent loads this file and reconnects without needing the registration token again.
+
+### Agent systemd service
+
+The install script creates `/etc/systemd/system/aerodocs-agent.service`:
+
+```ini
+[Unit]
+Description=AeroDocs Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/aerodocs-agent \
+  --hub aerodocs.example.com:443 \
+  --token <REGISTRATION_TOKEN>
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### TLS auto-detection
+
+The agent infers the connection security mode from the hub address:
+- **Hostname** (e.g. `aerodocs.example.com:443`) → TLS enabled
+- **IP address** (e.g. `192.168.1.10:9090`) → insecure (no TLS)
+
+### Reconnect behavior
+
+The agent reconnects with **exponential backoff** — starting at 1 second and capping at 60 seconds. On each reconnect it re-sends a `Register` message so the Hub updates sysinfo and resets connection state.
+
+### Network requirements
+
+| Direction | Protocol | Port | Notes |
+|-----------|----------|------|-------|
+| Agent → Hub | gRPC (HTTP/2) | 9090 (or 443 via Traefik) | Must be reachable from agent host |
+| Hub → Agent | None | — | Agents always dial out; Hub never initiates |
 
 ---
 
