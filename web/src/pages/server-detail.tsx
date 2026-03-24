@@ -822,7 +822,7 @@ export function ServerDetailPage() {
                     </div>
                   ) : decodedContent !== null ? (
                     isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
-                      <div className="p-6 prose prose-invert prose-sm max-w-none text-text-primary prose-headings:text-text-primary prose-p:text-text-secondary prose-a:text-accent prose-code:text-accent prose-code:bg-elevated prose-code:px-1 prose-code:rounded prose-pre:bg-elevated prose-pre:border prose-pre:border-border prose-blockquote:border-accent prose-strong:text-text-primary prose-li:text-text-secondary">
+                      <div className="markdown-body p-6">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {decodedContent}
                         </ReactMarkdown>
