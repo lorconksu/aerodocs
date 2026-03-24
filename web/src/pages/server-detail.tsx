@@ -15,6 +15,8 @@ import {
   Plus,
   AlertTriangle,
   FolderOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -439,6 +441,7 @@ export function ServerDetailPage() {
   const [treeState, setTreeState] = useState<Record<string, TreeNodeState>>({})
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [markdownView, setMarkdownView] = useState<'raw' | 'rendered'>('rendered')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // Server info query
   const {
@@ -676,11 +679,20 @@ export function ServerDetailPage() {
       {!isOffline && (
         <div className="flex flex-1 min-h-0">
           {/* Left Sidebar - File Tree */}
-          <div className="w-72 border-r border-border flex flex-col bg-surface/30 shrink-0">
-            <div className="px-3 py-2 border-b border-border text-xs text-text-muted uppercase tracking-wider font-medium">
-              File Explorer
+          <div className={`${sidebarCollapsed ? 'w-10' : 'w-72'} border-r border-border flex flex-col bg-surface/30 shrink-0 transition-all duration-200`}>
+            <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
+              {!sidebarCollapsed && (
+                <span className="text-xs text-text-muted uppercase tracking-wider font-medium pl-1">File Explorer</span>
+              )}
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-1 text-text-muted hover:text-text-primary transition-colors"
+                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'hidden' : ''}`}>
               {pathsLoading ? (
                 <div className="flex items-center gap-2 px-3 py-4 text-text-muted text-sm">
                   <Loader2 className="w-4 h-4 animate-spin" />
