@@ -14,6 +14,7 @@ export function AppShell() {
   const { data: serverData } = useQuery({
     queryKey: ['servers'],
     queryFn: () => apiFetch<ServerListResponse>('/servers?limit=1000'),
+    refetchInterval: 10_000,
   })
 
   const servers = serverData?.servers ?? []
