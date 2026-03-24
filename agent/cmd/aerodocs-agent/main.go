@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/wyiu/aerodocs/agent/internal/client"
 	"github.com/wyiu/aerodocs/agent/internal/sysinfo"
@@ -26,7 +27,32 @@ func main() {
 	hub := flag.String("hub", "", "Hub gRPC address (e.g., hub.example.com:9090)")
 	token := flag.String("token", "", "one-time registration token")
 	configPath := flag.String("config", "/etc/aerodocs/agent.conf", "path to config file")
+	selfUnregister := flag.Bool("self-unregister", false, "connect to Hub, request deletion of this server, then exit")
 	flag.Parse()
+
+	// Handle --self-unregister: connect, send unregister, exit
+	if *selfUnregister {
+		cfg, err := loadConfig(*configPath)
+		if err != nil || cfg == nil {
+			log.Printf("no config found at %s — nothing to unregister", *configPath)
+			os.Exit(0)
+		}
+		log.Printf("self-unregistering server_id=%s from hub=%s", cfg.ServerID, cfg.HubURL)
+		c := client.New(client.Config{
+			HubAddr:      cfg.HubURL,
+			ServerID:     cfg.ServerID,
+			AgentVersion: version,
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := c.SelfUnregister(ctx); err != nil {
+			log.Printf("self-unregister failed: %v (continuing anyway)", err)
+		} else {
+			log.Printf("self-unregister successful — server removed from Hub")
+		}
+		os.Remove(*configPath)
+		os.Exit(0)
+	}
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {

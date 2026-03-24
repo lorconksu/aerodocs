@@ -69,9 +69,10 @@ func (s *Server) routes() http.Handler {
 	// Server unregister (admin only)
 	mux.Handle("DELETE /api/servers/{id}/unregister", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUnregisterServer)))))
 
-	// Public install endpoints (no auth required)
+	// Public endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
 	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
+	mux.Handle("DELETE /api/servers/{id}/self-unregister", loggingMiddleware(http.HandlerFunc(s.handleSelfUnregister)))
 
 	// SPA catch-all — serves embedded frontend, falls back to index.html
 	mux.Handle("/", s.spaHandler())
