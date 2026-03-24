@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/wyiu/aerodocs/agent/internal/filebrowser"
 	"github.com/wyiu/aerodocs/agent/internal/heartbeat"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -67,6 +68,39 @@ func (c *Client) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-time.After(wait):
 		}
+	}
+}
+
+func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessage) {
+	switch p := msg.Payload.(type) {
+	case *pb.HubMessage_FileListRequest:
+		resp, _ := filebrowser.ListDir(p.FileListRequest.Path)
+		if resp != nil {
+			resp.RequestId = p.FileListRequest.RequestId
+			sendCh <- &pb.AgentMessage{
+				Payload: &pb.AgentMessage_FileListResponse{
+					FileListResponse: resp,
+				},
+			}
+		}
+
+	case *pb.HubMessage_FileReadRequest:
+		resp, _ := filebrowser.ReadFile(
+			p.FileReadRequest.Path,
+			p.FileReadRequest.Offset,
+			p.FileReadRequest.Limit,
+		)
+		if resp != nil {
+			resp.RequestId = p.FileReadRequest.RequestId
+			sendCh <- &pb.AgentMessage{
+				Payload: &pb.AgentMessage_FileReadResponse{
+					FileReadResponse: resp,
+				},
+			}
+		}
+
+	default:
+		log.Printf("unhandled hub message: %T", p)
 	}
 }
 
@@ -128,15 +162,15 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 	c.resetBackoff()
 	log.Printf("connected to hub at %s", c.hubAddr)
 
-	hbChan := make(chan *pb.AgentMessage, 1)
+	sendCh := make(chan *pb.AgentMessage, 16)
 	hbStop := make(chan struct{})
 	defer close(hbStop)
-	go heartbeat.StartTicker(c.serverID, 10*time.Second, hbChan, hbStop)
+	go heartbeat.StartTicker(c.serverID, 10*time.Second, sendCh, hbStop)
 
 	recvErr := make(chan error, 1)
 	go func() {
 		for {
-			_, err := stream.Recv()
+			msg, err := stream.Recv()
 			if err == io.EOF {
 				recvErr <- nil
 				return
@@ -145,6 +179,8 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 				recvErr <- err
 				return
 			}
+			// Dispatch incoming commands
+			go c.handleMessage(msg, sendCh)
 		}
 	}()
 
@@ -154,9 +190,9 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 			return ctx.Err()
 		case err := <-recvErr:
 			return fmt.Errorf("receive error: %w", err)
-		case msg := <-hbChan:
+		case msg := <-sendCh:
 			if err := stream.Send(msg); err != nil {
-				return fmt.Errorf("send heartbeat: %w", err)
+				return fmt.Errorf("send: %w", err)
 			}
 		}
 	}
