@@ -147,6 +147,59 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("id")
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		respondError(w, http.StatusBadRequest, "filename is required")
+		return
+	}
+
+	if s.connMgr == nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+	conn := s.connMgr.GetConn(serverID)
+	if conn == nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+
+	requestID := uuid.NewString()
+	ch := s.pending.Register(requestID)
+	defer s.pending.Remove(requestID)
+
+	path := "/tmp/aerodocs-dropzone/" + filename
+	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+		Payload: &pb.HubMessage_FileDeleteRequest{
+			FileDeleteRequest: &pb.FileDeleteRequest{
+				RequestId: requestID,
+				Path:      path,
+			},
+		},
+	})
+	if err != nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+
+	select {
+	case msg := <-ch:
+		resp, ok := msg.(*pb.FileDeleteResponse)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unexpected response type")
+			return
+		}
+		if !resp.Success {
+			respondError(w, http.StatusInternalServerError, resp.Error)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case <-time.After(10 * time.Second):
+		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	}
+}
+
 func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 
