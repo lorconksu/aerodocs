@@ -40,6 +40,15 @@ type BatchDeleteRequest struct {
 	IDs []string `json:"ids"`
 }
 
+type Permission struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username,omitempty"`
+	ServerID  string `json:"server_id"`
+	Path      string `json:"path"`
+	CreatedAt string `json:"created_at"`
+}
+
 type SystemInfo struct {
 	CPUPercent    float64 `json:"cpu_percent"`
 	MemoryPercent float64 `json:"memory_percent"`
