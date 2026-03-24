@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -1062,6 +1062,25 @@ export function ServerDetailPage() {
   const { id: serverId } = useParams<{ id: string }>()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  // Unregister modal state
+  const [showUnregister, setShowUnregister] = useState(false)
+  const [unregisterState, setUnregisterState] = useState<'confirm' | 'processing' | 'done' | 'error'>('confirm')
+
+  const handleUnregister = async () => {
+    setUnregisterState('processing')
+    try {
+      await apiFetch(`/servers/${serverId}/unregister`, { method: 'DELETE' })
+      setUnregisterState('done')
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+      // Redirect after short delay
+      setTimeout(() => navigate('/'), 1500)
+    } catch {
+      setUnregisterState('error')
+    }
+  }
 
   // File tree state
   const [treeState, setTreeState] = useState<Record<string, TreeNodeState>>({})
@@ -1292,6 +1311,14 @@ export function ServerDetailPage() {
             </div>
           </div>
         </div>
+        {isAdmin && (
+          <button
+            onClick={() => { setUnregisterState('confirm'); setShowUnregister(true) }}
+            className="px-3 py-1.5 bg-status-error/20 hover:bg-status-error/30 text-status-error text-sm rounded transition-colors"
+          >
+            Unregister
+          </button>
+        )}
       </div>
 
       {/* Offline banner */}
@@ -1495,6 +1522,85 @@ export function ServerDetailPage() {
         <div className="shrink-0 border-t border-border p-4 bg-surface/30 space-y-3">
           <PathManagement serverId={serverId!} />
           <DropzoneUpload serverId={serverId!} />
+        </div>
+      )}
+
+      {/* Unregister Server Modal */}
+      {showUnregister && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-lg w-full max-w-sm mx-4 p-6">
+            {unregisterState === 'done' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="w-5 h-5 text-status-online" />
+                  <h3 className="text-text-primary font-semibold">Server Unregistered</h3>
+                </div>
+                <p className="text-sm text-text-secondary mb-4">
+                  The server has been unregistered and the agent is cleaning up. Redirecting to dashboard...
+                </p>
+              </>
+            ) : unregisterState === 'processing' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-accent" />
+                  <h3 className="text-text-primary font-semibold">Unregistering Server...</h3>
+                </div>
+                <p className="text-sm text-text-muted mb-4">
+                  Removing agent and cleaning up server resources...
+                </p>
+                <div className="flex justify-end">
+                  <button disabled className="px-4 py-2 bg-elevated text-text-faint text-sm rounded opacity-50 cursor-not-allowed">
+                    Please wait...
+                  </button>
+                </div>
+              </>
+            ) : unregisterState === 'error' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-5 h-5 text-status-error" />
+                  <h3 className="text-text-primary font-semibold">Unregister Failed</h3>
+                </div>
+                <p className="text-sm text-text-secondary mb-4">
+                  Failed to unregister the server. Please try again.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowUnregister(false)}
+                    className="px-4 py-2 bg-elevated hover:bg-border text-text-secondary text-sm rounded transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleUnregister}
+                    className="px-4 py-2 bg-status-error/20 hover:bg-status-error/30 text-status-error text-sm rounded transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-text-primary font-semibold mb-3">Unregister Server?</h3>
+                <p className="text-sm text-text-secondary mb-4">
+                  This will stop the agent, remove it from the server, and delete all associated data. This cannot be undone.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowUnregister(false)}
+                    className="px-4 py-2 bg-elevated hover:bg-border text-text-secondary text-sm rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUnregister}
+                    className="px-4 py-2 bg-status-error/20 hover:bg-status-error/30 text-status-error text-sm rounded transition-colors"
+                  >
+                    Unregister
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
