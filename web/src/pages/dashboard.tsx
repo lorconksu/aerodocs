@@ -53,16 +53,16 @@ export function DashboardPage() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiFetch(`/servers/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => apiFetch(`/servers/${id}/unregister`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['servers'] }),
   })
 
   const batchDeleteMutation = useMutation({
-    mutationFn: (ids: string[]) =>
-      apiFetch('/servers/batch-delete', {
-        method: 'POST',
-        body: JSON.stringify({ ids }),
-      }),
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await apiFetch(`/servers/${id}/unregister`, { method: 'DELETE' })
+      }
+    },
     onSuccess: () => {
       setSelectedIds(new Set())
       queryClient.invalidateQueries({ queryKey: ['servers'] })
@@ -156,7 +156,7 @@ export function DashboardPage() {
             className="flex items-center gap-1 px-2 py-1 text-status-offline hover:bg-surface rounded transition-colors text-xs"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            Delete Selected
+            Unregister Selected
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
@@ -245,7 +245,7 @@ export function DashboardPage() {
                         disabled={deleteMutation.isPending}
                         className="text-text-muted hover:text-status-offline transition-colors text-xs"
                       >
-                        Delete
+                        Unregister
                       </button>
                     )}
                   </td>
