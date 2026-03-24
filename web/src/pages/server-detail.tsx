@@ -17,6 +17,9 @@ import {
   FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  Play,
+  Square,
+  Search,
 } from 'lucide-react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -41,6 +44,7 @@ import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import mermaid from 'mermaid'
 import { apiFetch } from '@/lib/api'
+import { getAccessToken } from '@/lib/auth'
 import { useAuth } from '@/hooks/use-auth'
 import type {
   Server,
@@ -507,6 +511,245 @@ function PathManagement({ serverId }: { serverId: string }) {
   )
 }
 
+// --- LiveTail Component ---
+
+type LiveTailStatus = 'connecting' | 'streaming' | 'disconnected'
+
+const STATUS_COLORS: Record<LiveTailStatus, string> = {
+  connecting: 'text-status-warning',
+  streaming: 'text-status-online',
+  disconnected: 'text-status-offline',
+}
+
+const STATUS_LABELS: Record<LiveTailStatus, string> = {
+  connecting: 'Connecting',
+  streaming: 'Streaming',
+  disconnected: 'Disconnected',
+}
+
+const MAX_LINES = 10_000
+
+function LiveTail({
+  serverId,
+  filePath,
+  onStop,
+}: {
+  serverId: string
+  filePath: string
+  onStop: () => void
+}) {
+  const [lines, setLines] = useState<string[]>([])
+  const [grep, setGrep] = useState('')
+  const [grepInput, setGrepInput] = useState('')
+  const [status, setStatus] = useState<LiveTailStatus>('connecting')
+  const [paused, setPaused] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const grepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-scroll effect
+  useEffect(() => {
+    if (!paused && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [lines, paused])
+
+  // Debounced grep filter
+  const handleGrepChange = useCallback((value: string) => {
+    setGrepInput(value)
+    if (grepTimerRef.current) clearTimeout(grepTimerRef.current)
+    grepTimerRef.current = setTimeout(() => {
+      setGrep(value)
+    }, 500)
+  }, [])
+
+  // Cleanup grep timer
+  useEffect(() => {
+    return () => {
+      if (grepTimerRef.current) clearTimeout(grepTimerRef.current)
+    }
+  }, [])
+
+  // SSE connection effect
+  useEffect(() => {
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setStatus('connecting')
+    setError(null)
+    setLines([])
+
+    async function startStream(signal: AbortSignal) {
+      try {
+        const token = getAccessToken()
+        const params = new URLSearchParams({ path: filePath })
+        if (grep) params.set('grep', grep)
+
+        const response = await fetch(`/api/servers/${serverId}/logs/tail?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          signal,
+        })
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+          throw new Error((errBody as { error?: string }).error || `HTTP ${response.status}`)
+        }
+
+        setStatus('streaming')
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('Response body is not readable')
+        }
+
+        const decoder = new TextDecoder()
+        let sseBuffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          sseBuffer += decoder.decode(value, { stream: true })
+
+          // Parse SSE events from buffer
+          const sseLines = sseBuffer.split('\n')
+          sseBuffer = sseLines.pop() || '' // keep incomplete line
+
+          const newLogLines: string[] = []
+          for (const sseLine of sseLines) {
+            if (sseLine.startsWith('data: ')) {
+              const base64Data = sseLine.slice(6)
+              if (!base64Data) continue
+              try {
+                const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
+                const text = new TextDecoder('utf-8').decode(bytes)
+                // Split decoded text into individual lines
+                const decoded = text.split('\n')
+                for (const dl of decoded) {
+                  if (dl !== '') newLogLines.push(dl)
+                }
+              } catch {
+                // Skip malformed base64 chunks
+              }
+            }
+          }
+
+          if (newLogLines.length > 0) {
+            setLines((prev) => {
+              const combined = [...prev, ...newLogLines]
+              return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
+            })
+          }
+        }
+
+        // Stream ended normally
+        setStatus('disconnected')
+      } catch (err) {
+        if (signal.aborted) return
+        const msg = err instanceof Error ? err.message : 'Connection failed'
+        setError(msg)
+        setStatus('disconnected')
+      }
+    }
+
+    startStream(controller.signal)
+
+    return () => {
+      controller.abort()
+    }
+  }, [serverId, filePath, grep])
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort()
+    onStop()
+  }, [onStop])
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-surface/50 shrink-0">
+        {/* Status indicator */}
+        <div className="flex items-center gap-1.5">
+          <span className={`${STATUS_COLORS[status]}`}>&#x25CF;</span>
+          <span className="text-xs text-text-muted">{STATUS_LABELS[status]}</span>
+        </div>
+
+        {/* Grep filter */}
+        <div className="flex items-center gap-1 bg-elevated border border-border rounded px-2 py-0.5 flex-1 max-w-xs">
+          <Search className="w-3 h-3 text-text-faint shrink-0" />
+          <input
+            type="text"
+            placeholder="Filter (grep)..."
+            value={grepInput}
+            onChange={(e) => handleGrepChange(e.target.value)}
+            className="bg-transparent text-xs text-text-primary placeholder:text-text-faint focus:outline-none w-full font-mono"
+          />
+        </div>
+
+        {/* Line count */}
+        <span className="text-xs text-text-faint">
+          {lines.length.toLocaleString()} line{lines.length !== 1 ? 's' : ''}
+        </span>
+
+        {/* Pause/Resume toggle */}
+        <button
+          onClick={() => setPaused((p) => !p)}
+          className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+            paused
+              ? 'bg-status-warning/15 border-status-warning/30 text-status-warning'
+              : 'bg-elevated border-border text-text-secondary hover:text-text-primary'
+          }`}
+          title={paused ? 'Resume auto-scroll' : 'Pause auto-scroll'}
+        >
+          {paused ? 'Paused' : 'Auto-scroll'}
+        </button>
+
+        {/* Stop button */}
+        <button
+          onClick={handleStop}
+          className="flex items-center gap-1 px-2 py-0.5 text-xs bg-status-error/15 border border-status-error/30 text-status-error rounded hover:bg-status-error/25 transition-colors"
+        >
+          <Square className="w-3 h-3" />
+          Stop
+        </button>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-status-error/10 border-b border-status-error/20 px-4 py-1.5 text-xs text-status-error shrink-0">
+          {error}
+        </div>
+      )}
+
+      {/* Log output */}
+      <div className="flex-1 overflow-auto bg-base">
+        {lines.length === 0 && status === 'connecting' ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
+            <span className="ml-2 text-text-muted text-sm">Connecting to log stream...</span>
+          </div>
+        ) : lines.length === 0 && status === 'streaming' ? (
+          <div className="flex items-center justify-center py-16 text-text-muted text-sm">
+            Waiting for log data...
+          </div>
+        ) : (
+          <pre className="p-3 text-xs font-mono leading-5 whitespace-pre-wrap break-all">
+            {lines.map((line, i) => (
+              <div key={i} className="text-emerald-400/90 hover:bg-white/5">
+                {line}
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </pre>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // --- Main Page Component ---
 
 export function ServerDetailPage() {
@@ -519,6 +762,7 @@ export function ServerDetailPage() {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [markdownView, setMarkdownView] = useState<'raw' | 'rendered'>('rendered')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [liveTailing, setLiveTailing] = useState(false)
 
   // Server info query
   const {
@@ -662,6 +906,7 @@ export function ServerDetailPage() {
   const handleSelectFile = useCallback((node: FileNode) => {
     setSelectedFile(node)
     setMarkdownView('rendered')
+    setLiveTailing(false)
   }, [])
 
   // Reset tree state when server changes
@@ -858,63 +1103,81 @@ export function ServerDetailPage() {
                     )}
                     <button
                       onClick={() => refetchFile()}
-                      disabled={fileLoading}
-                      className="p-1 text-text-muted hover:text-text-primary transition-colors"
+                      disabled={fileLoading || liveTailing}
+                      className="p-1 text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
                       title="Refresh file"
                     >
                       <RefreshCw
                         className={`w-3.5 h-3.5 ${fileLoading ? 'animate-spin' : ''}`}
                       />
                     </button>
-                  </div>
-                </div>
-
-                {/* Partial file banner */}
-                {isPartialFile && (
-                  <div className="bg-status-warning/10 border-b border-status-warning/20 px-4 py-1.5 text-xs text-status-warning shrink-0">
-                    Showing last 1 MB of {formatFileSize(fileContent!.total_size)}
-                  </div>
-                )}
-
-                {/* File content */}
-                <div className="flex-1 overflow-auto">
-                  {fileLoading ? (
-                    <div className="flex items-center justify-center py-16">
-                      <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
-                      <span className="ml-2 text-text-muted text-sm">Loading file...</span>
-                    </div>
-                  ) : fileError ? (
-                    <div className="flex flex-col items-center justify-center py-16">
-                      <AlertTriangle className="w-6 h-6 text-status-error mb-2" />
-                      <p className="text-text-primary text-sm mb-1">Failed to load file</p>
-                      <p className="text-text-muted text-xs mb-3">
-                        {fileError instanceof Error ? fileError.message : 'Unknown error'}
-                      </p>
+                    {!selectedFile.is_dir && (
                       <button
-                        onClick={() => refetchFile()}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-elevated border border-border rounded text-sm text-text-secondary hover:text-text-primary transition-colors"
+                        onClick={() => setLiveTailing((v) => !v)}
+                        className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors ${
+                          liveTailing
+                            ? 'bg-status-error/15 border-status-error/30 text-status-error'
+                            : 'bg-elevated border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                        title={liveTailing ? 'Stop live tail' : 'Start live tail'}
                       >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Retry
+                        {liveTailing ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        {liveTailing ? 'Stop' : 'Live Tail'}
                       </button>
-                    </div>
-                  ) : decodedContent !== null ? (
-                    isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
-                      <div className="markdown-body p-6">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {decodedContent}
-                        </ReactMarkdown>
-                      </div>
-                    ) : (
-                      <pre className="p-4 text-sm font-mono leading-relaxed overflow-x-auto">
-                        <code
-                          className="hljs"
-                          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-                        />
-                      </pre>
-                    )
-                  ) : null}
+                    )}
+                  </div>
                 </div>
+
+                {liveTailing ? (
+                  <LiveTail
+                    serverId={serverId!}
+                    filePath={selectedFile.path}
+                    onStop={() => setLiveTailing(false)}
+                  />
+                ) : (
+                  <>
+                    {isPartialFile && (
+                      <div className="bg-status-warning/10 border-b border-status-warning/20 px-4 py-1.5 text-xs text-status-warning shrink-0">
+                        Showing last 1 MB of {formatFileSize(fileContent!.total_size)}
+                      </div>
+                    )}
+                    <div className="flex-1 overflow-auto">
+                      {fileLoading ? (
+                        <div className="flex items-center justify-center py-16">
+                          <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
+                          <span className="ml-2 text-text-muted text-sm">Loading file...</span>
+                        </div>
+                      ) : fileError ? (
+                        <div className="flex flex-col items-center justify-center py-16">
+                          <AlertTriangle className="w-6 h-6 text-status-error mb-2" />
+                          <p className="text-text-primary text-sm mb-1">Failed to load file</p>
+                          <p className="text-text-muted text-xs mb-3">
+                            {fileError instanceof Error ? fileError.message : 'Unknown error'}
+                          </p>
+                          <button
+                            onClick={() => refetchFile()}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-elevated border border-border rounded text-sm text-text-secondary hover:text-text-primary transition-colors"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Retry
+                          </button>
+                        </div>
+                      ) : decodedContent !== null ? (
+                        isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
+                          <div className="markdown-body p-6">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                              {decodedContent}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <pre className="p-4 text-sm font-mono leading-relaxed overflow-x-auto">
+                            <code className="hljs" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+                          </pre>
+                        )
+                      ) : null}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
