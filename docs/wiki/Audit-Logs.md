@@ -69,3 +69,25 @@ Actions follow a `resource.action` naming pattern.
 | `server.deleted` | An admin deleted a server |
 | `server.batch_deleted` | An admin deleted multiple servers at once |
 | `server.registered` | An agent ran the install command and registered with the Hub |
+| `server.connected` | An agent established a live WebSocket connection to the Hub |
+| `server.disconnected` | An agent's WebSocket connection to the Hub dropped |
+
+### File actions
+
+| Action | What it means |
+|--------|--------------|
+| `file.read` | A user viewed or downloaded a file via the file browser |
+| `file.uploaded` | A user uploaded a file to a server via the Dropzone |
+
+### Path access actions
+
+| Action | What it means |
+|--------|--------------|
+| `path.granted` | An admin granted a user access to a filesystem path on a server |
+| `path.revoked` | An admin revoked a user's access to a filesystem path on a server |
+
+### Log actions
+
+| Action | What it means |
+|--------|--------------|
+| `log.tail_started` | A user started a live log tail session on a server |
