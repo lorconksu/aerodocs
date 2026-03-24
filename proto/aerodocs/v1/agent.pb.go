@@ -180,6 +180,7 @@ type HubMessage struct {
 	//	*HubMessage_LogStreamRequest
 	//	*HubMessage_FileUploadRequest
 	//	*HubMessage_FileReadRequest
+	//	*HubMessage_LogStreamStop
 	Payload       isHubMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -276,6 +277,15 @@ func (x *HubMessage) GetFileReadRequest() *FileReadRequest {
 	return nil
 }
 
+func (x *HubMessage) GetLogStreamStop() *LogStreamStop {
+	if x != nil {
+		if x, ok := x.Payload.(*HubMessage_LogStreamStop); ok {
+			return x.LogStreamStop
+		}
+	}
+	return nil
+}
+
 type isHubMessage_Payload interface {
 	isHubMessage_Payload()
 }
@@ -305,6 +315,10 @@ type HubMessage_FileReadRequest struct {
 	FileReadRequest *FileReadRequest `protobuf:"bytes,13,opt,name=file_read_request,json=fileReadRequest,proto3,oneof"`
 }
 
+type HubMessage_LogStreamStop struct {
+	LogStreamStop *LogStreamStop `protobuf:"bytes,14,opt,name=log_stream_stop,json=logStreamStop,proto3,oneof"`
+}
+
 func (*HubMessage_HeartbeatAck) isHubMessage_Payload() {}
 
 func (*HubMessage_RegisterAck) isHubMessage_Payload() {}
@@ -316,6 +330,8 @@ func (*HubMessage_LogStreamRequest) isHubMessage_Payload() {}
 func (*HubMessage_FileUploadRequest) isHubMessage_Payload() {}
 
 func (*HubMessage_FileReadRequest) isHubMessage_Payload() {}
+
+func (*HubMessage_LogStreamStop) isHubMessage_Payload() {}
 
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -958,12 +974,13 @@ func (x *FileReadResponse) GetError() string {
 	return ""
 }
 
-// Stubs — sub-projects 5-6
+// Log tailing (sub-project 5)
 type LogStreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
-	Grep          string                 `protobuf:"bytes,3,opt,name=grep,proto3" json:"grep,omitempty"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Offset        int64                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	Grep          string                 `protobuf:"bytes,4,opt,name=grep,proto3" json:"grep,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -998,6 +1015,13 @@ func (*LogStreamRequest) Descriptor() ([]byte, []int) {
 	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{12}
 }
 
+func (x *LogStreamRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
 func (x *LogStreamRequest) GetPath() string {
 	if x != nil {
 		return x.Path
@@ -1021,8 +1045,9 @@ func (x *LogStreamRequest) GetGrep() string {
 
 type LogStreamChunk struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
-	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Offset        int64                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1057,6 +1082,13 @@ func (*LogStreamChunk) Descriptor() ([]byte, []int) {
 	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{13}
 }
 
+func (x *LogStreamChunk) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
 func (x *LogStreamChunk) GetData() []byte {
 	if x != nil {
 		return x.Data
@@ -1071,6 +1103,51 @@ func (x *LogStreamChunk) GetOffset() int64 {
 	return 0
 }
 
+type LogStreamStop struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogStreamStop) Reset() {
+	*x = LogStreamStop{}
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogStreamStop) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogStreamStop) ProtoMessage() {}
+
+func (x *LogStreamStop) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogStreamStop.ProtoReflect.Descriptor instead.
+func (*LogStreamStop) Descriptor() ([]byte, []int) {
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *LogStreamStop) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+// Stubs — sub-project 6
 type FileUploadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -1082,7 +1159,7 @@ type FileUploadRequest struct {
 
 func (x *FileUploadRequest) Reset() {
 	*x = FileUploadRequest{}
-	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[14]
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1094,7 +1171,7 @@ func (x *FileUploadRequest) String() string {
 func (*FileUploadRequest) ProtoMessage() {}
 
 func (x *FileUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[14]
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1107,7 +1184,7 @@ func (x *FileUploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileUploadRequest.ProtoReflect.Descriptor instead.
 func (*FileUploadRequest) Descriptor() ([]byte, []int) {
-	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{14}
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *FileUploadRequest) GetPath() string {
@@ -1141,7 +1218,7 @@ type FileUploadAck struct {
 
 func (x *FileUploadAck) Reset() {
 	*x = FileUploadAck{}
-	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[15]
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1153,7 +1230,7 @@ func (x *FileUploadAck) String() string {
 func (*FileUploadAck) ProtoMessage() {}
 
 func (x *FileUploadAck) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[15]
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1166,7 +1243,7 @@ func (x *FileUploadAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileUploadAck.ProtoReflect.Descriptor instead.
 func (*FileUploadAck) Descriptor() ([]byte, []int) {
-	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{15}
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *FileUploadAck) GetSuccess() bool {
@@ -1196,7 +1273,7 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\x10log_stream_chunk\x18\v \x01(\v2\x1b.aerodocs.v1.LogStreamChunkH\x00R\x0elogStreamChunk\x12D\n" +
 	"\x0ffile_upload_ack\x18\f \x01(\v2\x1a.aerodocs.v1.FileUploadAckH\x00R\rfileUploadAck\x12M\n" +
 	"\x12file_read_response\x18\r \x01(\v2\x1d.aerodocs.v1.FileReadResponseH\x00R\x10fileReadResponseB\t\n" +
-	"\apayload\"\xd1\x03\n" +
+	"\apayload\"\x97\x04\n" +
 	"\n" +
 	"HubMessage\x12@\n" +
 	"\rheartbeat_ack\x18\x01 \x01(\v2\x19.aerodocs.v1.HeartbeatAckH\x00R\fheartbeatAck\x12=\n" +
@@ -1205,7 +1282,8 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	" \x01(\v2\x1c.aerodocs.v1.FileListRequestH\x00R\x0ffileListRequest\x12M\n" +
 	"\x12log_stream_request\x18\v \x01(\v2\x1d.aerodocs.v1.LogStreamRequestH\x00R\x10logStreamRequest\x12P\n" +
 	"\x13file_upload_request\x18\f \x01(\v2\x1e.aerodocs.v1.FileUploadRequestH\x00R\x11fileUploadRequest\x12J\n" +
-	"\x11file_read_request\x18\r \x01(\v2\x1c.aerodocs.v1.FileReadRequestH\x00R\x0ffileReadRequestB\t\n" +
+	"\x11file_read_request\x18\r \x01(\v2\x1c.aerodocs.v1.FileReadRequestH\x00R\x0ffileReadRequest\x12D\n" +
+	"\x0flog_stream_stop\x18\x0e \x01(\v2\x1a.aerodocs.v1.LogStreamStopH\x00R\rlogStreamStopB\t\n" +
 	"\apayload\"\x80\x01\n" +
 	"\tHeartbeat\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1c\n" +
@@ -1260,14 +1338,21 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"total_size\x18\x03 \x01(\x03R\ttotalSize\x12\x1b\n" +
 	"\tmime_type\x18\x04 \x01(\tR\bmimeType\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error\"R\n" +
-	"\x10LogStreamRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x03R\x06offset\x12\x12\n" +
-	"\x04grep\x18\x03 \x01(\tR\x04grep\"<\n" +
-	"\x0eLogStreamChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x03R\x06offset\"Q\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\"q\n" +
+	"\x10LogStreamRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x03R\x06offset\x12\x12\n" +
+	"\x04grep\x18\x04 \x01(\tR\x04grep\"[\n" +
+	"\x0eLogStreamChunk\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x03R\x06offset\".\n" +
+	"\rLogStreamStop\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"Q\n" +
 	"\x11FileUploadRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
 	"\x05chunk\x18\x02 \x01(\fR\x05chunk\x12\x12\n" +
@@ -1290,7 +1375,7 @@ func file_proto_aerodocs_v1_agent_proto_rawDescGZIP() []byte {
 	return file_proto_aerodocs_v1_agent_proto_rawDescData
 }
 
-var file_proto_aerodocs_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_proto_aerodocs_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_proto_aerodocs_v1_agent_proto_goTypes = []any{
 	(*AgentMessage)(nil),      // 0: aerodocs.v1.AgentMessage
 	(*HubMessage)(nil),        // 1: aerodocs.v1.HubMessage
@@ -1306,31 +1391,33 @@ var file_proto_aerodocs_v1_agent_proto_goTypes = []any{
 	(*FileReadResponse)(nil),  // 11: aerodocs.v1.FileReadResponse
 	(*LogStreamRequest)(nil),  // 12: aerodocs.v1.LogStreamRequest
 	(*LogStreamChunk)(nil),    // 13: aerodocs.v1.LogStreamChunk
-	(*FileUploadRequest)(nil), // 14: aerodocs.v1.FileUploadRequest
-	(*FileUploadAck)(nil),     // 15: aerodocs.v1.FileUploadAck
+	(*LogStreamStop)(nil),     // 14: aerodocs.v1.LogStreamStop
+	(*FileUploadRequest)(nil), // 15: aerodocs.v1.FileUploadRequest
+	(*FileUploadAck)(nil),     // 16: aerodocs.v1.FileUploadAck
 }
 var file_proto_aerodocs_v1_agent_proto_depIdxs = []int32{
 	2,  // 0: aerodocs.v1.AgentMessage.heartbeat:type_name -> aerodocs.v1.Heartbeat
 	4,  // 1: aerodocs.v1.AgentMessage.register:type_name -> aerodocs.v1.RegisterAgent
 	8,  // 2: aerodocs.v1.AgentMessage.file_list_response:type_name -> aerodocs.v1.FileListResponse
 	13, // 3: aerodocs.v1.AgentMessage.log_stream_chunk:type_name -> aerodocs.v1.LogStreamChunk
-	15, // 4: aerodocs.v1.AgentMessage.file_upload_ack:type_name -> aerodocs.v1.FileUploadAck
+	16, // 4: aerodocs.v1.AgentMessage.file_upload_ack:type_name -> aerodocs.v1.FileUploadAck
 	11, // 5: aerodocs.v1.AgentMessage.file_read_response:type_name -> aerodocs.v1.FileReadResponse
 	3,  // 6: aerodocs.v1.HubMessage.heartbeat_ack:type_name -> aerodocs.v1.HeartbeatAck
 	5,  // 7: aerodocs.v1.HubMessage.register_ack:type_name -> aerodocs.v1.RegisterAck
 	7,  // 8: aerodocs.v1.HubMessage.file_list_request:type_name -> aerodocs.v1.FileListRequest
 	12, // 9: aerodocs.v1.HubMessage.log_stream_request:type_name -> aerodocs.v1.LogStreamRequest
-	14, // 10: aerodocs.v1.HubMessage.file_upload_request:type_name -> aerodocs.v1.FileUploadRequest
+	15, // 10: aerodocs.v1.HubMessage.file_upload_request:type_name -> aerodocs.v1.FileUploadRequest
 	10, // 11: aerodocs.v1.HubMessage.file_read_request:type_name -> aerodocs.v1.FileReadRequest
-	6,  // 12: aerodocs.v1.Heartbeat.system_info:type_name -> aerodocs.v1.SystemInfo
-	9,  // 13: aerodocs.v1.FileListResponse.files:type_name -> aerodocs.v1.FileNode
-	0,  // 14: aerodocs.v1.AgentService.Connect:input_type -> aerodocs.v1.AgentMessage
-	1,  // 15: aerodocs.v1.AgentService.Connect:output_type -> aerodocs.v1.HubMessage
-	15, // [15:16] is the sub-list for method output_type
-	14, // [14:15] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	14, // 12: aerodocs.v1.HubMessage.log_stream_stop:type_name -> aerodocs.v1.LogStreamStop
+	6,  // 13: aerodocs.v1.Heartbeat.system_info:type_name -> aerodocs.v1.SystemInfo
+	9,  // 14: aerodocs.v1.FileListResponse.files:type_name -> aerodocs.v1.FileNode
+	0,  // 15: aerodocs.v1.AgentService.Connect:input_type -> aerodocs.v1.AgentMessage
+	1,  // 16: aerodocs.v1.AgentService.Connect:output_type -> aerodocs.v1.HubMessage
+	16, // [16:17] is the sub-list for method output_type
+	15, // [15:16] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_proto_aerodocs_v1_agent_proto_init() }
@@ -1353,6 +1440,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 		(*HubMessage_LogStreamRequest)(nil),
 		(*HubMessage_FileUploadRequest)(nil),
 		(*HubMessage_FileReadRequest)(nil),
+		(*HubMessage_LogStreamStop)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1360,7 +1448,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_aerodocs_v1_agent_proto_rawDesc), len(file_proto_aerodocs_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
