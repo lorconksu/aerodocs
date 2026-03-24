@@ -54,6 +54,10 @@ func (s *Server) routes() http.Handler {
 	// User's own paths (any authenticated user)
 	mux.Handle("GET /api/servers/{id}/my-paths", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleGetUserPaths))))
 
+	// File browsing endpoints (any authenticated user, permission-checked in handler)
+	mux.Handle("GET /api/servers/{id}/files", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleListFiles))))
+	mux.Handle("GET /api/servers/{id}/files/read", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleReadFile))))
+
 	// Public install endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
 	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
