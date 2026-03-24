@@ -44,16 +44,28 @@ Only admins can add servers.
 3. Enter a **Name** for the server (this is just a label — it does not have to match the actual hostname).
 4. Optionally add **Labels** to help you organise servers (e.g. `env:production`, `region:eu-west`).
 5. Click **Add Server**.
-6. AeroDocs generates a one-time install command. It will look something like:
+6. AeroDocs creates the server record and generates a one-time install command. It will look something like:
 
    ```
    curl -fsSL https://aerodocs.example.com/install.sh | bash -s -- --token <token>
    ```
 
-7. Copy the command and run it on the target server as root (or with sudo).
-8. The agent installs, registers with the Hub using the token, and the server card will change from amber to green within a few seconds.
+7. Copy the command and run it on the target server as root (or with `sudo`). The script downloads and installs the AeroDocs agent, then registers the server with the Hub using the embedded token.
+8. Once the agent connects, the server card changes from amber (Pending) to green (Online) automatically — no page refresh needed.
 
 The registration token is single-use and expires after a short period. If you do not run the command in time, delete the server and add it again to get a fresh token.
+
+---
+
+## Auto-Refresh
+
+The Fleet Dashboard polls the Hub every **10 seconds** and updates all server cards in place. You do not need to reload the page to see status changes.
+
+---
+
+## Opening a Server
+
+Click a **server name** (or anywhere on the server card body) to open the [[Server Detail]] page for that server. From there you can browse the remote filesystem, tail logs, and upload files.
 
 ---
 

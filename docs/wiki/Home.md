@@ -8,6 +8,10 @@ Everything you do in AeroDocs is tracked. There is a permanent record of who log
 
 - Shows you a live dashboard of all your registered servers (online, offline, or pending)
 - Lets you onboard a new server with a single copy-paste command
+- Manages agents on remote servers — install, register, and monitor from the Hub
+- Provides a file tree browser to navigate the remote filesystem from your browser
+- Streams live log tailing with grep filtering directly in the browser
+- Supports drag-and-drop file transfers via the Dropzone uploader
 - Records every action in an immutable audit log
 - Requires two-factor authentication for every account — no exceptions
 - Supports multiple user accounts with Admin and Viewer roles
@@ -17,5 +21,6 @@ Everything you do in AeroDocs is tracked. There is a permanent record of who log
 - [[Getting Started]] — Set up AeroDocs for the first time
 - [[Logging In]] — How to sign in with your password and 2FA code
 - [[Fleet Dashboard]] — Managing your servers
+- [[Server Detail]] — Browsing files, tailing logs, and uploading files on a server
 - [[Audit Logs]] — Viewing the activity history
 - [[Settings]] — Managing your profile and (for admins) other users
