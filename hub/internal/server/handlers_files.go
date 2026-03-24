@@ -1,0 +1,211 @@
+package server
+
+import (
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/wyiu/aerodocs/hub/internal/model"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
+)
+
+const (
+	maxFileReadSize = 1048576  // 1MB
+	maxFileViewSize = 10485760 // 10MB hard cap
+	agentTimeout    = 10 * time.Second
+)
+
+func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("id")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "/"
+	}
+
+	// Validate path
+	if err := validateRequestPath(path); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Check permissions
+	userID := UserIDFromContext(r.Context())
+	role := UserRoleFromContext(r.Context())
+	if role != "admin" {
+		allowed, err := s.isPathAllowed(userID, serverID, path)
+		if err != nil || !allowed {
+			respondError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
+
+	// Check agent is connected
+	if s.connMgr == nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+	conn := s.connMgr.GetConn(serverID)
+	if conn == nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+
+	// Send request via gRPC
+	requestID := uuid.NewString()
+	ch := s.pending.Register(requestID)
+	defer s.pending.Remove(requestID)
+
+	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+		Payload: &pb.HubMessage_FileListRequest{
+			FileListRequest: &pb.FileListRequest{
+				RequestId: requestID,
+				Path:      path,
+			},
+		},
+	})
+	if err != nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+
+	// Wait for response
+	select {
+	case msg := <-ch:
+		resp, ok := msg.(*pb.FileListResponse)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unexpected response type")
+			return
+		}
+		if resp.Error != "" {
+			respondError(w, http.StatusNotFound, resp.Error)
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
+	case <-time.After(agentTimeout):
+		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	}
+}
+
+func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("id")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		respondError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	if err := validateRequestPath(path); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Check permissions
+	userID := UserIDFromContext(r.Context())
+	role := UserRoleFromContext(r.Context())
+	if role != "admin" {
+		allowed, err := s.isPathAllowed(userID, serverID, path)
+		if err != nil || !allowed {
+			respondError(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
+
+	// Check agent is connected
+	if s.connMgr == nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+	conn := s.connMgr.GetConn(serverID)
+	if conn == nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+
+	// Send request — always request last 1MB
+	requestID := uuid.NewString()
+	ch := s.pending.Register(requestID)
+	defer s.pending.Remove(requestID)
+
+	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+		Payload: &pb.HubMessage_FileReadRequest{
+			FileReadRequest: &pb.FileReadRequest{
+				RequestId: requestID,
+				Path:      path,
+				Offset:    0,
+				Limit:     maxFileReadSize,
+			},
+		},
+	})
+	if err != nil {
+		respondError(w, http.StatusBadGateway, "agent not connected")
+		return
+	}
+
+	select {
+	case msg := <-ch:
+		resp, ok := msg.(*pb.FileReadResponse)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unexpected response type")
+			return
+		}
+		if resp.Error != "" {
+			respondError(w, http.StatusNotFound, resp.Error)
+			return
+		}
+		if resp.TotalSize > maxFileViewSize {
+			respondError(w, http.StatusRequestEntityTooLarge, "file too large for viewing")
+			return
+		}
+
+		// Audit log
+		ip := clientIP(r)
+		detail := path
+		s.store.LogAudit(model.AuditEntry{
+			ID:        uuid.NewString(),
+			UserID:    &userID,
+			Action:    model.AuditFileRead,
+			Target:    &serverID,
+			Detail:    &detail,
+			IPAddress: &ip,
+		})
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"data":       base64.StdEncoding.EncodeToString(resp.Data),
+			"total_size": resp.TotalSize,
+			"mime_type":  resp.MimeType,
+		})
+	case <-time.After(agentTimeout):
+		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	}
+}
+
+// isPathAllowed checks if the requested path is under one of the user's allowed roots.
+func (s *Server) isPathAllowed(userID, serverID, requestedPath string) (bool, error) {
+	paths, err := s.store.GetUserPathsForServer(userID, serverID)
+	if err != nil {
+		return false, err
+	}
+	cleanedReq := filepath.Clean(requestedPath)
+	for _, allowed := range paths {
+		cleanedAllowed := filepath.Clean(allowed)
+		if cleanedReq == cleanedAllowed || strings.HasPrefix(cleanedReq, cleanedAllowed+"/") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// validateRequestPath checks for path traversal and ensures absolute path.
+func validateRequestPath(path string) error {
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("path must be absolute")
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path traversal not allowed")
+	}
+	return nil
+}
