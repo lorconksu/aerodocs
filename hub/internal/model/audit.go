@@ -45,6 +45,7 @@ const (
 	AuditServerRegistered   = "server.registered"
 	AuditServerConnected    = "server.connected"
 	AuditServerDisconnected = "server.disconnected"
+	AuditServerUnregistered = "server.unregistered"
 )
 
 // File access events
