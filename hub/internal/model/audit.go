@@ -57,3 +57,7 @@ const (
 const (
 	AuditLogTailStarted = "log.tail_started"
 )
+
+const (
+	AuditFileUploaded = "file.uploaded"
+)
