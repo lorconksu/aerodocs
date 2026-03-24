@@ -19,9 +19,10 @@ import (
 
 type Handler struct {
 	pb.UnimplementedAgentServiceServer
-	store   *store.Store
-	connMgr *connmgr.ConnManager
-	pending *PendingRequests
+	store       *store.Store
+	connMgr     *connmgr.ConnManager
+	pending     *PendingRequests
+	logSessions *LogSessions
 }
 
 func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
@@ -140,6 +141,11 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		case *pb.AgentMessage_FileReadResponse:
 			if h.pending != nil {
 				h.pending.Deliver(p.FileReadResponse.RequestId, p.FileReadResponse)
+			}
+
+		case *pb.AgentMessage_LogStreamChunk:
+			if h.logSessions != nil {
+				h.logSessions.Deliver(p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
 			}
 
 		default:

@@ -14,35 +14,42 @@ import (
 )
 
 type Server struct {
-	grpcServer *grpc.Server
-	store      *store.Store
-	connMgr    *connmgr.ConnManager
-	pending    *PendingRequests
-	addr       string
+	grpcServer  *grpc.Server
+	store       *store.Store
+	connMgr     *connmgr.ConnManager
+	pending     *PendingRequests
+	logSessions *LogSessions
+	addr        string
 }
 
 type Config struct {
-	Addr    string
-	Store   *store.Store
-	ConnMgr *connmgr.ConnManager
-	Pending *PendingRequests
+	Addr        string
+	Store       *store.Store
+	ConnMgr     *connmgr.ConnManager
+	Pending     *PendingRequests
+	LogSessions *LogSessions
 }
 
 func New(cfg Config) *Server {
 	if cfg.Pending == nil {
 		cfg.Pending = NewPendingRequests()
 	}
+	if cfg.LogSessions == nil {
+		cfg.LogSessions = NewLogSessions()
+	}
 	s := &Server{
-		store:   cfg.Store,
-		connMgr: cfg.ConnMgr,
-		pending: cfg.Pending,
-		addr:    cfg.Addr,
+		store:       cfg.Store,
+		connMgr:     cfg.ConnMgr,
+		pending:     cfg.Pending,
+		logSessions: cfg.LogSessions,
+		addr:        cfg.Addr,
 	}
 	s.grpcServer = grpc.NewServer()
 	handler := &Handler{
-		store:   cfg.Store,
-		connMgr: cfg.ConnMgr,
-		pending: s.pending,
+		store:       cfg.Store,
+		connMgr:     cfg.ConnMgr,
+		pending:     s.pending,
+		logSessions: s.logSessions,
 	}
 	pb.RegisterAgentServiceServer(s.grpcServer, handler)
 	return s

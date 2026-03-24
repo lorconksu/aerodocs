@@ -24,6 +24,7 @@ type Server struct {
 	grpcAddr    string
 	connMgr     *connmgr.ConnManager
 	pending     *grpcserver.PendingRequests
+	logSessions *grpcserver.LogSessions
 }
 
 type Config struct {
@@ -36,6 +37,7 @@ type Config struct {
 	GRPCAddr    string
 	ConnMgr     *connmgr.ConnManager
 	Pending     *grpcserver.PendingRequests
+	LogSessions *grpcserver.LogSessions
 }
 
 func New(cfg Config) *Server {
@@ -48,6 +50,7 @@ func New(cfg Config) *Server {
 		grpcAddr:    cfg.GRPCAddr,
 		connMgr:     cfg.ConnMgr,
 		pending:     cfg.Pending,
+		logSessions: cfg.LogSessions,
 	}
 
 	mux := s.routes()
