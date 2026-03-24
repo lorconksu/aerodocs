@@ -279,10 +279,11 @@ function UsersTab() {
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null)
   const [deleteUsername, setDeleteUsername] = useState('')
 
-  const { data: users, isLoading } = useQuery({
+  const { data: usersData, isLoading } = useQuery({
     queryKey: ['users'],
-    queryFn: () => apiFetch<User[]>('/users'),
+    queryFn: () => apiFetch<{ users: User[] }>('/users'),
   })
+  const users = usersData?.users
 
   const updateRoleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: Role }) =>

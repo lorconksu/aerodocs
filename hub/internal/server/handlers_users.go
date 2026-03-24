@@ -14,7 +14,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list users")
 		return
 	}
-	respondJSON(w, http.StatusOK, users)
+	respondJSON(w, http.StatusOK, map[string]interface{}{"users": users})
 }
 
 func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
