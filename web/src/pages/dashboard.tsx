@@ -99,7 +99,7 @@ export function DashboardPage() {
   ]
 
   return (
-    <div>
+    <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
