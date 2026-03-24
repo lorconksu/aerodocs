@@ -535,12 +535,24 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
   const deleteMutation = useMutation({
     mutationFn: (filename: string) =>
       apiFetch(`/servers/${serverId}/dropzone?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    onMutate: async (filename) => {
       setConfirmDelete(null)
-      queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
+      // Optimistic update — remove file from list immediately
+      await queryClient.cancelQueries({ queryKey: ['dropzone', serverId] })
+      const prev = queryClient.getQueryData<{ files: FileNode[] }>(['dropzone', serverId])
+      queryClient.setQueryData(['dropzone', serverId], (old: { files: FileNode[] } | undefined) => ({
+        files: (old?.files ?? []).filter((f) => f.name !== filename),
+      }))
+      return { prev }
     },
-    onError: () => {
-      setConfirmDelete(null)
+    onError: (_err, _filename, context) => {
+      // Rollback on failure
+      if (context?.prev) {
+        queryClient.setQueryData(['dropzone', serverId], context.prev)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
     },
   })
 
