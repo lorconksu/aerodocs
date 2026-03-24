@@ -21,6 +21,7 @@ type Handler struct {
 	pb.UnimplementedAgentServiceServer
 	store   *store.Store
 	connMgr *connmgr.ConnManager
+	pending *PendingRequests
 }
 
 func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
@@ -131,6 +132,16 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 					return err
 				}
 			}
+		case *pb.AgentMessage_FileListResponse:
+			if h.pending != nil {
+				h.pending.Deliver(p.FileListResponse.RequestId, p.FileListResponse)
+			}
+
+		case *pb.AgentMessage_FileReadResponse:
+			if h.pending != nil {
+				h.pending.Deliver(p.FileReadResponse.RequestId, p.FileReadResponse)
+			}
+
 		default:
 			log.Printf("unhandled message type from %s: %T", serverID, p)
 		}
