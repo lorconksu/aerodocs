@@ -81,10 +81,25 @@ Click the checkbox on any server card to select it. A toolbar will appear at the
 
 ---
 
-## Deleting Servers
+## Unregistering Servers
 
-**Single server:** Click the three-dot menu on a server card and choose **Delete**. You will be asked to confirm.
+Unregistering a server removes it from AeroDocs and cleans up the agent on the remote machine in one step.
 
-**Multiple servers:** Select the servers you want to remove using the checkboxes, then click **Delete Selected** in the bulk action toolbar.
+**Single server:** Click the three-dot menu on a server card and choose **Unregister**. You will be asked to confirm.
 
-Deleting a server removes it from the Hub's database. It does not uninstall the agent from the remote machine — you will need to do that manually if required.
+**Multiple servers:** Select the servers you want to remove using the checkboxes, then click **Unregister Selected** in the bulk action toolbar.
+
+### What Unregister does
+
+When you unregister a server, the Hub sends a cleanup command to the agent on that machine. The agent will:
+
+1. Stop the `aerodocs-agent` systemd service
+2. Remove the agent binary
+3. Remove the configuration file (`/etc/aerodocs/agent.conf`)
+4. Remove the dropzone staging directory
+
+Once cleanup is confirmed, the server record is deleted from the Hub database.
+
+**If the agent is offline** (unreachable at the time of unregistration), the Hub skips the remote cleanup step and deletes the server record from the database only. You will need to clean up the agent files on that machine manually if desired.
+
+The unregister action is recorded in the [[Audit Logs]] as `server.unregistered`.
