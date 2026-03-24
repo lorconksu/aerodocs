@@ -47,6 +47,17 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("PUT /api/servers/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateServer)))))
 	mux.Handle("DELETE /api/servers/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteServer)))))
 
+	// File access path management (admin)
+	mux.Handle("GET /api/servers/{id}/paths", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListPaths)))))
+	mux.Handle("POST /api/servers/{id}/paths", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleCreatePath)))))
+	mux.Handle("DELETE /api/servers/{id}/paths/{pathId}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeletePath)))))
+	// User's own paths (any authenticated user)
+	mux.Handle("GET /api/servers/{id}/my-paths", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleGetUserPaths))))
+
+	// File browsing endpoints (any authenticated user, permission-checked in handler)
+	mux.Handle("GET /api/servers/{id}/files", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleListFiles))))
+	mux.Handle("GET /api/servers/{id}/files/read", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleReadFile))))
+
 	// Public install endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
 	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))

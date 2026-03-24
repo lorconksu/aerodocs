@@ -51,6 +51,7 @@ func runServer() error {
 	}
 
 	cm := connmgr.New()
+	pending := grpcserver.NewPendingRequests()
 
 	srv := server.New(server.Config{
 		Addr:        *addr,
@@ -59,12 +60,16 @@ func runServer() error {
 		IsDev:       *dev,
 		FrontendFS:  &hub.FrontendFS,
 		AgentBinDir: *agentBinDir,
+		GRPCAddr:    *grpcAddr,
+		ConnMgr:     cm,
+		Pending:     pending,
 	})
 
 	grpcSrv := grpcserver.New(grpcserver.Config{
 		Addr:    *grpcAddr,
 		Store:   st,
 		ConnMgr: cm,
+		Pending: pending,
 	})
 
 	// Start heartbeat monitor

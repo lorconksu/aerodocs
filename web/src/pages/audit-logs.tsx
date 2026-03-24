@@ -86,7 +86,7 @@ export function AuditLogsPage() {
   const showingTo = Math.min(offset + PAGE_SIZE, total)
 
   return (
-    <div>
+    <div className="p-6">
       <h2 className="text-lg font-semibold text-text-primary mb-4">Audit Logs</h2>
 
       {/* Filter Bar */}

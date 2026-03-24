@@ -140,3 +140,40 @@ export interface CreateServerResponse {
 export interface BatchDeleteRequest {
   ids: string[]
 }
+
+// File tree types (sub-project 4)
+export interface FileNode {
+  name: string
+  path: string
+  is_dir: boolean
+  size: number
+  readable: boolean
+}
+
+export interface FileListResponse {
+  files: FileNode[]
+}
+
+export interface FileReadResponse {
+  data: string  // base64-encoded
+  total_size: number
+  mime_type: string
+}
+
+export interface PathPermission {
+  id: string
+  user_id: string
+  username: string
+  server_id: string
+  path: string
+  created_at: string
+}
+
+export interface PathListResponse {
+  paths: PathPermission[]
+}
+
+export interface CreatePathRequest {
+  user_id: string
+  path: string
+}
