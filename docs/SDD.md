@@ -56,7 +56,7 @@ Listeners:
 
 Implements `AgentService.Connect`, the single bidirectional streaming RPC. Key sub-components:
 
-- **Handler** (`handler.go`) — processes incoming `AgentMessage` frames (heartbeats, registration, file responses, log chunks, upload acks). Routes outbound `HubMessage` frames to the correct agent.
+- **Handler** (`handler.go`) — processes incoming `AgentMessage` frames (heartbeats, registration, file responses, log chunks, upload acks, unregister acks). Routes outbound `HubMessage` frames to the correct agent, including `UnregisterRequest` when the admin-initiated unregister endpoint is called.
 - **PendingRequests** (`pending.go`) — request-response correlation map. When an HTTP handler needs a synchronous response from an agent (e.g., file read), it registers a pending entry with a UUID request ID and blocks on a channel. The gRPC handler fulfills the pending entry when the matching response arrives.
 - **LogSessions** (`logsessions.go`) — manages active log tailing sessions. Maps request ID to a channel of log chunks. HTTP SSE handler reads from this channel; gRPC handler writes to it.
 
@@ -99,6 +99,8 @@ TLS auto-detection: if the Hub address contains port 443 or uses the `https://` 
 
 On connect, the agent immediately sends a `RegisterAgent` message with its token, hostname, IP, OS, and agent version. The Hub responds with `RegisterAck` containing the server ID to use for subsequent heartbeats.
 
+**Self-unregister mode** (`--self-unregister` flag): instead of connecting via gRPC, the agent loads its existing `agent.conf`, makes a single HTTP `DELETE /api/servers/{id}/self-unregister` request to the Hub, then exits. This is used by the install script before a re-install to remove the old server entry from the Hub database.
+
 #### Heartbeat (`agent/internal/heartbeat`)
 
 Sends a `Heartbeat` message every 10 seconds with a `SystemInfo` payload: CPU utilization, memory utilization, disk utilization (root filesystem), and uptime.
@@ -127,6 +129,17 @@ Rotation detection: if a read returns 0 bytes and a stat shows the file size is 
 #### Config Persistence
 
 Agent configuration (hub address, server ID, token) is persisted to `/etc/aerodocs/agent.conf` as a simple `KEY=VALUE` file. On startup, the agent loads this file. If no config file exists, the agent expects environment variables or flags.
+
+#### Self-Cleanup (Unregister)
+
+When the Hub sends an `UnregisterRequest` message over the gRPC stream, the agent:
+
+1. Stops its own systemd service (`aerodocs-agent`)
+2. Removes the agent binary (`/usr/local/bin/aerodocs-agent`)
+3. Removes the configuration file (`/etc/aerodocs/agent.conf`)
+4. Removes the dropzone staging directory (`/tmp/aerodocs-dropzone/`)
+
+The agent sends an `UnregisterAck` back to the Hub to confirm cleanup before shutting down.
 
 ---
 
@@ -381,7 +394,7 @@ All security-relevant events are written to `audit_logs` before the response is 
 
 - Authentication events: login, login failure, TOTP failure, TOTP setup/enable/disable.
 - User management: create, delete, role change, password change.
-- Server management: create, update, delete, batch delete, registration, connect, disconnect.
+- Server management: create, update, unregister (with remote cleanup), registration, connect, disconnect.
 - File events: file read, path granted, path revoked.
 - Log events: tail started.
 - Upload events: file uploaded.
@@ -427,10 +440,10 @@ All security-relevant events are written to `audit_logs` before the response is 
 |---|---|---|---|
 | GET | `/api/servers` | Access token | List servers (role-filtered) |
 | POST | `/api/servers` | Access token (admin) | Create server (returns install command) |
-| POST | `/api/servers/batch-delete` | Access token (admin) | Delete multiple servers |
 | GET | `/api/servers/{id}` | Access token | Get server details |
 | PUT | `/api/servers/{id}` | Access token (admin) | Update server name/labels |
-| DELETE | `/api/servers/{id}` | Access token (admin) | Delete server |
+| DELETE | `/api/servers/{id}/unregister` | Access token (admin) | Send cleanup to agent then delete server record; skips cleanup if agent is offline |
+| DELETE | `/api/servers/{id}/self-unregister` | None (public) | Agent-initiated removal during re-install; deletes server record from DB |
 
 ### Paths (Permissions)
 

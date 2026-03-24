@@ -178,9 +178,18 @@ curl -sSL https://aerodocs.example.com/install.sh | sudo bash -s -- \
 
 The script will:
 1. Detect the OS and CPU architecture
-2. Download the correct agent binary from `/install/{os}/{arch}`
-3. Write the configuration to `/etc/aerodocs/agent.conf`
-4. Install and enable a systemd service for the agent
+2. **Auto-detect an existing installation** — if `aerodocs-agent` is already installed and has a valid `agent.conf`, the script calls `aerodocs-agent --self-unregister` to remove the old server entry from the Hub before proceeding
+3. Download the correct agent binary from `/install/{os}/{arch}`
+4. Write the configuration to `/etc/aerodocs/agent.conf`
+5. Install and enable a systemd service for the agent
+6. **Verify registration** — after starting the agent service, the script checks that the agent successfully registered with the Hub before reporting success
+
+#### Piped vs. manual execution
+
+| Mode | Behaviour |
+|------|-----------|
+| Piped from `curl` (non-interactive) | Automatically replaces any existing installation without prompting |
+| Run as a script manually (interactive terminal) | Prompts **[R]eplace / [K]eep** if an existing installation is detected; exits with a non-zero status if the user selects Keep |
 
 ### Manual install
 
@@ -237,6 +246,14 @@ RestartSec=5s
 [Install]
 WantedBy=multi-user.target
 ```
+
+### Agent flags
+
+| Flag | Description |
+|------|-------------|
+| `--hub <addr>` | Hub gRPC address (e.g. `aerodocs.example.com:443` or `192.168.1.10:9090`) |
+| `--token <token>` | One-time registration token obtained from the Hub when creating a server record |
+| `--self-unregister` | Calls `DELETE /api/servers/{id}/self-unregister` on the Hub to remove the current server entry, then exits. Used by the install script before re-installing to clean up the old registration. Requires a valid `agent.conf` with a known `server_id`. |
 
 ### TLS auto-detection
 

@@ -122,6 +122,7 @@ The stream carries a union of typed messages in both directions:
 | `LogStreamStop` | Signals the agent stopped tailing (EOF or error) |
 | `FileUploadAck` | Acknowledgement of a received file chunk |
 | `FileDeleteResponse` | Result of a file deletion request |
+| `UnregisterAck` | Confirms that self-cleanup (binary, config, dropzone removal) is complete |
 
 **Hub → Agent message types:**
 
@@ -134,6 +135,7 @@ The stream carries a union of typed messages in both directions:
 | `LogStreamRequest` | Start tailing a file (with optional grep filter) |
 | `FileUploadRequest` | Send a file chunk to the agent (chunked transfer) |
 | `FileDeleteRequest` | Request deletion of a file |
+| `UnregisterRequest` | Instructs the agent to stop its service and remove its binary, config, and dropzone |
 
 ### Request-response correlation
 
@@ -285,6 +287,17 @@ Immutable record of all actions. Rows are never updated or deleted.
 
 Indexed on `user_id`, `action`, and `created_at` for filtered queries.
 
+Notable audit actions related to server lifecycle:
+
+| Action | Trigger |
+|--------|---------|
+| `server.created` | Admin creates a server record |
+| `server.updated` | Admin edits name or labels |
+| `server.registered` | Agent completes initial registration |
+| `server.connected` | Agent establishes a live gRPC stream |
+| `server.disconnected` | Agent's gRPC stream drops |
+| `server.unregistered` | Admin (or agent re-install) unregisters a server — cleanup command sent to agent, then record deleted from DB |
+
 ### `_config`
 Key-value store for internal Hub configuration (e.g. the JWT signing key).
 
@@ -397,3 +410,14 @@ Internal migration tracking table. Managed by the `migrate` package.
 | GET | `/api/servers/{id}/my-paths` | `access` | List the current user's allowed paths on a server |
 | GET | `/install.sh` | None | Agent install script (one-command install) |
 | GET | `/install/{os}/{arch}` | None | Download agent binary for the specified OS and architecture |
+
+### Server removal endpoints
+
+Server removal is handled through **Unregister** rather than a plain delete. Two endpoints cover different scenarios:
+
+| Method | Path | Auth required | Description |
+|--------|------|--------------|-------------|
+| DELETE | `/api/servers/{id}/unregister` | `access` + admin | Send cleanup command to agent (stop service, remove binary, config, and dropzone), then delete from DB. If agent is offline, deletes from DB only. |
+| DELETE | `/api/servers/{id}/self-unregister` | None (public) | Called by the agent install script during re-install to remove the old server entry from the Hub before registering a fresh one. |
+
+> **Note:** The older `DELETE /api/servers/{id}` endpoint performed a plain database delete with no agent cleanup. Server removal is now exclusively via `/unregister` (admin-initiated) or `/self-unregister` (agent-initiated during re-install). The `POST /api/servers/batch-delete` endpoint has been replaced by batch unregister behaviour on the dashboard.

@@ -63,8 +63,9 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 - List all registered servers with name, hostname, IP address, OS, agent version, and online/offline/pending status.
 - Status is live: agents send heartbeats every 10 seconds; the Hub marks a server offline if no heartbeat is received within 30 seconds.
 - Search by name, hostname, IP, or label; filter by status.
-- Checkbox-based multi-select for batch delete operations.
+- Checkbox-based multi-select for batch unregister operations.
 - Single-server view with system metrics (CPU, memory, disk, uptime) reported via heartbeat.
+- **Unregister** (single or batch): sends a cleanup command to the agent (stop service, remove binary, config, and dropzone) before deleting the server record from the database. If the agent is offline, the record is deleted without remote cleanup.
 
 ### 4.3 Agent
 
@@ -76,6 +77,8 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 - Heartbeat every 10 seconds carrying CPU, memory, disk, and uptime metrics.
 - Auto-detects whether to use TLS based on the Hub address (HTTPS/port 443 triggers TLS).
 - Executes file list, file read, log tail, file upload, and file delete commands received over the stream.
+- **Self-unregister** (`--self-unregister` flag): calls `DELETE /api/servers/{id}/self-unregister` on the Hub to remove the current server entry. Used by the install script during re-install to clean up the old registration before creating a new one.
+- **Install script improvements**: auto-detects existing installations, auto-replaces when piped from `curl` (non-interactive), prompts the user for Replace/Keep when run manually (interactive), and verifies successful registration after install.
 
 ### 4.4 File Tree
 
@@ -86,6 +89,7 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 - Markdown files (`.md`) render as formatted HTML with Mermaid diagram support via react-markdown and remark-gfm.
 - Path traversal and symlink escape prevention enforced on the Agent before any file system access.
 - Collapsible sidebar for the file tree panel.
+- **In-file search**: Ctrl+F opens a search bar in the file viewer; matches are highlighted in yellow/orange with prev/next navigation; input is debounced for performance on large files.
 
 ### 4.5 Live Log Tailing
 
@@ -109,7 +113,7 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 ### 4.7 Audit Logs
 
 - Every significant action is recorded as an immutable entry with: user ID, action type, target, detail, IP address, and timestamp.
-- 23 defined event types across user, server, file, path, log, and upload categories.
+- 24 defined event types across user, server, file, path, log, and upload categories.
 - Admin-only access. Filterable by date range, user, and action type.
 - Audit entries are never deleted or modified — no soft-delete, no admin override.
 

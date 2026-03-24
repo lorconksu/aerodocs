@@ -66,11 +66,10 @@ Actions follow a `resource.action` naming pattern.
 |--------|--------------|
 | `server.created` | An admin added a new server record |
 | `server.updated` | An admin edited a server's name or labels |
-| `server.deleted` | An admin deleted a server |
-| `server.batch_deleted` | An admin deleted multiple servers at once |
 | `server.registered` | An agent ran the install command and registered with the Hub |
-| `server.connected` | An agent established a live WebSocket connection to the Hub |
-| `server.disconnected` | An agent's WebSocket connection to the Hub dropped |
+| `server.connected` | An agent established a live gRPC connection to the Hub |
+| `server.disconnected` | An agent's gRPC connection to the Hub dropped |
+| `server.unregistered` | An admin unregistered a server — cleanup sent to the agent (if online), then record deleted from the Hub database |
 
 ### File actions
 

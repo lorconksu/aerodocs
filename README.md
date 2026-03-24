@@ -41,9 +41,9 @@ graph LR
 
 ## Features
 
-- **Fleet Dashboard** — At-a-glance health overview of all connected servers with live status, search, filter, and mass actions
-- **Server Onboarding** — Single `curl` command to install and register a new agent; Agent connects back to Hub via gRPC bidirectional stream with exponential backoff reconnection
-- **"Honest" File Tree** — Browse remote file systems with full visibility — binaries and forbidden paths are shown but greyed out, never hidden; syntax highlighting for 16 languages via highlight.js
+- **Fleet Dashboard** — At-a-glance health overview of all connected servers with live status, search, filter, and bulk unregister (single or batch); Unregister remotely cleans up the agent before removing the server record
+- **Server Onboarding** — Single `curl` command to install and register a new agent; auto-detects and replaces existing installations; Agent connects back to Hub via gRPC bidirectional stream with exponential backoff reconnection
+- **"Honest" File Tree** — Browse remote file systems with full visibility — binaries and forbidden paths are shown but greyed out, never hidden; syntax highlighting for 16 languages via highlight.js; Ctrl+F in-file search with match highlighting and prev/next navigation
 - **Markdown Rendering** — Documentation files (`.md`) render as formatted text with Mermaid diagram support; log and binary files display as raw monospaced output
 - **Live Log Tailing** — Real-time log streaming over SSE with server-side grep/filter, pause/resume, and terminal-like UI
 - **Quarantined Dropzone** — Admin-only drag-and-drop file uploads via chunked transfer to `/tmp/aerodocs-dropzone/` staging directory on the target server
