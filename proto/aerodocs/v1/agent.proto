@@ -118,6 +118,16 @@ message LogStreamStop {
   string request_id = 1;
 }
 
-// Stubs — sub-project 6
-message FileUploadRequest { string path = 1; bytes chunk = 2; bool done = 3; }
-message FileUploadAck { bool success = 1; string error = 2; }
+// File upload / Dropzone (sub-project 6)
+message FileUploadRequest {
+  string request_id = 1;
+  string filename = 2;
+  bytes chunk = 3;
+  bool done = 4;
+}
+
+message FileUploadAck {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+}
