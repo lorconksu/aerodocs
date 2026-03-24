@@ -17,6 +17,7 @@ message AgentMessage {
     LogStreamChunk log_stream_chunk = 11;
     FileUploadAck file_upload_ack = 12;
     FileReadResponse file_read_response = 13;
+    FileDeleteResponse file_delete_response = 15;
   }
 }
 
@@ -31,6 +32,7 @@ message HubMessage {
     FileUploadRequest file_upload_request = 12;
     FileReadRequest file_read_request = 13;
     LogStreamStop log_stream_stop = 14;
+    FileDeleteRequest file_delete_request = 15;
   }
 }
 
@@ -127,6 +129,18 @@ message FileUploadRequest {
 }
 
 message FileUploadAck {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// File deletion (dropzone)
+message FileDeleteRequest {
+  string request_id = 1;
+  string path = 2;
+}
+
+message FileDeleteResponse {
   string request_id = 1;
   bool success = 2;
   string error = 3;
