@@ -70,6 +70,9 @@ export async function apiFetch<T>(
     throw new Error((error as { error?: string }).error || `HTTP ${res.status}`)
   }
 
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T
+  }
   return res.json() as Promise<T>
 }
 
