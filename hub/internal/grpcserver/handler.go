@@ -158,6 +158,11 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 				h.pending.Deliver(p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
 			}
 
+		case *pb.AgentMessage_UnregisterAck:
+			if h.pending != nil {
+				h.pending.Deliver(p.UnregisterAck.RequestId, p.UnregisterAck)
+			}
+
 		default:
 			log.Printf("unhandled message type from %s: %T", serverID, p)
 		}
