@@ -3,24 +3,34 @@ set -euo pipefail
 
 # AeroDocs Agent Installer
 # Usage: curl -sSL https://<hub>/install.sh | sudo bash -s -- --token <TOKEN> --hub <GRPC_ADDR>
+# When piped from curl, --force is implied (no interactive prompt).
+# To run interactively: bash install.sh --token <TOKEN> --hub <GRPC_ADDR>
 
 TOKEN=""
 HUB=""
 URL=""
+FORCE=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --token) TOKEN="$2"; shift 2 ;;
     --hub)   HUB="$2";   shift 2 ;;
     --url)   URL="$2";   shift 2 ;;
+    --force) FORCE=true;  shift ;;
     *)       echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
+
+# Auto-detect piped input (curl | bash) — can't prompt, so force replace
+if [ ! -t 0 ]; then
+  FORCE=true
+fi
 
 if [ -z "$TOKEN" ] || [ -z "$HUB" ]; then
   echo "Usage: sudo bash install.sh --token <TOKEN> --hub <GRPC_ADDR>"
   echo "  --token   One-time registration token from Hub"
   echo "  --hub     Hub gRPC address (e.g., 10.0.1.5:9090)"
+  echo "  --force   Replace existing installation without prompting"
   exit 1
 fi
 
@@ -47,48 +57,48 @@ elif [ -f /usr/local/bin/aerodocs-agent ] || [ -f /etc/systemd/system/aerodocs-a
 fi
 
 if [ "$EXISTING" = true ]; then
-  echo ""
-  echo "    An existing AeroDocs Agent installation was detected."
-  if systemctl is-active --quiet aerodocs-agent 2>/dev/null; then
-    echo "    Status: RUNNING"
+  if [ "$FORCE" = true ]; then
+    echo "==> Existing installation detected — replacing automatically."
   else
-    echo "    Status: installed but not running"
+    echo ""
+    echo "    An existing AeroDocs Agent installation was detected."
+    if systemctl is-active --quiet aerodocs-agent 2>/dev/null; then
+      echo "    Status: RUNNING"
+    else
+      echo "    Status: installed but not running"
+    fi
+    echo ""
+    echo "    [R] Replace — stop the current agent and install the new one"
+    echo "    [K] Keep    — keep the current installation and cancel"
+    echo ""
+    while true; do
+      read -rp "    Choose [R/K]: " choice </dev/tty
+      case "$choice" in
+        [Rr]) break ;;
+        [Kk])
+          echo ""
+          echo "==> Keeping current installation. Exiting."
+          exit 0
+          ;;
+        *) echo "    Please enter R or K." ;;
+      esac
+    done
   fi
-  echo ""
-  echo "    [R] Replace — stop the current agent and install the new one"
-  echo "    [K] Keep    — keep the current installation and cancel"
-  echo ""
-  while true; do
-    read -rp "    Choose [R/K]: " choice
-    case "$choice" in
-      [Rr])
-        echo ""
-        # Tell the Hub to remove the old server entry before we tear down
-        if [ -x /usr/local/bin/aerodocs-agent ] && [ -f /etc/aerodocs/agent.conf ]; then
-          echo "==> Removing old server from Hub..."
-          /usr/local/bin/aerodocs-agent --self-unregister 2>/dev/null || true
-        fi
-        echo "==> Removing previous installation..."
-        systemctl stop aerodocs-agent 2>/dev/null || true
-        systemctl disable aerodocs-agent 2>/dev/null || true
-        pkill -9 -f aerodocs-agent 2>/dev/null || true
-        sleep 1
-        rm -f /usr/local/bin/aerodocs-agent
-        rm -f /etc/aerodocs/agent.conf
-        rm -f /etc/systemd/system/aerodocs-agent.service
-        systemctl daemon-reload 2>/dev/null || true
-        break
-        ;;
-      [Kk])
-        echo ""
-        echo "==> Keeping current installation. Exiting."
-        exit 0
-        ;;
-      *)
-        echo "    Please enter R or K."
-        ;;
-    esac
-  done
+
+  # Unregister old server from Hub before teardown
+  if [ -x /usr/local/bin/aerodocs-agent ] && [ -f /etc/aerodocs/agent.conf ]; then
+    echo "==> Removing old server from Hub..."
+    /usr/local/bin/aerodocs-agent --self-unregister 2>/dev/null || true
+  fi
+  echo "==> Removing previous installation..."
+  systemctl stop aerodocs-agent 2>/dev/null || true
+  systemctl disable aerodocs-agent 2>/dev/null || true
+  pkill -9 -f aerodocs-agent 2>/dev/null || true
+  sleep 1
+  rm -f /usr/local/bin/aerodocs-agent
+  rm -f /etc/aerodocs/agent.conf
+  rm -f /etc/systemd/system/aerodocs-agent.service
+  systemctl daemon-reload 2>/dev/null || true
 fi
 
 # --- Download agent binary ---
