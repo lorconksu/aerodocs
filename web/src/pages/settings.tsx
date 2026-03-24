@@ -102,7 +102,7 @@ function ProfileTab() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
+    <div className="p-6 max-w-lg space-y-6">
       {/* Avatar */}
       <div>
         <h3 className="text-sm font-semibold text-text-primary mb-3">Avatar</h3>

@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
-import { LayoutDashboard, ScrollText, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, ScrollText, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -10,6 +11,7 @@ import type { ServerListResponse } from '@/types/api'
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [navCollapsed, setNavCollapsed] = useState(false)
 
   const { data: serverData } = useQuery({
     queryKey: ['servers'],
@@ -73,30 +75,39 @@ export function AppShell() {
 
       <div className="flex flex-1">
         {/* Left Sidebar */}
-        <nav className="w-52 bg-surface/50 border-r border-border flex flex-col py-3">
+        <nav className={`${navCollapsed ? 'w-12' : 'w-52'} bg-surface/50 border-r border-border flex flex-col py-3 transition-all duration-200 shrink-0`}>
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
+              title={navCollapsed ? label : undefined}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 text-sm transition-colors ${
+                `flex items-center ${navCollapsed ? 'justify-center px-2' : 'gap-3 px-4'} py-2 text-sm transition-colors ${
                   isActive
                     ? 'text-text-primary bg-elevated border-l-2 border-accent'
                     : 'text-text-muted hover:text-text-secondary border-l-2 border-transparent'
                 }`
               }
             >
-              <Icon className="w-4 h-4" />
-              {label}
+              <Icon className="w-4 h-4 shrink-0" />
+              {!navCollapsed && label}
             </NavLink>
           ))}
           <div className="flex-1" />
-          <div className="px-4 text-[10px] text-text-faint uppercase tracking-widest">v0.1.0</div>
+          <button
+            onClick={() => setNavCollapsed(!navCollapsed)}
+            className={`flex items-center ${navCollapsed ? 'justify-center px-2' : 'gap-3 px-4'} py-2 text-text-muted hover:text-text-secondary transition-colors`}
+            title={navCollapsed ? 'Expand menu' : 'Collapse menu'}
+          >
+            {navCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            {!navCollapsed && <span className="text-xs">Collapse</span>}
+          </button>
+          {!navCollapsed && <div className="px-4 pt-1 text-[10px] text-text-faint uppercase tracking-widest">v0.1.0</div>}
         </nav>
 
         {/* Main Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 overflow-hidden">
           <Outlet />
         </main>
       </div>
