@@ -47,6 +47,7 @@ export function DashboardPage() {
       const qs = params.toString()
       return apiFetch<ServerListResponse>(`/servers${qs ? `?${qs}` : ''}`)
     },
+    refetchInterval: 10_000,
   })
 
   const deleteMutation = useMutation({
