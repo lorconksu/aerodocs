@@ -22,6 +22,7 @@ const AUDIT_ACTIONS = [
   'server.registered',
   'server.connected',
   'server.disconnected',
+  'server.unregistered',
   'file.read',
   'file.uploaded',
   'path.granted',
