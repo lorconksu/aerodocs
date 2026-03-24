@@ -1091,11 +1091,20 @@ export function ServerDetailPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [liveTailing, setLiveTailing] = useState(false)
 
-  // In-file search state
+  // In-file search state (debounced — searchInput is what user types, searchTerm is applied after 300ms)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [currentMatch, setCurrentMatch] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput)
+      setCurrentMatch(0)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   // Server info query
   const {
@@ -1241,6 +1250,7 @@ export function ServerDetailPage() {
     setMarkdownView('rendered')
     setLiveTailing(false)
     setSearchOpen(false)
+    setSearchInput('')
     setSearchTerm('')
     setCurrentMatch(0)
   }, [])
@@ -1551,18 +1561,18 @@ export function ServerDetailPage() {
                     <input
                       ref={searchInputRef}
                       type="text"
-                      value={searchTerm}
-                      onChange={(e) => { setSearchTerm(e.target.value); setCurrentMatch(0) }}
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
                       placeholder="Search in file..."
                       className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-faint focus:outline-none"
                       autoFocus
                       onKeyDown={(e) => {
-                        if (e.key === 'Escape') { setSearchOpen(false); setSearchTerm('') }
+                        if (e.key === 'Escape') { setSearchOpen(false); setSearchInput(''); setSearchTerm('') }
                         if (e.key === 'Enter' && !e.shiftKey) { setCurrentMatch(i => matchCount > 0 ? (i + 1) % matchCount : 0) }
                         if (e.key === 'Enter' && e.shiftKey) { setCurrentMatch(i => matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0) }
                       }}
                     />
-                    {searchTerm && (
+                    {searchInput && (
                       <span className="text-xs text-text-muted whitespace-nowrap">
                         {matchCount > 0 ? `${currentMatch + 1} of ${matchCount}` : 'No matches'}
                       </span>
@@ -1573,7 +1583,7 @@ export function ServerDetailPage() {
                     <button onClick={() => setCurrentMatch(i => matchCount > 0 ? (i + 1) % matchCount : 0)} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
                       <ChevronDown className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => { setSearchOpen(false); setSearchTerm('') }} className="p-0.5 text-text-muted hover:text-text-primary">
+                    <button onClick={() => { setSearchOpen(false); setSearchInput(''); setSearchTerm('') }} className="p-0.5 text-text-muted hover:text-text-primary">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
