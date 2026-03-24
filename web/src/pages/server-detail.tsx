@@ -521,6 +521,7 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
   const [uploadResult, setUploadResult] = useState<{ filename: string; size: number } | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
 
@@ -535,7 +536,11 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
     mutationFn: (filename: string) =>
       apiFetch(`/servers/${serverId}/dropzone?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' }),
     onSuccess: () => {
+      setConfirmDelete(null)
       queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
+    },
+    onError: () => {
+      setConfirmDelete(null)
     },
   })
 
@@ -696,14 +701,40 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                           {formatFileSize(f.size)}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <button
-                            onClick={() => deleteMutation.mutate(f.name)}
-                            disabled={deleteMutation.isPending}
-                            className="text-text-muted hover:text-status-error transition-colors disabled:opacity-50"
-                            title="Delete file"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {confirmDelete === f.name ? (
+                            <span className="flex items-center justify-end gap-2">
+                              {deleteMutation.isPending ? (
+                                <span className="flex items-center gap-1 text-xs text-text-muted">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Deleting...
+                                </span>
+                              ) : (
+                                <>
+                                  <span className="text-xs text-status-error">Delete?</span>
+                                  <button
+                                    onClick={() => deleteMutation.mutate(f.name)}
+                                    className="text-xs px-1.5 py-0.5 bg-status-error/20 text-status-error rounded hover:bg-status-error/30 transition-colors"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete(null)}
+                                    className="text-xs px-1.5 py-0.5 bg-elevated text-text-muted rounded hover:text-text-primary transition-colors"
+                                  >
+                                    No
+                                  </button>
+                                </>
+                              )}
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDelete(f.name)}
+                              className="text-text-muted hover:text-status-error transition-colors"
+                              title="Delete file"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
