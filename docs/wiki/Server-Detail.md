@@ -62,6 +62,16 @@ When viewing a Markdown file, a toggle in the top-right of the viewer lets you s
 - **Rendered** — formatted HTML output (default)
 - **Raw** — the plain Markdown source text
 
+### In-File Search
+
+Press **Ctrl+F** (or **Cmd+F** on Mac) while a file is open in the viewer to open the search bar.
+
+- Type to search — matches are highlighted in **yellow/orange** throughout the file content.
+- Use the **prev** (↑) and **next** (↓) buttons in the search bar to jump between matches.
+- The match count is shown next to the navigation buttons (e.g. `3 / 12`).
+- The search is **debounced** — there is a short delay before results update, which keeps large files responsive while you type.
+- Press **Escape** or click the close button to dismiss the search bar and clear highlights.
+
 ---
 
 ## Live Tail
