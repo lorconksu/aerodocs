@@ -38,18 +38,53 @@ if [ "$OS" != "linux" ]; then
   exit 1
 fi
 
-# --- Clean up any previous installation ---
-echo "==> Cleaning up previous installation (if any)..."
-systemctl stop aerodocs-agent 2>/dev/null || true
-systemctl disable aerodocs-agent 2>/dev/null || true
-# Kill any stray agent processes
-pkill -9 -f aerodocs-agent 2>/dev/null || true
-sleep 1
-# Remove old files
-rm -f /usr/local/bin/aerodocs-agent
-rm -f /etc/aerodocs/agent.conf
-rm -f /etc/systemd/system/aerodocs-agent.service
-systemctl daemon-reload 2>/dev/null || true
+# --- Check for existing installation ---
+EXISTING=false
+if systemctl is-active --quiet aerodocs-agent 2>/dev/null; then
+  EXISTING=true
+elif [ -f /usr/local/bin/aerodocs-agent ] || [ -f /etc/systemd/system/aerodocs-agent.service ]; then
+  EXISTING=true
+fi
+
+if [ "$EXISTING" = true ]; then
+  echo ""
+  echo "    An existing AeroDocs Agent installation was detected."
+  if systemctl is-active --quiet aerodocs-agent 2>/dev/null; then
+    echo "    Status: RUNNING"
+  else
+    echo "    Status: installed but not running"
+  fi
+  echo ""
+  echo "    [R] Replace — stop the current agent and install the new one"
+  echo "    [K] Keep    — keep the current installation and cancel"
+  echo ""
+  while true; do
+    read -rp "    Choose [R/K]: " choice
+    case "$choice" in
+      [Rr])
+        echo ""
+        echo "==> Removing previous installation..."
+        systemctl stop aerodocs-agent 2>/dev/null || true
+        systemctl disable aerodocs-agent 2>/dev/null || true
+        pkill -9 -f aerodocs-agent 2>/dev/null || true
+        sleep 1
+        rm -f /usr/local/bin/aerodocs-agent
+        rm -f /etc/aerodocs/agent.conf
+        rm -f /etc/systemd/system/aerodocs-agent.service
+        systemctl daemon-reload 2>/dev/null || true
+        break
+        ;;
+      [Kk])
+        echo ""
+        echo "==> Keeping current installation. Exiting."
+        exit 0
+        ;;
+      *)
+        echo "    Please enter R or K."
+        ;;
+    esac
+  done
+fi
 
 # --- Download agent binary ---
 if [ -z "$URL" ]; then
