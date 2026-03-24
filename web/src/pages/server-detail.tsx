@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -37,7 +37,9 @@ import xml from 'highlight.js/lib/languages/xml'
 import yaml from 'highlight.js/lib/languages/yaml'
 import 'highlight.js/styles/github-dark.css'
 import ReactMarkdown from 'react-markdown'
+import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import mermaid from 'mermaid'
 import { apiFetch } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import type {
@@ -99,6 +101,81 @@ function formatFileSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(1024))
   const value = bytes / Math.pow(1024, i)
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+// Initialize mermaid with dark theme
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#3b82f6',
+    primaryTextColor: '#e0e0e0',
+    lineColor: '#555',
+    secondaryColor: '#1e293b',
+    tertiaryColor: '#1a1a2e',
+  },
+})
+
+// Mermaid diagram component
+function MermaidDiagram({ chart }: { chart: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [svg, setSvg] = useState<string>('')
+  const [error, setError] = useState<string>('')
+
+  useEffect(() => {
+    const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`
+    mermaid
+      .render(id, chart)
+      .then((result) => setSvg(result.svg))
+      .catch((err) => setError(String(err)))
+  }, [chart])
+
+  if (error) {
+    return (
+      <pre className="p-3 bg-base border border-border rounded-lg text-xs text-status-error overflow-x-auto">
+        {error}
+      </pre>
+    )
+  }
+  return (
+    <div
+      ref={containerRef}
+      className="my-4 flex justify-center overflow-x-auto"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
+
+// Custom code block renderer for ReactMarkdown — renders mermaid blocks as diagrams
+const markdownComponents: Components = {
+  code({ className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || '')
+    const lang = match?.[1]
+    const content = String(children).replace(/\n$/, '')
+
+    if (lang === 'mermaid') {
+      return <MermaidDiagram chart={content} />
+    }
+
+    // Inline code (no language class)
+    if (!lang) {
+      return <code className={className} {...props}>{children}</code>
+    }
+
+    // Block code — use highlight.js
+    try {
+      const hljsLang = hljs.getLanguage(lang) ? lang : 'plaintext'
+      const result = hljs.highlight(content, { language: hljsLang })
+      return (
+        <code
+          className="hljs"
+          dangerouslySetInnerHTML={{ __html: result.value }}
+        />
+      )
+    } catch {
+      return <code className={className} {...props}>{children}</code>
+    }
+  },
 }
 
 function extensionToLanguage(filename: string): string {
@@ -495,11 +572,12 @@ export function ServerDetailPage() {
     enabled: !!serverId && !!selectedFile && !selectedFile.is_dir,
   })
 
-  // Decode file content
+  // Decode file content (UTF-8 safe)
   const decodedContent = useMemo(() => {
     if (!fileContent?.data) return null
     try {
-      return atob(fileContent.data)
+      const bytes = Uint8Array.from(atob(fileContent.data), (c) => c.charCodeAt(0))
+      return new TextDecoder('utf-8').decode(bytes)
     } catch {
       return '[Unable to decode file content]'
     }
@@ -823,7 +901,7 @@ export function ServerDetailPage() {
                   ) : decodedContent !== null ? (
                     isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
                       <div className="markdown-body p-6">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                           {decodedContent}
                         </ReactMarkdown>
                       </div>
