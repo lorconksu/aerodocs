@@ -532,29 +532,28 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
     refetchInterval: expanded ? 30_000 : false,
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (filename: string) =>
-      apiFetch(`/servers/${serverId}/dropzone?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' }),
-    onMutate: async (filename) => {
-      setConfirmDelete(null)
-      // Optimistic update — remove file from list immediately
-      await queryClient.cancelQueries({ queryKey: ['dropzone', serverId] })
-      const prev = queryClient.getQueryData<{ files: FileNode[] }>(['dropzone', serverId])
-      queryClient.setQueryData(['dropzone', serverId], (old: { files: FileNode[] } | undefined) => ({
-        files: (old?.files ?? []).filter((f) => f.name !== filename),
-      }))
-      return { prev }
-    },
-    onError: (_err, _filename, context) => {
-      // Rollback on failure
-      if (context?.prev) {
-        queryClient.setQueryData(['dropzone', serverId], context.prev)
-      }
-    },
-    onSettled: () => {
+  const [deleteState, setDeleteState] = useState<'idle' | 'deleting' | 'done' | 'error'>('idle')
+  const [deleteError, setDeleteError] = useState('')
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return
+    setDeleteState('deleting')
+    setDeleteError('')
+    try {
+      await apiFetch(`/servers/${serverId}/dropzone?filename=${encodeURIComponent(confirmDelete)}`, { method: 'DELETE' })
       queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
-    },
-  })
+      setDeleteState('done')
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed')
+      setDeleteState('error')
+    }
+  }
+
+  const closeDeleteModal = () => {
+    setConfirmDelete(null)
+    setDeleteState('idle')
+    setDeleteError('')
+  }
 
   const handleUpload = async (file: File) => {
     setUploading(true)
@@ -713,46 +712,103 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                           {formatFileSize(f.size)}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          {confirmDelete === f.name ? (
-                            <span className="flex items-center justify-end gap-2">
-                              {deleteMutation.isPending ? (
-                                <span className="flex items-center gap-1 text-xs text-text-muted">
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  Deleting...
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="text-xs text-status-error">Delete?</span>
-                                  <button
-                                    onClick={() => deleteMutation.mutate(f.name)}
-                                    className="text-xs px-1.5 py-0.5 bg-status-error/20 text-status-error rounded hover:bg-status-error/30 transition-colors"
-                                  >
-                                    Yes
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDelete(null)}
-                                    className="text-xs px-1.5 py-0.5 bg-elevated text-text-muted rounded hover:text-text-primary transition-colors"
-                                  >
-                                    No
-                                  </button>
-                                </>
-                              )}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmDelete(f.name)}
-                              className="text-text-muted hover:text-status-error transition-colors"
-                              title="Delete file"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => { setConfirmDelete(f.name); setDeleteState('idle'); }}
+                            className="text-text-muted hover:text-status-error transition-colors"
+                            title="Delete file"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-lg w-full max-w-sm mx-4 p-6">
+            {deleteState === 'done' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="w-5 h-5 text-status-online" />
+                  <h3 className="text-text-primary font-semibold">File Deleted</h3>
+                </div>
+                <p className="text-sm text-text-secondary mb-4">
+                  <span className="font-mono text-text-primary">{confirmDelete}</span> has been deleted from the dropzone.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm rounded transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : deleteState === 'error' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-5 h-5 text-status-error" />
+                  <h3 className="text-text-primary font-semibold">Delete Failed</h3>
+                </div>
+                <p className="text-sm text-status-error mb-4">{deleteError}</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 bg-elevated hover:bg-border text-text-primary text-sm rounded transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    className="px-4 py-2 bg-status-error/20 hover:bg-status-error/30 text-status-error text-sm rounded transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </>
+            ) : deleteState === 'deleting' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
+                  <h3 className="text-text-primary font-semibold">Deleting File...</h3>
+                </div>
+                <p className="text-sm text-text-muted mb-4">
+                  Removing <span className="font-mono text-text-primary">{confirmDelete}</span> from the dropzone...
+                </p>
+                <div className="flex justify-end">
+                  <button disabled className="px-4 py-2 bg-elevated text-text-faint text-sm rounded opacity-50 cursor-not-allowed">
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-text-primary font-semibold mb-3">Delete File?</h3>
+                <p className="text-sm text-text-secondary mb-4">
+                  Are you sure you want to delete <span className="font-mono text-text-primary">{confirmDelete}</span> from the dropzone? This cannot be undone.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 bg-elevated hover:bg-border text-text-primary text-sm rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    className="px-4 py-2 bg-status-error/20 hover:bg-status-error/30 text-status-error text-sm rounded transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
