@@ -58,6 +58,9 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /api/servers/{id}/files", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleListFiles))))
 	mux.Handle("GET /api/servers/{id}/files/read", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleReadFile))))
 
+	// Log tailing SSE endpoint (any authenticated user, permission-checked in handler)
+	mux.Handle("GET /api/servers/{id}/logs/tail", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleTailLog))))
+
 	// Public install endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
 	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))

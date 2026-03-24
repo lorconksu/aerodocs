@@ -30,6 +30,7 @@ message HubMessage {
     LogStreamRequest log_stream_request = 11;
     FileUploadRequest file_upload_request = 12;
     FileReadRequest file_read_request = 13;
+    LogStreamStop log_stream_stop = 14;
   }
 }
 
@@ -99,8 +100,24 @@ message FileReadResponse {
   string error = 5;
 }
 
-// Stubs — sub-projects 5-6
-message LogStreamRequest { string path = 1; int64 offset = 2; string grep = 3; }
-message LogStreamChunk { bytes data = 1; int64 offset = 2; }
+// Log tailing (sub-project 5)
+message LogStreamRequest {
+  string request_id = 1;
+  string path = 2;
+  int64 offset = 3;
+  string grep = 4;
+}
+
+message LogStreamChunk {
+  string request_id = 1;
+  bytes data = 2;
+  int64 offset = 3;
+}
+
+message LogStreamStop {
+  string request_id = 1;
+}
+
+// Stubs — sub-project 6
 message FileUploadRequest { string path = 1; bytes chunk = 2; bool done = 3; }
 message FileUploadAck { bool success = 1; string error = 2; }
