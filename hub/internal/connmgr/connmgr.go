@@ -1,6 +1,7 @@
 package connmgr
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ type AgentConn struct {
 	ServerID string
 	Stream   pb.AgentService_ConnectServer
 	LastSeen time.Time
+	SendMu   sync.Mutex
 }
 
 type ConnManager struct {
@@ -75,4 +77,14 @@ func (cm *ConnManager) StaleConnections(maxAge time.Duration) []string {
 		}
 	}
 	return stale
+}
+
+func (cm *ConnManager) SendToAgent(serverID string, msg *pb.HubMessage) error {
+	conn := cm.GetConn(serverID)
+	if conn == nil {
+		return fmt.Errorf("agent not connected: %s", serverID)
+	}
+	conn.SendMu.Lock()
+	defer conn.SendMu.Unlock()
+	return conn.Stream.Send(msg)
 }

@@ -46,3 +46,10 @@ const (
 	AuditServerConnected    = "server.connected"
 	AuditServerDisconnected = "server.disconnected"
 )
+
+// File access events
+const (
+	AuditFileRead    = "file.read"
+	AuditPathGranted = "path.granted"
+	AuditPathRevoked = "path.revoked"
+)

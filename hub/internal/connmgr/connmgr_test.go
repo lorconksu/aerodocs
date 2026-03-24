@@ -3,6 +3,8 @@ package connmgr
 import (
 	"testing"
 	"time"
+
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
 func TestRegisterAndGetConn(t *testing.T) {
@@ -77,5 +79,13 @@ func TestStaleConnections(t *testing.T) {
 	}
 	if stale[0] != "s1" {
 		t.Fatalf("expected s1 to be stale, got %s", stale[0])
+	}
+}
+
+func TestSendToAgent_NotConnected(t *testing.T) {
+	cm := New()
+	err := cm.SendToAgent("nonexistent", &pb.HubMessage{})
+	if err == nil {
+		t.Fatal("expected error for missing connection")
 	}
 }

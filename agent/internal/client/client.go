@@ -2,14 +2,19 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
+	"net"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/wyiu/aerodocs/agent/internal/filebrowser"
 	"github.com/wyiu/aerodocs/agent/internal/heartbeat"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -70,10 +75,49 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 }
 
+func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessage) {
+	switch p := msg.Payload.(type) {
+	case *pb.HubMessage_FileListRequest:
+		resp, _ := filebrowser.ListDir(p.FileListRequest.Path)
+		if resp != nil {
+			resp.RequestId = p.FileListRequest.RequestId
+			sendCh <- &pb.AgentMessage{
+				Payload: &pb.AgentMessage_FileListResponse{
+					FileListResponse: resp,
+				},
+			}
+		}
+
+	case *pb.HubMessage_FileReadRequest:
+		resp, _ := filebrowser.ReadFile(
+			p.FileReadRequest.Path,
+			p.FileReadRequest.Offset,
+			p.FileReadRequest.Limit,
+		)
+		if resp != nil {
+			resp.RequestId = p.FileReadRequest.RequestId
+			sendCh <- &pb.AgentMessage{
+				Payload: &pb.AgentMessage_FileReadResponse{
+					FileReadResponse: resp,
+				},
+			}
+		}
+
+	default:
+		log.Printf("unhandled hub message: %T", p)
+	}
+}
+
 func (c *Client) connectAndStream(ctx context.Context) error {
-	conn, err := grpc.NewClient(c.hubAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	// Use TLS for hostname-based addresses (through reverse proxy), insecure for direct IP:port
+	var creds grpc.DialOption
+	if c.useTLS() {
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+	} else {
+		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+
+	conn, err := grpc.NewClient(c.hubAddr, creds)
 	if err != nil {
 		return fmt.Errorf("dial hub: %w", err)
 	}
@@ -128,15 +172,15 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 	c.resetBackoff()
 	log.Printf("connected to hub at %s", c.hubAddr)
 
-	hbChan := make(chan *pb.AgentMessage, 1)
+	sendCh := make(chan *pb.AgentMessage, 16)
 	hbStop := make(chan struct{})
 	defer close(hbStop)
-	go heartbeat.StartTicker(c.serverID, 10*time.Second, hbChan, hbStop)
+	go heartbeat.StartTicker(c.serverID, 10*time.Second, sendCh, hbStop)
 
 	recvErr := make(chan error, 1)
 	go func() {
 		for {
-			_, err := stream.Recv()
+			msg, err := stream.Recv()
 			if err == io.EOF {
 				recvErr <- nil
 				return
@@ -145,6 +189,8 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 				recvErr <- err
 				return
 			}
+			// Dispatch incoming commands
+			go c.handleMessage(msg, sendCh)
 		}
 	}()
 
@@ -154,9 +200,9 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 			return ctx.Err()
 		case err := <-recvErr:
 			return fmt.Errorf("receive error: %w", err)
-		case msg := <-hbChan:
+		case msg := <-sendCh:
 			if err := stream.Send(msg); err != nil {
-				return fmt.Errorf("send heartbeat: %w", err)
+				return fmt.Errorf("send: %w", err)
 			}
 		}
 	}
@@ -173,4 +219,25 @@ func (c *Client) nextBackoff() time.Duration {
 
 func (c *Client) resetBackoff() {
 	c.backoff = 1 * time.Second
+}
+
+// useTLS returns true if the hub address appears to be a hostname (not an IP),
+// indicating connection through a TLS-terminating reverse proxy.
+func (c *Client) useTLS() bool {
+	host, port, err := net.SplitHostPort(c.hubAddr)
+	if err != nil {
+		// No port — treat as hostname:443
+		host = c.hubAddr
+		port = "443"
+	}
+	// If host is an IP address, use insecure (direct connection)
+	if net.ParseIP(host) != nil {
+		return false
+	}
+	// Hostname with port 443 or no explicit port — use TLS
+	if port == "443" || port == "" {
+		return true
+	}
+	// Hostname with explicit non-443 port — check if it looks like a domain
+	return strings.Contains(host, ".")
 }
