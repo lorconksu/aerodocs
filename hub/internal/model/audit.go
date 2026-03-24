@@ -53,3 +53,7 @@ const (
 	AuditPathGranted = "path.granted"
 	AuditPathRevoked = "path.revoked"
 )
+
+const (
+	AuditLogTailStarted = "log.tail_started"
+)
