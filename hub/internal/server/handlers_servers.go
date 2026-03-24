@@ -110,9 +110,16 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		Action: model.AuditServerCreated, Target: &srv.ID, IPAddress: &ip,
 	})
 
+	// Build install command using the request's host and configured gRPC address
+	scheme := "https"
+	if s.isDev {
+		scheme = "http"
+	}
+	host := r.Host
+	baseURL := fmt.Sprintf("%s://%s", scheme, host)
 	installCmd := fmt.Sprintf(
-		"curl -sSL https://hub.example.com/install.sh | sudo bash -s -- --token %s --hub https://hub.example.com",
-		rawToken,
+		"curl -sSL %s/install.sh | sudo bash -s -- --token %s --hub %s --url %s",
+		baseURL, rawToken, s.grpcAddr, baseURL,
 	)
 
 	respondJSON(w, http.StatusCreated, model.CreateServerResponse{
