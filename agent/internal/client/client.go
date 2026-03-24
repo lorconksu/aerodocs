@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/wyiu/aerodocs/agent/internal/dropzone"
 	"github.com/wyiu/aerodocs/agent/internal/filebrowser"
 	"github.com/wyiu/aerodocs/agent/internal/heartbeat"
 	"github.com/wyiu/aerodocs/agent/internal/logtailer"
@@ -41,6 +42,7 @@ type Client struct {
 	backoff      time.Duration
 	maxBackoff   time.Duration
 	tailSessions map[string]chan struct{}
+	dropzone     *dropzone.Dropzone
 }
 
 func New(cfg Config) *Client {
@@ -55,6 +57,7 @@ func New(cfg Config) *Client {
 		backoff:      1 * time.Second,
 		maxBackoff:   60 * time.Second,
 		tailSessions: make(map[string]chan struct{}),
+		dropzone:     dropzone.New(dropzone.DefaultDir),
 	}
 }
 
@@ -118,6 +121,17 @@ func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessag
 			close(stop)
 			delete(c.tailSessions, p.LogStreamStop.RequestId)
 			log.Printf("stopped log tail: %s", p.LogStreamStop.RequestId)
+		}
+
+	case *pb.HubMessage_FileUploadRequest:
+		req := p.FileUploadRequest
+		ack := c.dropzone.HandleChunk(req.RequestId, req.Filename, req.Chunk, req.Done)
+		if ack != nil {
+			sendCh <- &pb.AgentMessage{
+				Payload: &pb.AgentMessage_FileUploadAck{
+					FileUploadAck: ack,
+				},
+			}
 		}
 
 	default:
@@ -195,6 +209,7 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 			close(stop)
 			delete(c.tailSessions, id)
 		}
+		c.dropzone.Cleanup()
 	}()
 	hbStop := make(chan struct{})
 	defer close(hbStop)

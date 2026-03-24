@@ -61,6 +61,10 @@ func (s *Server) routes() http.Handler {
 	// Log tailing SSE endpoint (any authenticated user, permission-checked in handler)
 	mux.Handle("GET /api/servers/{id}/logs/tail", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleTailLog))))
 
+	// Dropzone endpoints (admin only)
+	mux.Handle("POST /api/servers/{id}/upload", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUploadFile)))))
+	mux.Handle("GET /api/servers/{id}/dropzone", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListDropzone)))))
+
 	// Public install endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
 	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
