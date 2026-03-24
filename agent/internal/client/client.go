@@ -307,9 +307,21 @@ func (c *Client) resetBackoff() {
 
 func (c *Client) selfCleanup() {
 	script := `#!/bin/bash
-set -e
-systemctl disable --now aerodocs-agent 2>/dev/null || true
-rm -f /usr/local/bin/aerodocs-agent
+# AeroDocs Agent self-cleanup script
+# Stop the service first
+systemctl stop aerodocs-agent 2>/dev/null || true
+systemctl disable aerodocs-agent 2>/dev/null || true
+
+# Kill any remaining agent processes (not this script)
+pkill -9 -f "aerodocs-agent" 2>/dev/null || true
+sleep 1
+
+# Remove files with retries (binary may be briefly locked)
+for i in 1 2 3; do
+  rm -f /usr/local/bin/aerodocs-agent 2>/dev/null && break
+  sleep 1
+done
+
 rm -f /etc/systemd/system/aerodocs-agent.service
 rm -f /etc/aerodocs/agent.conf
 rm -rf /tmp/aerodocs-dropzone

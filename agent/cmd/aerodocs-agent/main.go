@@ -30,11 +30,28 @@ func main() {
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		if *hub == "" || *token == "" {
-			fmt.Fprintf(os.Stderr, "first run: --hub and --token are required\n")
+		cfg = nil
+	}
+
+	// If --token is provided, always do a fresh registration (ignore saved config)
+	// This handles re-installs after unregister
+	if *token != "" {
+		if *hub == "" {
+			fmt.Fprintf(os.Stderr, "--hub is required when using --token\n")
 			flag.Usage()
 			os.Exit(1)
 		}
+		if cfg != nil {
+			log.Printf("--token provided, ignoring saved config (previous server_id=%s)", cfg.ServerID)
+			os.Remove(*configPath)
+		}
+		cfg = nil
+	}
+
+	if cfg == nil && *token == "" {
+		fmt.Fprintf(os.Stderr, "first run: --hub and --token are required\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	hubAddr := *hub
