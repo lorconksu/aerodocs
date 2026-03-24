@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Folder,
   File,
   RefreshCw,
@@ -22,6 +23,7 @@ import {
   Search,
   Upload,
   CheckCircle,
+  X,
 } from 'lucide-react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -1089,6 +1091,12 @@ export function ServerDetailPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [liveTailing, setLiveTailing] = useState(false)
 
+  // In-file search state
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [currentMatch, setCurrentMatch] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
   // Server info query
   const {
     data: server,
@@ -1232,6 +1240,9 @@ export function ServerDetailPage() {
     setSelectedFile(node)
     setMarkdownView('rendered')
     setLiveTailing(false)
+    setSearchOpen(false)
+    setSearchTerm('')
+    setCurrentMatch(0)
   }, [])
 
   // Reset tree state when server changes
@@ -1249,6 +1260,70 @@ export function ServerDetailPage() {
       path: '/' + parts.slice(0, i + 1).join('/'),
     }))
   }, [selectedFile])
+
+  // Ctrl+F handler — open search bar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // Count of search matches
+  const matchCount = useMemo(() => {
+    if (!searchTerm || !decodedContent) return 0
+    const lowerContent = decodedContent.toLowerCase()
+    const lowerSearch = searchTerm.toLowerCase()
+    let count = 0, pos = 0
+    while ((pos = lowerContent.indexOf(lowerSearch, pos)) !== -1) { count++; pos++ }
+    return count
+  }, [searchTerm, decodedContent])
+
+  // HTML with search match highlights (replaces syntax-highlighted HTML when searching)
+  const searchHighlightedHtml = useMemo(() => {
+    if (!searchTerm || !decodedContent || !highlightedHtml) return highlightedHtml
+
+    const lowerContent = decodedContent.toLowerCase()
+    const lowerSearch = searchTerm.toLowerCase()
+    const positions: number[] = []
+    let pos = 0
+    while ((pos = lowerContent.indexOf(lowerSearch, pos)) !== -1) {
+      positions.push(pos)
+      pos += 1
+    }
+
+    if (positions.length === 0) return highlightedHtml
+
+    let result = ''
+    let lastEnd = 0
+    positions.forEach((matchPos, idx) => {
+      const matchEnd = matchPos + searchTerm.length
+      const before = decodedContent.substring(lastEnd, matchPos)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const match = decodedContent.substring(matchPos, matchEnd)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const cls = idx === currentMatch ? 'search-match-current' : 'search-match'
+      const id = idx === currentMatch ? ' id="current-search-match"' : ''
+      result += before + `<mark class="${cls}"${id}>${match}</mark>`
+      lastEnd = matchEnd
+    })
+    result += decodedContent.substring(lastEnd)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    return result
+  }, [searchTerm, decodedContent, highlightedHtml, currentMatch])
+
+  // Scroll current match into view when it changes
+  useEffect(() => {
+    if (searchTerm && matchCount > 0) {
+      const el = document.getElementById('current-search-match')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [currentMatch, searchTerm, matchCount])
 
   // Partial-file banner
   const isPartialFile =
@@ -1444,6 +1519,14 @@ export function ServerDetailPage() {
                         className={`w-3.5 h-3.5 ${fileLoading ? 'animate-spin' : ''}`}
                       />
                     </button>
+                    <button
+                      onClick={() => setSearchOpen(v => !v)}
+                      disabled={liveTailing}
+                      className={`p-1 transition-colors disabled:opacity-50 ${searchOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'}`}
+                      title="Search in file (Ctrl+F)"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                    </button>
                     {!selectedFile.is_dir && (
                       <button
                         onClick={() => setLiveTailing((v) => !v)}
@@ -1460,6 +1543,41 @@ export function ServerDetailPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Search bar */}
+                {searchOpen && !liveTailing && (
+                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-elevated/50 shrink-0">
+                    <Search className="w-3.5 h-3.5 text-text-muted" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => { setSearchTerm(e.target.value); setCurrentMatch(0) }}
+                      placeholder="Search in file..."
+                      className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-faint focus:outline-none"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') { setSearchOpen(false); setSearchTerm('') }
+                        if (e.key === 'Enter' && !e.shiftKey) { setCurrentMatch(i => matchCount > 0 ? (i + 1) % matchCount : 0) }
+                        if (e.key === 'Enter' && e.shiftKey) { setCurrentMatch(i => matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0) }
+                      }}
+                    />
+                    {searchTerm && (
+                      <span className="text-xs text-text-muted whitespace-nowrap">
+                        {matchCount > 0 ? `${currentMatch + 1} of ${matchCount}` : 'No matches'}
+                      </span>
+                    )}
+                    <button onClick={() => setCurrentMatch(i => matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0)} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => setCurrentMatch(i => matchCount > 0 ? (i + 1) % matchCount : 0)} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => { setSearchOpen(false); setSearchTerm('') }} className="p-0.5 text-text-muted hover:text-text-primary">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
 
                 {liveTailing ? (
                   <LiveTail
@@ -1504,7 +1622,7 @@ export function ServerDetailPage() {
                           </div>
                         ) : (
                           <pre className="p-4 text-sm font-mono leading-relaxed overflow-x-auto">
-                            <code className="hljs" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+                            <code className="hljs" dangerouslySetInnerHTML={{ __html: searchTerm ? (searchHighlightedHtml ?? '') : highlightedHtml }} />
                           </pre>
                         )
                       ) : null}
