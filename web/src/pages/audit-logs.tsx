@@ -20,6 +20,13 @@ const AUDIT_ACTIONS = [
   'server.deleted',
   'server.batch_deleted',
   'server.registered',
+  'server.connected',
+  'server.disconnected',
+  'file.read',
+  'file.uploaded',
+  'path.granted',
+  'path.revoked',
+  'log.tail_started',
 ] as const
 
 const PAGE_SIZE = 50
@@ -50,10 +57,11 @@ export function AuditLogsPage() {
     queryFn: () => apiFetch<AuditLogResponse>(`/audit-logs?${buildParams()}`),
   })
 
-  const { data: users } = useQuery({
+  const { data: usersData } = useQuery({
     queryKey: ['users'],
-    queryFn: () => apiFetch<User[]>('/users'),
+    queryFn: () => apiFetch<{ users: User[] }>('/users'),
   })
+  const users = usersData?.users
 
   const hasActiveFilters = filters.action || filters.userId || filters.from || filters.to
 
