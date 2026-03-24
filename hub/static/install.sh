@@ -63,6 +63,11 @@ if [ "$EXISTING" = true ]; then
     case "$choice" in
       [Rr])
         echo ""
+        # Tell the Hub to remove the old server entry before we tear down
+        if [ -x /usr/local/bin/aerodocs-agent ] && [ -f /etc/aerodocs/agent.conf ]; then
+          echo "==> Removing old server from Hub..."
+          /usr/local/bin/aerodocs-agent --self-unregister 2>/dev/null || true
+        fi
         echo "==> Removing previous installation..."
         systemctl stop aerodocs-agent 2>/dev/null || true
         systemctl disable aerodocs-agent 2>/dev/null || true

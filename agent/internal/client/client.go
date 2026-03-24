@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,6 +67,45 @@ func New(cfg Config) *Client {
 
 func (c *Client) ServerID() string {
 	return c.serverID
+}
+
+// SelfUnregister calls the Hub's HTTP API to delete this server.
+// Used by the install script to clean up the old registration before a re-install.
+func (c *Client) SelfUnregister(ctx context.Context) error {
+	// Derive HTTP base URL from the gRPC hub address
+	host, port, err := net.SplitHostPort(c.hubAddr)
+	if err != nil {
+		host = c.hubAddr
+		port = ""
+	}
+
+	var baseURL string
+	if port == "443" || (net.ParseIP(host) == nil && strings.Contains(host, ".")) {
+		// Hostname — use HTTPS (same host, default HTTPS port)
+		baseURL = "https://" + host
+	} else {
+		// Direct IP — Hub HTTP is on port 8081 by convention, but we don't know for sure.
+		// Try the common case: same host, port 8081
+		baseURL = "http://" + host + ":8081"
+	}
+
+	url := fmt.Sprintf("%s/api/servers/%s/self-unregister", baseURL, c.serverID)
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil // Success or already gone
+	}
+	return fmt.Errorf("unexpected status: %d", resp.StatusCode)
 }
 
 func (c *Client) Run(ctx context.Context) error {

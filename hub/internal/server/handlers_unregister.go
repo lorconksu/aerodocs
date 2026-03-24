@@ -58,3 +58,40 @@ func (s *Server) handleUnregisterServer(w http.ResponseWriter, r *http.Request) 
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "unregistered"})
 }
+
+// handleSelfUnregister is a public endpoint (no auth) called by the agent binary
+// during a re-install. The server_id in the path acts as proof of installation.
+// It only deletes the server from the DB — no agent cleanup (the install script handles that).
+func (s *Server) handleSelfUnregister(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("id")
+
+	// Verify the server actually exists
+	_, err := s.store.GetServerByID(serverID)
+	if err != nil {
+		// Already gone — that's fine
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Disconnect agent if connected
+	if s.connMgr != nil {
+		s.connMgr.Unregister(serverID)
+	}
+
+	// Delete from database
+	if err := s.store.DeleteServer(serverID); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to delete server")
+		return
+	}
+
+	// Audit log (no user — this is agent-initiated)
+	ip := clientIP(r)
+	s.store.LogAudit(model.AuditEntry{
+		ID:        uuid.NewString(),
+		Action:    model.AuditServerUnregistered,
+		Target:    &serverID,
+		IPAddress: &ip,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
