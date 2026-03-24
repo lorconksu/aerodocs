@@ -102,7 +102,7 @@ function ProfileTab() {
   }
 
   return (
-    <div className="p-6 max-w-lg space-y-6">
+    <div className="max-w-lg space-y-6">
       {/* Avatar */}
       <div>
         <h3 className="text-sm font-semibold text-text-primary mb-3">Avatar</h3>
@@ -534,7 +534,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div>
+    <div className="p-6">
       <h2 className="text-lg font-semibold text-text-primary mb-4">Settings</h2>
 
       {/* Tab bar */}
