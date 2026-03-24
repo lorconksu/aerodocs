@@ -20,6 +20,8 @@ import {
   Play,
   Square,
   Search,
+  Upload,
+  CheckCircle,
 } from 'lucide-react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -505,6 +507,192 @@ function PathManagement({ serverId }: { serverId: string }) {
               </table>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- DropzoneUpload Component (Admin Only) ---
+
+function DropzoneUpload({ serverId }: { serverId: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<{ filename: string; size: number } | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+
+  const { data: dropzoneData } = useQuery({
+    queryKey: ['dropzone', serverId],
+    queryFn: () => apiFetch<{ files: FileNode[] }>(`/servers/${serverId}/dropzone`),
+    enabled: expanded,
+    refetchInterval: expanded ? 30_000 : false,
+  })
+
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    setUploadResult(null)
+    setUploadError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const token = getAccessToken()
+      const headers: HeadersInit = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      // Do NOT set Content-Type — browser sets it with the multipart boundary
+
+      const res = await fetch(`/api/servers/${serverId}/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw new Error((err as { error?: string }).error || `HTTP ${res.status}`)
+      }
+
+      const result = await res.json() as { filename: string; size: number }
+      setUploadResult(result)
+      queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleUpload(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = () => {
+    setDragOver(false)
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleUpload(file)
+      // Reset input so the same file can be re-uploaded
+      e.target.value = ''
+    }
+  }
+
+  const files = dropzoneData?.files ?? []
+
+  return (
+    <div className="border border-border rounded">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-text-primary hover:bg-elevated/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Upload className="w-4 h-4 text-text-muted" />
+          <span>Dropzone</span>
+        </div>
+        {expanded ? (
+          <ChevronDown className="w-4 h-4 text-text-muted" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-text-muted" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border px-4 py-3 space-y-4">
+          {/* Drag-and-drop area */}
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg px-6 py-8 cursor-pointer transition-colors ${
+              dragOver
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-border hover:border-accent/50 text-text-muted hover:text-text-secondary'
+            } ${uploading ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileInputChange}
+              disabled={uploading}
+            />
+            {uploading ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span className="text-sm">Uploading...</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-6 h-6" />
+                <span className="text-sm">Drop files here or click to browse</span>
+              </>
+            )}
+          </div>
+
+          {/* Upload result feedback */}
+          {uploadResult && !uploading && (
+            <div className="flex items-center gap-2 bg-status-online/10 border border-status-online/20 text-status-online text-xs rounded px-3 py-2">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              <span>
+                <span className="font-medium">{uploadResult.filename}</span> uploaded successfully
+                ({formatFileSize(uploadResult.size)})
+              </span>
+            </div>
+          )}
+
+          {uploadError && (
+            <div className="bg-status-error/10 border border-status-error/20 text-status-error text-xs rounded px-3 py-2">
+              {uploadError}
+            </div>
+          )}
+
+          {/* Dropped files table */}
+          <div>
+            <div className="text-xs text-text-muted uppercase tracking-wider font-medium mb-2">
+              Dropped Files
+            </div>
+            {files.length === 0 ? (
+              <div className="text-text-muted text-sm py-3 text-center">No files in dropzone</div>
+            ) : (
+              <div className="border border-border rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-elevated text-text-muted text-xs uppercase tracking-wider">
+                      <th className="px-3 py-2 text-left">Name</th>
+                      <th className="px-3 py-2 text-right">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {files.map((f) => (
+                      <tr key={f.path} className="hover:bg-elevated/50 transition-colors">
+                        <td className="px-3 py-2 font-mono text-text-primary text-xs">{f.name}</td>
+                        <td className="px-3 py-2 text-right text-text-secondary text-xs">
+                          {formatFileSize(f.size)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1186,8 +1374,9 @@ export function ServerDetailPage() {
 
       {/* Admin Path Management */}
       {isAdmin && (
-        <div className="shrink-0 border-t border-border p-4 bg-surface/30">
+        <div className="shrink-0 border-t border-border p-4 bg-surface/30 space-y-3">
           <PathManagement serverId={serverId!} />
+          <DropzoneUpload serverId={serverId!} />
         </div>
       )}
     </div>
