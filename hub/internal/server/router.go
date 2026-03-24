@@ -64,6 +64,7 @@ func (s *Server) routes() http.Handler {
 	// Dropzone endpoints (admin only)
 	mux.Handle("POST /api/servers/{id}/upload", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUploadFile)))))
 	mux.Handle("GET /api/servers/{id}/dropzone", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListDropzone)))))
+	mux.Handle("DELETE /api/servers/{id}/dropzone", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteDropzoneFile)))))
 
 	// Public install endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))

@@ -32,6 +32,7 @@ type AgentMessage struct {
 	//	*AgentMessage_LogStreamChunk
 	//	*AgentMessage_FileUploadAck
 	//	*AgentMessage_FileReadResponse
+	//	*AgentMessage_FileDeleteResponse
 	Payload       isAgentMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -128,6 +129,15 @@ func (x *AgentMessage) GetFileReadResponse() *FileReadResponse {
 	return nil
 }
 
+func (x *AgentMessage) GetFileDeleteResponse() *FileDeleteResponse {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_FileDeleteResponse); ok {
+			return x.FileDeleteResponse
+		}
+	}
+	return nil
+}
+
 type isAgentMessage_Payload interface {
 	isAgentMessage_Payload()
 }
@@ -157,6 +167,10 @@ type AgentMessage_FileReadResponse struct {
 	FileReadResponse *FileReadResponse `protobuf:"bytes,13,opt,name=file_read_response,json=fileReadResponse,proto3,oneof"`
 }
 
+type AgentMessage_FileDeleteResponse struct {
+	FileDeleteResponse *FileDeleteResponse `protobuf:"bytes,15,opt,name=file_delete_response,json=fileDeleteResponse,proto3,oneof"`
+}
+
 func (*AgentMessage_Heartbeat) isAgentMessage_Payload() {}
 
 func (*AgentMessage_Register) isAgentMessage_Payload() {}
@@ -168,6 +182,8 @@ func (*AgentMessage_LogStreamChunk) isAgentMessage_Payload() {}
 func (*AgentMessage_FileUploadAck) isAgentMessage_Payload() {}
 
 func (*AgentMessage_FileReadResponse) isAgentMessage_Payload() {}
+
+func (*AgentMessage_FileDeleteResponse) isAgentMessage_Payload() {}
 
 // Messages from Hub → Agent
 type HubMessage struct {
@@ -181,6 +197,7 @@ type HubMessage struct {
 	//	*HubMessage_FileUploadRequest
 	//	*HubMessage_FileReadRequest
 	//	*HubMessage_LogStreamStop
+	//	*HubMessage_FileDeleteRequest
 	Payload       isHubMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -286,6 +303,15 @@ func (x *HubMessage) GetLogStreamStop() *LogStreamStop {
 	return nil
 }
 
+func (x *HubMessage) GetFileDeleteRequest() *FileDeleteRequest {
+	if x != nil {
+		if x, ok := x.Payload.(*HubMessage_FileDeleteRequest); ok {
+			return x.FileDeleteRequest
+		}
+	}
+	return nil
+}
+
 type isHubMessage_Payload interface {
 	isHubMessage_Payload()
 }
@@ -319,6 +345,10 @@ type HubMessage_LogStreamStop struct {
 	LogStreamStop *LogStreamStop `protobuf:"bytes,14,opt,name=log_stream_stop,json=logStreamStop,proto3,oneof"`
 }
 
+type HubMessage_FileDeleteRequest struct {
+	FileDeleteRequest *FileDeleteRequest `protobuf:"bytes,15,opt,name=file_delete_request,json=fileDeleteRequest,proto3,oneof"`
+}
+
 func (*HubMessage_HeartbeatAck) isHubMessage_Payload() {}
 
 func (*HubMessage_RegisterAck) isHubMessage_Payload() {}
@@ -332,6 +362,8 @@ func (*HubMessage_FileUploadRequest) isHubMessage_Payload() {}
 func (*HubMessage_FileReadRequest) isHubMessage_Payload() {}
 
 func (*HubMessage_LogStreamStop) isHubMessage_Payload() {}
+
+func (*HubMessage_FileDeleteRequest) isHubMessage_Payload() {}
 
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1276,11 +1308,124 @@ func (x *FileUploadAck) GetError() string {
 	return ""
 }
 
+// File deletion (dropzone)
+type FileDeleteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileDeleteRequest) Reset() {
+	*x = FileDeleteRequest{}
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileDeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileDeleteRequest) ProtoMessage() {}
+
+func (x *FileDeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileDeleteRequest.ProtoReflect.Descriptor instead.
+func (*FileDeleteRequest) Descriptor() ([]byte, []int) {
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *FileDeleteRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *FileDeleteRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type FileDeleteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileDeleteResponse) Reset() {
+	*x = FileDeleteResponse{}
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileDeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileDeleteResponse) ProtoMessage() {}
+
+func (x *FileDeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileDeleteResponse.ProtoReflect.Descriptor instead.
+func (*FileDeleteResponse) Descriptor() ([]byte, []int) {
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *FileDeleteResponse) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *FileDeleteResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *FileDeleteResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_proto_aerodocs_v1_agent_proto protoreflect.FileDescriptor
 
 const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/aerodocs/v1/agent.proto\x12\vaerodocs.v1\"\xb8\x03\n" +
+	"\x1dproto/aerodocs/v1/agent.proto\x12\vaerodocs.v1\"\x8d\x04\n" +
 	"\fAgentMessage\x126\n" +
 	"\theartbeat\x18\x01 \x01(\v2\x16.aerodocs.v1.HeartbeatH\x00R\theartbeat\x128\n" +
 	"\bregister\x18\x02 \x01(\v2\x1a.aerodocs.v1.RegisterAgentH\x00R\bregister\x12M\n" +
@@ -1288,8 +1433,9 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	" \x01(\v2\x1d.aerodocs.v1.FileListResponseH\x00R\x10fileListResponse\x12G\n" +
 	"\x10log_stream_chunk\x18\v \x01(\v2\x1b.aerodocs.v1.LogStreamChunkH\x00R\x0elogStreamChunk\x12D\n" +
 	"\x0ffile_upload_ack\x18\f \x01(\v2\x1a.aerodocs.v1.FileUploadAckH\x00R\rfileUploadAck\x12M\n" +
-	"\x12file_read_response\x18\r \x01(\v2\x1d.aerodocs.v1.FileReadResponseH\x00R\x10fileReadResponseB\t\n" +
-	"\apayload\"\x97\x04\n" +
+	"\x12file_read_response\x18\r \x01(\v2\x1d.aerodocs.v1.FileReadResponseH\x00R\x10fileReadResponse\x12S\n" +
+	"\x14file_delete_response\x18\x0f \x01(\v2\x1f.aerodocs.v1.FileDeleteResponseH\x00R\x12fileDeleteResponseB\t\n" +
+	"\apayload\"\xe9\x04\n" +
 	"\n" +
 	"HubMessage\x12@\n" +
 	"\rheartbeat_ack\x18\x01 \x01(\v2\x19.aerodocs.v1.HeartbeatAckH\x00R\fheartbeatAck\x12=\n" +
@@ -1299,7 +1445,8 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\x12log_stream_request\x18\v \x01(\v2\x1d.aerodocs.v1.LogStreamRequestH\x00R\x10logStreamRequest\x12P\n" +
 	"\x13file_upload_request\x18\f \x01(\v2\x1e.aerodocs.v1.FileUploadRequestH\x00R\x11fileUploadRequest\x12J\n" +
 	"\x11file_read_request\x18\r \x01(\v2\x1c.aerodocs.v1.FileReadRequestH\x00R\x0ffileReadRequest\x12D\n" +
-	"\x0flog_stream_stop\x18\x0e \x01(\v2\x1a.aerodocs.v1.LogStreamStopH\x00R\rlogStreamStopB\t\n" +
+	"\x0flog_stream_stop\x18\x0e \x01(\v2\x1a.aerodocs.v1.LogStreamStopH\x00R\rlogStreamStop\x12P\n" +
+	"\x13file_delete_request\x18\x0f \x01(\v2\x1e.aerodocs.v1.FileDeleteRequestH\x00R\x11fileDeleteRequestB\t\n" +
 	"\apayload\"\x80\x01\n" +
 	"\tHeartbeat\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1c\n" +
@@ -1379,6 +1526,15 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"F\n" +
+	"\x11FileDeleteRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"c\n" +
+	"\x12FileDeleteResponse\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error2Q\n" +
 	"\fAgentService\x12A\n" +
 	"\aConnect\x12\x19.aerodocs.v1.AgentMessage\x1a\x17.aerodocs.v1.HubMessage(\x010\x01B,Z*github.com/wyiu/aerodocs/proto/aerodocs/v1b\x06proto3"
@@ -1395,25 +1551,27 @@ func file_proto_aerodocs_v1_agent_proto_rawDescGZIP() []byte {
 	return file_proto_aerodocs_v1_agent_proto_rawDescData
 }
 
-var file_proto_aerodocs_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_proto_aerodocs_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_proto_aerodocs_v1_agent_proto_goTypes = []any{
-	(*AgentMessage)(nil),      // 0: aerodocs.v1.AgentMessage
-	(*HubMessage)(nil),        // 1: aerodocs.v1.HubMessage
-	(*Heartbeat)(nil),         // 2: aerodocs.v1.Heartbeat
-	(*HeartbeatAck)(nil),      // 3: aerodocs.v1.HeartbeatAck
-	(*RegisterAgent)(nil),     // 4: aerodocs.v1.RegisterAgent
-	(*RegisterAck)(nil),       // 5: aerodocs.v1.RegisterAck
-	(*SystemInfo)(nil),        // 6: aerodocs.v1.SystemInfo
-	(*FileListRequest)(nil),   // 7: aerodocs.v1.FileListRequest
-	(*FileListResponse)(nil),  // 8: aerodocs.v1.FileListResponse
-	(*FileNode)(nil),          // 9: aerodocs.v1.FileNode
-	(*FileReadRequest)(nil),   // 10: aerodocs.v1.FileReadRequest
-	(*FileReadResponse)(nil),  // 11: aerodocs.v1.FileReadResponse
-	(*LogStreamRequest)(nil),  // 12: aerodocs.v1.LogStreamRequest
-	(*LogStreamChunk)(nil),    // 13: aerodocs.v1.LogStreamChunk
-	(*LogStreamStop)(nil),     // 14: aerodocs.v1.LogStreamStop
-	(*FileUploadRequest)(nil), // 15: aerodocs.v1.FileUploadRequest
-	(*FileUploadAck)(nil),     // 16: aerodocs.v1.FileUploadAck
+	(*AgentMessage)(nil),       // 0: aerodocs.v1.AgentMessage
+	(*HubMessage)(nil),         // 1: aerodocs.v1.HubMessage
+	(*Heartbeat)(nil),          // 2: aerodocs.v1.Heartbeat
+	(*HeartbeatAck)(nil),       // 3: aerodocs.v1.HeartbeatAck
+	(*RegisterAgent)(nil),      // 4: aerodocs.v1.RegisterAgent
+	(*RegisterAck)(nil),        // 5: aerodocs.v1.RegisterAck
+	(*SystemInfo)(nil),         // 6: aerodocs.v1.SystemInfo
+	(*FileListRequest)(nil),    // 7: aerodocs.v1.FileListRequest
+	(*FileListResponse)(nil),   // 8: aerodocs.v1.FileListResponse
+	(*FileNode)(nil),           // 9: aerodocs.v1.FileNode
+	(*FileReadRequest)(nil),    // 10: aerodocs.v1.FileReadRequest
+	(*FileReadResponse)(nil),   // 11: aerodocs.v1.FileReadResponse
+	(*LogStreamRequest)(nil),   // 12: aerodocs.v1.LogStreamRequest
+	(*LogStreamChunk)(nil),     // 13: aerodocs.v1.LogStreamChunk
+	(*LogStreamStop)(nil),      // 14: aerodocs.v1.LogStreamStop
+	(*FileUploadRequest)(nil),  // 15: aerodocs.v1.FileUploadRequest
+	(*FileUploadAck)(nil),      // 16: aerodocs.v1.FileUploadAck
+	(*FileDeleteRequest)(nil),  // 17: aerodocs.v1.FileDeleteRequest
+	(*FileDeleteResponse)(nil), // 18: aerodocs.v1.FileDeleteResponse
 }
 var file_proto_aerodocs_v1_agent_proto_depIdxs = []int32{
 	2,  // 0: aerodocs.v1.AgentMessage.heartbeat:type_name -> aerodocs.v1.Heartbeat
@@ -1422,22 +1580,24 @@ var file_proto_aerodocs_v1_agent_proto_depIdxs = []int32{
 	13, // 3: aerodocs.v1.AgentMessage.log_stream_chunk:type_name -> aerodocs.v1.LogStreamChunk
 	16, // 4: aerodocs.v1.AgentMessage.file_upload_ack:type_name -> aerodocs.v1.FileUploadAck
 	11, // 5: aerodocs.v1.AgentMessage.file_read_response:type_name -> aerodocs.v1.FileReadResponse
-	3,  // 6: aerodocs.v1.HubMessage.heartbeat_ack:type_name -> aerodocs.v1.HeartbeatAck
-	5,  // 7: aerodocs.v1.HubMessage.register_ack:type_name -> aerodocs.v1.RegisterAck
-	7,  // 8: aerodocs.v1.HubMessage.file_list_request:type_name -> aerodocs.v1.FileListRequest
-	12, // 9: aerodocs.v1.HubMessage.log_stream_request:type_name -> aerodocs.v1.LogStreamRequest
-	15, // 10: aerodocs.v1.HubMessage.file_upload_request:type_name -> aerodocs.v1.FileUploadRequest
-	10, // 11: aerodocs.v1.HubMessage.file_read_request:type_name -> aerodocs.v1.FileReadRequest
-	14, // 12: aerodocs.v1.HubMessage.log_stream_stop:type_name -> aerodocs.v1.LogStreamStop
-	6,  // 13: aerodocs.v1.Heartbeat.system_info:type_name -> aerodocs.v1.SystemInfo
-	9,  // 14: aerodocs.v1.FileListResponse.files:type_name -> aerodocs.v1.FileNode
-	0,  // 15: aerodocs.v1.AgentService.Connect:input_type -> aerodocs.v1.AgentMessage
-	1,  // 16: aerodocs.v1.AgentService.Connect:output_type -> aerodocs.v1.HubMessage
-	16, // [16:17] is the sub-list for method output_type
-	15, // [15:16] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	18, // 6: aerodocs.v1.AgentMessage.file_delete_response:type_name -> aerodocs.v1.FileDeleteResponse
+	3,  // 7: aerodocs.v1.HubMessage.heartbeat_ack:type_name -> aerodocs.v1.HeartbeatAck
+	5,  // 8: aerodocs.v1.HubMessage.register_ack:type_name -> aerodocs.v1.RegisterAck
+	7,  // 9: aerodocs.v1.HubMessage.file_list_request:type_name -> aerodocs.v1.FileListRequest
+	12, // 10: aerodocs.v1.HubMessage.log_stream_request:type_name -> aerodocs.v1.LogStreamRequest
+	15, // 11: aerodocs.v1.HubMessage.file_upload_request:type_name -> aerodocs.v1.FileUploadRequest
+	10, // 12: aerodocs.v1.HubMessage.file_read_request:type_name -> aerodocs.v1.FileReadRequest
+	14, // 13: aerodocs.v1.HubMessage.log_stream_stop:type_name -> aerodocs.v1.LogStreamStop
+	17, // 14: aerodocs.v1.HubMessage.file_delete_request:type_name -> aerodocs.v1.FileDeleteRequest
+	6,  // 15: aerodocs.v1.Heartbeat.system_info:type_name -> aerodocs.v1.SystemInfo
+	9,  // 16: aerodocs.v1.FileListResponse.files:type_name -> aerodocs.v1.FileNode
+	0,  // 17: aerodocs.v1.AgentService.Connect:input_type -> aerodocs.v1.AgentMessage
+	1,  // 18: aerodocs.v1.AgentService.Connect:output_type -> aerodocs.v1.HubMessage
+	18, // [18:19] is the sub-list for method output_type
+	17, // [17:18] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_proto_aerodocs_v1_agent_proto_init() }
@@ -1452,6 +1612,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 		(*AgentMessage_LogStreamChunk)(nil),
 		(*AgentMessage_FileUploadAck)(nil),
 		(*AgentMessage_FileReadResponse)(nil),
+		(*AgentMessage_FileDeleteResponse)(nil),
 	}
 	file_proto_aerodocs_v1_agent_proto_msgTypes[1].OneofWrappers = []any{
 		(*HubMessage_HeartbeatAck)(nil),
@@ -1461,6 +1622,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 		(*HubMessage_FileUploadRequest)(nil),
 		(*HubMessage_FileReadRequest)(nil),
 		(*HubMessage_LogStreamStop)(nil),
+		(*HubMessage_FileDeleteRequest)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1468,7 +1630,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_aerodocs_v1_agent_proto_rawDesc), len(file_proto_aerodocs_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -132,6 +134,26 @@ func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessag
 					FileUploadAck: ack,
 				},
 			}
+		}
+
+	case *pb.HubMessage_FileDeleteRequest:
+		req := p.FileDeleteRequest
+		resp := &pb.FileDeleteResponse{RequestId: req.RequestId}
+		// Only allow deletion from dropzone directory
+		cleanPath := filepath.Clean(req.Path)
+		if !strings.HasPrefix(cleanPath, "/tmp/aerodocs-dropzone/") {
+			resp.Success = false
+			resp.Error = "deletion only allowed from dropzone directory"
+		} else if err := os.Remove(cleanPath); err != nil {
+			resp.Success = false
+			resp.Error = err.Error()
+		} else {
+			resp.Success = true
+		}
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_FileDeleteResponse{
+				FileDeleteResponse: resp,
+			},
 		}
 
 	default:

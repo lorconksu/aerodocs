@@ -531,6 +531,14 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
     refetchInterval: expanded ? 30_000 : false,
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (filename: string) =>
+      apiFetch(`/servers/${serverId}/dropzone?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
+    },
+  })
+
   const handleUpload = async (file: File) => {
     setUploading(true)
     setUploadResult(null)
@@ -677,6 +685,7 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                     <tr className="bg-elevated text-text-muted text-xs uppercase tracking-wider">
                       <th className="px-3 py-2 text-left">Name</th>
                       <th className="px-3 py-2 text-right">Size</th>
+                      <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -685,6 +694,16 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                         <td className="px-3 py-2 font-mono text-text-primary text-xs">{f.name}</td>
                         <td className="px-3 py-2 text-right text-text-secondary text-xs">
                           {formatFileSize(f.size)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => deleteMutation.mutate(f.name)}
+                            disabled={deleteMutation.isPending}
+                            className="text-text-muted hover:text-status-error transition-colors disabled:opacity-50"
+                            title="Delete file"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </td>
                       </tr>
                     ))}
