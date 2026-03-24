@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
+	"github.com/wyiu/aerodocs/hub/internal/connmgr"
+	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
@@ -19,6 +21,8 @@ type Server struct {
 	isDev       bool
 	frontendFS  *embed.FS
 	agentBinDir string
+	connMgr     *connmgr.ConnManager
+	pending     *grpcserver.PendingRequests
 }
 
 type Config struct {
@@ -28,6 +32,8 @@ type Config struct {
 	IsDev       bool
 	FrontendFS  *embed.FS
 	AgentBinDir string
+	ConnMgr     *connmgr.ConnManager
+	Pending     *grpcserver.PendingRequests
 }
 
 func New(cfg Config) *Server {
@@ -37,6 +43,8 @@ func New(cfg Config) *Server {
 		isDev:       cfg.IsDev,
 		frontendFS:  cfg.FrontendFS,
 		agentBinDir: cfg.AgentBinDir,
+		connMgr:     cfg.ConnMgr,
+		pending:     cfg.Pending,
 	}
 
 	mux := s.routes()
