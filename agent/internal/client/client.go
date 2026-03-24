@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -156,6 +157,24 @@ func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessag
 			},
 		}
 
+	case *pb.HubMessage_UnregisterRequest:
+		req := p.UnregisterRequest
+		// Send ack before self-destruct
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_UnregisterAck{
+				UnregisterAck: &pb.UnregisterAck{
+					RequestId: req.RequestId,
+					Success:   true,
+				},
+			},
+		}
+		log.Printf("unregister requested — initiating self-cleanup")
+		// Give the ack time to send, then run cleanup
+		go func() {
+			time.Sleep(2 * time.Second)
+			c.selfCleanup()
+		}()
+
 	default:
 		log.Printf("unhandled hub message: %T", p)
 	}
@@ -284,6 +303,27 @@ func (c *Client) nextBackoff() time.Duration {
 
 func (c *Client) resetBackoff() {
 	c.backoff = 1 * time.Second
+}
+
+func (c *Client) selfCleanup() {
+	script := `#!/bin/bash
+set -e
+systemctl disable --now aerodocs-agent 2>/dev/null || true
+rm -f /usr/local/bin/aerodocs-agent
+rm -f /etc/systemd/system/aerodocs-agent.service
+rm -f /etc/aerodocs/agent.conf
+rm -rf /tmp/aerodocs-dropzone
+systemctl daemon-reload 2>/dev/null || true
+rm -f /tmp/aerodocs-cleanup.sh
+`
+	cleanupPath := "/tmp/aerodocs-cleanup.sh"
+	if err := os.WriteFile(cleanupPath, []byte(script), 0755); err != nil {
+		log.Printf("failed to write cleanup script: %v", err)
+		return
+	}
+	log.Printf("executing cleanup script: %s", cleanupPath)
+	// Use syscall.Exec to replace this process with the cleanup script
+	syscall.Exec("/bin/bash", []string{"bash", cleanupPath}, os.Environ())
 }
 
 // useTLS returns true if the hub address appears to be a hostname (not an IP),
