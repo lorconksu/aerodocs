@@ -116,14 +116,20 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		case *pb.AgentMessage_Heartbeat:
 			h.connMgr.UpdateHeartbeat(serverID)
 			_ = h.store.UpdateServerLastSeen(serverID, nil)
-			if err := stream.Send(&pb.HubMessage{
-				Payload: &pb.HubMessage_HeartbeatAck{
-					HeartbeatAck: &pb.HeartbeatAck{
-						Timestamp: time.Now().Unix(),
+			conn := h.connMgr.GetConn(serverID)
+			if conn != nil {
+				conn.SendMu.Lock()
+				err := stream.Send(&pb.HubMessage{
+					Payload: &pb.HubMessage_HeartbeatAck{
+						HeartbeatAck: &pb.HeartbeatAck{
+							Timestamp: time.Now().Unix(),
+						},
 					},
-				},
-			}); err != nil {
-				return err
+				})
+				conn.SendMu.Unlock()
+				if err != nil {
+					return err
+				}
 			}
 		default:
 			log.Printf("unhandled message type from %s: %T", serverID, p)
