@@ -16,6 +16,7 @@ import (
 
 	"github.com/wyiu/aerodocs/agent/internal/filebrowser"
 	"github.com/wyiu/aerodocs/agent/internal/heartbeat"
+	"github.com/wyiu/aerodocs/agent/internal/logtailer"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
@@ -39,6 +40,7 @@ type Client struct {
 	agentVersion string
 	backoff      time.Duration
 	maxBackoff   time.Duration
+	tailSessions map[string]chan struct{}
 }
 
 func New(cfg Config) *Client {
@@ -52,6 +54,7 @@ func New(cfg Config) *Client {
 		agentVersion: cfg.AgentVersion,
 		backoff:      1 * time.Second,
 		maxBackoff:   60 * time.Second,
+		tailSessions: make(map[string]chan struct{}),
 	}
 }
 
@@ -101,6 +104,20 @@ func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessag
 					FileReadResponse: resp,
 				},
 			}
+		}
+
+	case *pb.HubMessage_LogStreamRequest:
+		req := p.LogStreamRequest
+		stop := make(chan struct{})
+		c.tailSessions[req.RequestId] = stop
+		go logtailer.StartTail(req.Path, req.Grep, req.Offset, sendCh, req.RequestId, stop)
+		log.Printf("started log tail: %s path=%s grep=%s", req.RequestId, req.Path, req.Grep)
+
+	case *pb.HubMessage_LogStreamStop:
+		if stop, ok := c.tailSessions[p.LogStreamStop.RequestId]; ok {
+			close(stop)
+			delete(c.tailSessions, p.LogStreamStop.RequestId)
+			log.Printf("stopped log tail: %s", p.LogStreamStop.RequestId)
 		}
 
 	default:
@@ -173,6 +190,12 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 	log.Printf("connected to hub at %s", c.hubAddr)
 
 	sendCh := make(chan *pb.AgentMessage, 16)
+	defer func() {
+		for id, stop := range c.tailSessions {
+			close(stop)
+			delete(c.tailSessions, id)
+		}
+	}()
 	hbStop := make(chan struct{})
 	defer close(hbStop)
 	go heartbeat.StartTicker(c.serverID, 10*time.Second, sendCh, hbStop)
