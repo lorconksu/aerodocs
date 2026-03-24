@@ -148,6 +148,11 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 				h.logSessions.Deliver(p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
 			}
 
+		case *pb.AgentMessage_FileUploadAck:
+			if h.pending != nil {
+				h.pending.Deliver(p.FileUploadAck.RequestId, p.FileUploadAck)
+			}
+
 		default:
 			log.Printf("unhandled message type from %s: %T", serverID, p)
 		}

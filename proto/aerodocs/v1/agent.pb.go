@@ -1147,12 +1147,13 @@ func (x *LogStreamStop) GetRequestId() string {
 	return ""
 }
 
-// Stubs — sub-project 6
+// File upload / Dropzone (sub-project 6)
 type FileUploadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Chunk         []byte                 `protobuf:"bytes,2,opt,name=chunk,proto3" json:"chunk,omitempty"`
-	Done          bool                   `protobuf:"varint,3,opt,name=done,proto3" json:"done,omitempty"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	Chunk         []byte                 `protobuf:"bytes,3,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	Done          bool                   `protobuf:"varint,4,opt,name=done,proto3" json:"done,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1187,9 +1188,16 @@ func (*FileUploadRequest) Descriptor() ([]byte, []int) {
 	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *FileUploadRequest) GetPath() string {
+func (x *FileUploadRequest) GetRequestId() string {
 	if x != nil {
-		return x.Path
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *FileUploadRequest) GetFilename() string {
+	if x != nil {
+		return x.Filename
 	}
 	return ""
 }
@@ -1210,8 +1218,9 @@ func (x *FileUploadRequest) GetDone() bool {
 
 type FileUploadAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1244,6 +1253,13 @@ func (x *FileUploadAck) ProtoReflect() protoreflect.Message {
 // Deprecated: Use FileUploadAck.ProtoReflect.Descriptor instead.
 func (*FileUploadAck) Descriptor() ([]byte, []int) {
 	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *FileUploadAck) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
 }
 
 func (x *FileUploadAck) GetSuccess() bool {
@@ -1352,14 +1368,18 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\x06offset\x18\x03 \x01(\x03R\x06offset\".\n" +
 	"\rLogStreamStop\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\tR\trequestId\"Q\n" +
-	"\x11FileUploadRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
-	"\x05chunk\x18\x02 \x01(\fR\x05chunk\x12\x12\n" +
-	"\x04done\x18\x03 \x01(\bR\x04done\"?\n" +
-	"\rFileUploadAck\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error2Q\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"x\n" +
+	"\x11FileUploadRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x14\n" +
+	"\x05chunk\x18\x03 \x01(\fR\x05chunk\x12\x12\n" +
+	"\x04done\x18\x04 \x01(\bR\x04done\"^\n" +
+	"\rFileUploadAck\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error2Q\n" +
 	"\fAgentService\x12A\n" +
 	"\aConnect\x12\x19.aerodocs.v1.AgentMessage\x1a\x17.aerodocs.v1.HubMessage(\x010\x01B,Z*github.com/wyiu/aerodocs/proto/aerodocs/v1b\x06proto3"
 
