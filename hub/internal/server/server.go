@@ -21,6 +21,7 @@ type Server struct {
 	isDev       bool
 	frontendFS  *embed.FS
 	agentBinDir string
+	grpcAddr    string
 	connMgr     *connmgr.ConnManager
 	pending     *grpcserver.PendingRequests
 }
@@ -32,6 +33,7 @@ type Config struct {
 	IsDev       bool
 	FrontendFS  *embed.FS
 	AgentBinDir string
+	GRPCAddr    string
 	ConnMgr     *connmgr.ConnManager
 	Pending     *grpcserver.PendingRequests
 }
@@ -43,6 +45,7 @@ func New(cfg Config) *Server {
 		isDev:       cfg.IsDev,
 		frontendFS:  cfg.FrontendFS,
 		agentBinDir: cfg.AgentBinDir,
+		grpcAddr:    cfg.GRPCAddr,
 		connMgr:     cfg.ConnMgr,
 		pending:     cfg.Pending,
 	}

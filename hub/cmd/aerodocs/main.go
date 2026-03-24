@@ -60,6 +60,7 @@ func runServer() error {
 		IsDev:       *dev,
 		FrontendFS:  &hub.FrontendFS,
 		AgentBinDir: *agentBinDir,
+		GRPCAddr:    *grpcAddr,
 		ConnMgr:     cm,
 		Pending:     pending,
 	})

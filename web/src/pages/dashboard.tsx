@@ -9,7 +9,9 @@ import type { ServerListResponse, ServerStatus } from '@/types/api'
 
 function relativeTime(dateStr: string | null): string {
   if (!dateStr) return '—'
-  const date = new Date(dateStr)
+  // Server sends UTC timestamps without 'Z' suffix — ensure correct parsing
+  const normalized = dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z'
+  const date = new Date(normalized)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffSec = Math.floor(diffMs / 1000)
