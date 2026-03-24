@@ -2,12 +2,16 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
+	"net"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/wyiu/aerodocs/agent/internal/filebrowser"
@@ -105,9 +109,15 @@ func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessag
 }
 
 func (c *Client) connectAndStream(ctx context.Context) error {
-	conn, err := grpc.NewClient(c.hubAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	// Use TLS for hostname-based addresses (through reverse proxy), insecure for direct IP:port
+	var creds grpc.DialOption
+	if c.useTLS() {
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+	} else {
+		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+
+	conn, err := grpc.NewClient(c.hubAddr, creds)
 	if err != nil {
 		return fmt.Errorf("dial hub: %w", err)
 	}
@@ -209,4 +219,25 @@ func (c *Client) nextBackoff() time.Duration {
 
 func (c *Client) resetBackoff() {
 	c.backoff = 1 * time.Second
+}
+
+// useTLS returns true if the hub address appears to be a hostname (not an IP),
+// indicating connection through a TLS-terminating reverse proxy.
+func (c *Client) useTLS() bool {
+	host, port, err := net.SplitHostPort(c.hubAddr)
+	if err != nil {
+		// No port — treat as hostname:443
+		host = c.hubAddr
+		port = "443"
+	}
+	// If host is an IP address, use insecure (direct connection)
+	if net.ParseIP(host) != nil {
+		return false
+	}
+	// Hostname with port 443 or no explicit port — use TLS
+	if port == "443" || port == "" {
+		return true
+	}
+	// Hostname with explicit non-443 port — check if it looks like a domain
+	return strings.Contains(host, ".")
 }

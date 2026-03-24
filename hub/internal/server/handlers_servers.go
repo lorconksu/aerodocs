@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/sha256"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -117,9 +118,22 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	host := r.Host
 	baseURL := fmt.Sprintf("%s://%s", scheme, host)
+
+	// gRPC target: in production, use the hostname (Traefik proxies gRPC on 443).
+	// In dev mode, use the raw gRPC listen address.
+	grpcTarget := s.grpcAddr
+	if !s.isDev {
+		// Strip port from Host header to get just the hostname
+		hostname := host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			hostname = h
+		}
+		grpcTarget = hostname + ":443"
+	}
+
 	installCmd := fmt.Sprintf(
 		"curl -sSL %s/install.sh | sudo bash -s -- --token %s --hub %s --url %s",
-		baseURL, rawToken, s.grpcAddr, baseURL,
+		baseURL, rawToken, grpcTarget, baseURL,
 	)
 
 	respondJSON(w, http.StatusCreated, model.CreateServerResponse{
