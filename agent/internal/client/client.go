@@ -227,8 +227,13 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 				recvErr <- err
 				return
 			}
-			// Dispatch incoming commands
-			go c.handleMessage(msg, sendCh)
+			// File upload chunks must be sequential to avoid race conditions.
+			// Other messages can be handled concurrently.
+			if _, ok := msg.Payload.(*pb.HubMessage_FileUploadRequest); ok {
+				c.handleMessage(msg, sendCh)
+			} else {
+				go c.handleMessage(msg, sendCh)
+			}
 		}
 	}()
 
