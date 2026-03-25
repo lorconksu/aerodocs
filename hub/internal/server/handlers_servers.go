@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,21 +16,9 @@ import (
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	filter := model.ServerFilter{
-		Limit:  50,
-		Offset: 0,
-	}
+	filter := model.ServerFilter{}
+	filter.Limit, filter.Offset = parsePagination(q, 50)
 
-	if v := q.Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
-			filter.Limit = n
-		}
-	}
-	if v := q.Get("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			filter.Offset = n
-		}
-	}
 	if v := q.Get("status"); v != "" {
 		filter.Status = &v
 	}

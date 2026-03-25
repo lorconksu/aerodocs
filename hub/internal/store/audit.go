@@ -58,16 +58,24 @@ func (s *Store) ListAuditLogs(filter model.AuditFilter) ([]model.AuditEntry, int
 	}
 	defer rows.Close()
 
+	entries, err := scanAuditRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return entries, total, rows.Err()
+}
+
+// scanAuditRows scans all audit log rows into a slice.
+func scanAuditRows(rows interface{ Next() bool; Scan(...interface{}) error; Err() error }) ([]model.AuditEntry, error) {
 	var entries []model.AuditEntry
 	for rows.Next() {
 		var e model.AuditEntry
 		var createdAt string
 		if err := rows.Scan(&e.ID, &e.UserID, &e.Action, &e.Target, &e.Detail, &e.IPAddress, &createdAt); err != nil {
-			return nil, 0, fmt.Errorf("scan audit entry: %w", err)
+			return nil, fmt.Errorf("scan audit entry: %w", err)
 		}
 		e.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 		entries = append(entries, e)
 	}
-
-	return entries, total, rows.Err()
+	return entries, nil
 }
