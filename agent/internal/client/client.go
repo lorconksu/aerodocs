@@ -124,123 +124,141 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 }
 
+func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh chan<- *pb.AgentMessage) {
+	resp, _ := filebrowser.ListDir(p.FileListRequest.Path)
+	if resp != nil {
+		resp.RequestId = p.FileListRequest.RequestId
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_FileListResponse{
+				FileListResponse: resp,
+			},
+		}
+	}
+}
+
+func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh chan<- *pb.AgentMessage) {
+	resp, _ := filebrowser.ReadFile(
+		p.FileReadRequest.Path,
+		p.FileReadRequest.Offset,
+		p.FileReadRequest.Limit,
+	)
+	if resp != nil {
+		resp.RequestId = p.FileReadRequest.RequestId
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_FileReadResponse{
+				FileReadResponse: resp,
+			},
+		}
+	}
+}
+
+func (c *Client) handleLogStreamRequest(p *pb.HubMessage_LogStreamRequest, sendCh chan<- *pb.AgentMessage) {
+	req := p.LogStreamRequest
+	stop := make(chan struct{})
+	c.tailSessions[req.RequestId] = stop
+	go logtailer.StartTail(req.Path, req.Grep, req.Offset, sendCh, req.RequestId, stop)
+	log.Printf("started log tail: %s path=%s grep=%s", req.RequestId, req.Path, req.Grep)
+}
+
+func (c *Client) handleLogStreamStop(p *pb.HubMessage_LogStreamStop) {
+	if stop, ok := c.tailSessions[p.LogStreamStop.RequestId]; ok {
+		close(stop)
+		delete(c.tailSessions, p.LogStreamStop.RequestId)
+		log.Printf("stopped log tail: %s", p.LogStreamStop.RequestId)
+	}
+}
+
+func (c *Client) handleFileUploadRequest(p *pb.HubMessage_FileUploadRequest, sendCh chan<- *pb.AgentMessage) {
+	req := p.FileUploadRequest
+	ack := c.dropzone.HandleChunk(req.RequestId, req.Filename, req.Chunk, req.Done)
+	if ack != nil {
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_FileUploadAck{
+				FileUploadAck: ack,
+			},
+		}
+	}
+}
+
+func (c *Client) handleFileDeleteRequest(p *pb.HubMessage_FileDeleteRequest, sendCh chan<- *pb.AgentMessage) {
+	req := p.FileDeleteRequest
+	resp := &pb.FileDeleteResponse{RequestId: req.RequestId}
+	// Only allow deletion from dropzone directory
+	cleanPath := filepath.Clean(req.Path)
+	if !strings.HasPrefix(cleanPath, "/tmp/aerodocs-dropzone/") {
+		resp.Success = false
+		resp.Error = "deletion only allowed from dropzone directory"
+	} else if err := os.Remove(cleanPath); err != nil {
+		resp.Success = false
+		resp.Error = err.Error()
+	} else {
+		resp.Success = true
+	}
+	sendCh <- &pb.AgentMessage{
+		Payload: &pb.AgentMessage_FileDeleteResponse{
+			FileDeleteResponse: resp,
+		},
+	}
+}
+
+func (c *Client) handleUnregisterRequest(p *pb.HubMessage_UnregisterRequest, sendCh chan<- *pb.AgentMessage) {
+	req := p.UnregisterRequest
+	// Send ack before self-destruct
+	sendCh <- &pb.AgentMessage{
+		Payload: &pb.AgentMessage_UnregisterAck{
+			UnregisterAck: &pb.UnregisterAck{
+				RequestId: req.RequestId,
+				Success:   true,
+			},
+		},
+	}
+	log.Printf("unregister requested — initiating self-cleanup")
+	// Give the ack time to send, then run cleanup
+	go func() {
+		time.Sleep(2 * time.Second)
+		c.selfCleanup()
+	}()
+}
+
 func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessage) {
 	switch p := msg.Payload.(type) {
 	case *pb.HubMessage_FileListRequest:
-		resp, _ := filebrowser.ListDir(p.FileListRequest.Path)
-		if resp != nil {
-			resp.RequestId = p.FileListRequest.RequestId
-			sendCh <- &pb.AgentMessage{
-				Payload: &pb.AgentMessage_FileListResponse{
-					FileListResponse: resp,
-				},
-			}
-		}
-
+		c.handleFileListRequest(p, sendCh)
 	case *pb.HubMessage_FileReadRequest:
-		resp, _ := filebrowser.ReadFile(
-			p.FileReadRequest.Path,
-			p.FileReadRequest.Offset,
-			p.FileReadRequest.Limit,
-		)
-		if resp != nil {
-			resp.RequestId = p.FileReadRequest.RequestId
-			sendCh <- &pb.AgentMessage{
-				Payload: &pb.AgentMessage_FileReadResponse{
-					FileReadResponse: resp,
-				},
-			}
-		}
-
+		c.handleFileReadRequest(p, sendCh)
 	case *pb.HubMessage_LogStreamRequest:
-		req := p.LogStreamRequest
-		stop := make(chan struct{})
-		c.tailSessions[req.RequestId] = stop
-		go logtailer.StartTail(req.Path, req.Grep, req.Offset, sendCh, req.RequestId, stop)
-		log.Printf("started log tail: %s path=%s grep=%s", req.RequestId, req.Path, req.Grep)
-
+		c.handleLogStreamRequest(p, sendCh)
 	case *pb.HubMessage_LogStreamStop:
-		if stop, ok := c.tailSessions[p.LogStreamStop.RequestId]; ok {
-			close(stop)
-			delete(c.tailSessions, p.LogStreamStop.RequestId)
-			log.Printf("stopped log tail: %s", p.LogStreamStop.RequestId)
-		}
-
+		c.handleLogStreamStop(p)
 	case *pb.HubMessage_FileUploadRequest:
-		req := p.FileUploadRequest
-		ack := c.dropzone.HandleChunk(req.RequestId, req.Filename, req.Chunk, req.Done)
-		if ack != nil {
-			sendCh <- &pb.AgentMessage{
-				Payload: &pb.AgentMessage_FileUploadAck{
-					FileUploadAck: ack,
-				},
-			}
-		}
-
+		c.handleFileUploadRequest(p, sendCh)
 	case *pb.HubMessage_FileDeleteRequest:
-		req := p.FileDeleteRequest
-		resp := &pb.FileDeleteResponse{RequestId: req.RequestId}
-		// Only allow deletion from dropzone directory
-		cleanPath := filepath.Clean(req.Path)
-		if !strings.HasPrefix(cleanPath, "/tmp/aerodocs-dropzone/") {
-			resp.Success = false
-			resp.Error = "deletion only allowed from dropzone directory"
-		} else if err := os.Remove(cleanPath); err != nil {
-			resp.Success = false
-			resp.Error = err.Error()
-		} else {
-			resp.Success = true
-		}
-		sendCh <- &pb.AgentMessage{
-			Payload: &pb.AgentMessage_FileDeleteResponse{
-				FileDeleteResponse: resp,
-			},
-		}
-
+		c.handleFileDeleteRequest(p, sendCh)
 	case *pb.HubMessage_UnregisterRequest:
-		req := p.UnregisterRequest
-		// Send ack before self-destruct
-		sendCh <- &pb.AgentMessage{
-			Payload: &pb.AgentMessage_UnregisterAck{
-				UnregisterAck: &pb.UnregisterAck{
-					RequestId: req.RequestId,
-					Success:   true,
-				},
-			},
-		}
-		log.Printf("unregister requested — initiating self-cleanup")
-		// Give the ack time to send, then run cleanup
-		go func() {
-			time.Sleep(2 * time.Second)
-			c.selfCleanup()
-		}()
-
+		c.handleUnregisterRequest(p, sendCh)
 	default:
 		log.Printf("unhandled hub message: %T", p)
 	}
 }
 
-func (c *Client) connectAndStream(ctx context.Context) error {
-	// Use TLS for hostname-based addresses (through reverse proxy), insecure for direct IP:port
+// dialHub creates a gRPC connection to the hub.
+func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	var creds grpc.DialOption
 	if c.useTLS() {
 		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
 	} else {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
-
 	conn, err := grpc.NewClient(c.hubAddr, creds)
 	if err != nil {
-		return fmt.Errorf("dial hub: %w", err)
+		return nil, fmt.Errorf("dial hub: %w", err)
 	}
-	defer conn.Close()
+	return conn, nil
+}
 
-	client := pb.NewAgentServiceClient(conn)
-	stream, err := client.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("open stream: %w", err)
-	}
-
+// registerOrHandshake sends the initial register (first connect) or heartbeat
+// (reconnect) message and waits for the corresponding ack.
+func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) error {
 	if c.serverID == "" {
 		if err := stream.Send(&pb.AgentMessage{
 			Payload: &pb.AgentMessage_Register{
@@ -268,34 +286,26 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 		}
 		c.serverID = ack.ServerId
 		log.Printf("registered successfully: server_id=%s", c.serverID)
-	} else {
-		if err := stream.Send(heartbeat.BuildMessage(c.serverID)); err != nil {
-			return fmt.Errorf("send heartbeat: %w", err)
-		}
-		msg, err := stream.Recv()
-		if err != nil {
-			return fmt.Errorf("recv heartbeat ack: %w", err)
-		}
-		if msg.GetHeartbeatAck() == nil {
-			return fmt.Errorf("expected HeartbeatAck, got %T", msg.Payload)
-		}
+		return nil
 	}
 
-	c.resetBackoff()
-	log.Printf("connected to hub at %s", c.hubAddr)
+	if err := stream.Send(heartbeat.BuildMessage(c.serverID)); err != nil {
+		return fmt.Errorf("send heartbeat: %w", err)
+	}
+	msg, err := stream.Recv()
+	if err != nil {
+		return fmt.Errorf("recv heartbeat ack: %w", err)
+	}
+	if msg.GetHeartbeatAck() == nil {
+		return fmt.Errorf("expected HeartbeatAck, got %T", msg.Payload)
+	}
+	return nil
+}
 
-	sendCh := make(chan *pb.AgentMessage, 16)
-	defer func() {
-		for id, stop := range c.tailSessions {
-			close(stop)
-			delete(c.tailSessions, id)
-		}
-		c.dropzone.Cleanup()
-	}()
-	hbStop := make(chan struct{})
-	defer close(hbStop)
-	go heartbeat.StartTicker(c.serverID, 10*time.Second, sendCh, hbStop)
-
+// startRecvLoop starts a goroutine that receives messages from the stream and
+// dispatches them. It returns a channel that receives the first error (or nil
+// on clean EOF).
+func (c *Client) startRecvLoop(stream pb.AgentService_ConnectClient, sendCh chan<- *pb.AgentMessage) <-chan error {
 	recvErr := make(chan error, 1)
 	go func() {
 		for {
@@ -317,6 +327,42 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 			}
 		}
 	}()
+	return recvErr
+}
+
+func (c *Client) connectAndStream(ctx context.Context) error {
+	conn, err := c.dialHub()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	client := pb.NewAgentServiceClient(conn)
+	stream, err := client.Connect(ctx)
+	if err != nil {
+		return fmt.Errorf("open stream: %w", err)
+	}
+
+	if err := c.registerOrHandshake(stream); err != nil {
+		return err
+	}
+
+	c.resetBackoff()
+	log.Printf("connected to hub at %s", c.hubAddr)
+
+	sendCh := make(chan *pb.AgentMessage, 16)
+	defer func() {
+		for id, stop := range c.tailSessions {
+			close(stop)
+			delete(c.tailSessions, id)
+		}
+		c.dropzone.Cleanup()
+	}()
+	hbStop := make(chan struct{})
+	defer close(hbStop)
+	go heartbeat.StartTicker(c.serverID, 10*time.Second, sendCh, hbStop)
+
+	recvErr := c.startRecvLoop(stream, sendCh)
 
 	for {
 		select {
