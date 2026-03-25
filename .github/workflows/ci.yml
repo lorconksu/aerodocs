@@ -49,6 +49,30 @@ jobs:
             coverage-agent.out
             web/coverage/lcov.info
 
+  integration:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: hub/go.mod
+          cache-dependency-path: |
+            hub/go.sum
+            agent/go.sum
+      - name: Integration tests
+        run: cd hub && go test ./internal/integration/ -v -timeout 120s
+
+  smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke tests
+        run: bash tests/smoke/smoke_test.sh
+        env:
+          BUILD_ARGS: "--build-arg NODE_IMAGE=node:25-slim --build-arg GO_IMAGE=golang:1.26-bookworm"
+
   sonarcloud:
     needs: test
     runs-on: ubuntu-latest
