@@ -31,41 +31,33 @@ func (s *Store) GetServerByID(id string) (*model.Server, error) {
 }
 
 func (s *Store) ListServers(filter model.ServerFilter) ([]model.Server, int, error) {
-	var where []string
-	var args []interface{}
+	qb := newQueryBuilder(`SELECT id, name, hostname, ip_address, os, status, registration_token, token_expires_at,
+	                 agent_version, labels, last_seen_at, created_at, updated_at
+	          FROM servers`)
 
 	if filter.Status != nil {
-		where = append(where, "status = ?")
-		args = append(args, *filter.Status)
+		qb.Where("status = ?", *filter.Status)
 	}
 	if filter.Search != nil {
-		where = append(where, "name LIKE ?")
-		args = append(args, "%"+*filter.Search+"%")
-	}
-
-	whereClause := ""
-	if len(where) > 0 {
-		whereClause = " WHERE " + strings.Join(where, " AND ")
+		qb.Where("name LIKE ?", "%"+*filter.Search+"%")
 	}
 
 	// Get total count
 	var total int
-	countQuery := "SELECT COUNT(*) FROM servers" + whereClause
-	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	countQuery, countArgs := qb.CountQuery("servers")
+	if err := s.db.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count servers: %w", err)
 	}
 
 	// Get paginated results
-	query := `SELECT id, name, hostname, ip_address, os, status, registration_token, token_expires_at,
-	                 agent_version, labels, last_seen_at, created_at, updated_at
-	          FROM servers` + whereClause + " ORDER BY created_at DESC"
-
+	qb.OrderBy("created_at DESC")
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
+		qb.Limit(filter.Limit)
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+		qb.Offset(filter.Offset)
 	}
+	query, args := qb.Build()
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -86,31 +78,31 @@ func (s *Store) ListServers(filter model.ServerFilter) ([]model.Server, int, err
 }
 
 func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]model.Server, int, error) {
-	var where []string
-	var args []interface{}
+	// JOIN with permissions table to restrict to user's servers.
+	// The join arg (userID) must precede any WHERE args, so we prepend it manually.
+	const joinClause = " INNER JOIN permissions p ON servers.id = p.server_id AND p.user_id = ?"
 
-	// JOIN with permissions table to restrict to user's servers
-	joinClause := " INNER JOIN permissions p ON servers.id = p.server_id AND p.user_id = ?"
-	args = append(args, userID)
-
+	qb := newQueryBuilder("")
 	if filter.Status != nil {
-		where = append(where, "servers.status = ?")
-		args = append(args, *filter.Status)
+		qb.Where("servers.status = ?", *filter.Status)
 	}
 	if filter.Search != nil {
-		where = append(where, "servers.name LIKE ?")
-		args = append(args, "%"+*filter.Search+"%")
+		qb.Where("servers.name LIKE ?", "%"+*filter.Search+"%")
 	}
+	_, whereArgs := qb.Build()
+
+	// Prepend userID for the JOIN condition
+	allArgs := append([]interface{}{userID}, whereArgs...)
 
 	whereClause := ""
-	if len(where) > 0 {
-		whereClause = " WHERE " + strings.Join(where, " AND ")
+	if len(qb.wheres) > 0 {
+		whereClause = " WHERE " + strings.Join(qb.wheres, " AND ")
 	}
 
 	// Get total count
 	var total int
 	countQuery := "SELECT COUNT(DISTINCT servers.id) FROM servers" + joinClause + whereClause
-	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRow(countQuery, allArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count servers for user: %w", err)
 	}
 
@@ -128,7 +120,7 @@ func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]
 		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.db.Query(query, allArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query servers for user: %w", err)
 	}
@@ -178,14 +170,15 @@ func (s *Store) DeleteServers(ids []string) error {
 		return nil
 	}
 
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
+	values := make([]interface{}, len(ids))
 	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
+		values[i] = id
 	}
 
-	query := "DELETE FROM servers WHERE id IN (" + strings.Join(placeholders, ",") + ")"
+	qb := newQueryBuilder("DELETE FROM servers")
+	qb.WhereIn("id", values)
+	query, args := qb.Build()
+
 	_, err := s.db.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("batch delete servers: %w", err)
