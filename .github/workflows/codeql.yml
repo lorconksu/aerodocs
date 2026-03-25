@@ -38,9 +38,10 @@ jobs:
       - if: matrix.language == 'go'
         name: Build Go
         run: |
-          cd web && npm ci && npm run build
-          mkdir -p hub/web && cp -r dist ../hub/web/dist
-          cd ../hub && go build ./...
+          cd web && npm ci && npm run build && cd ..
+          rm -rf hub/web/dist && mkdir -p hub/web
+          cp -r web/dist hub/web/dist
+          cd hub && go build ./...
           cd ../agent && go build ./...
 
       - name: Perform CodeQL Analysis
