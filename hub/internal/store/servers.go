@@ -269,37 +269,42 @@ func (s *Store) GetOnlineServersNotIn(activeIDs []string) ([]model.Server, error
 	return servers, rows.Err()
 }
 
-func (s *Store) scanServer(row *sql.Row) (*model.Server, error) {
+// rowScanner is satisfied by both *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// scanServerFields scans server columns from any rowScanner into a model.Server.
+func scanServerFields(sc rowScanner) (*model.Server, error) {
 	var srv model.Server
 	var createdAt, updatedAt string
-	err := row.Scan(
+	if err := sc.Scan(
 		&srv.ID, &srv.Name, &srv.Hostname, &srv.IPAddress, &srv.OS, &srv.Status,
 		&srv.RegistrationToken, &srv.TokenExpiresAt,
 		&srv.AgentVersion, &srv.Labels, &srv.LastSeenAt, &createdAt, &updatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf(errServerNotFound)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan server: %w", err)
+	); err != nil {
+		return nil, err
 	}
 	srv.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
 	srv.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
 	return &srv, nil
 }
 
+func (s *Store) scanServer(row *sql.Row) (*model.Server, error) {
+	srv, err := scanServerFields(row)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf(errServerNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan server: %w", err)
+	}
+	return srv, nil
+}
+
 func (s *Store) scanServerRow(rows *sql.Rows) (*model.Server, error) {
-	var srv model.Server
-	var createdAt, updatedAt string
-	err := rows.Scan(
-		&srv.ID, &srv.Name, &srv.Hostname, &srv.IPAddress, &srv.OS, &srv.Status,
-		&srv.RegistrationToken, &srv.TokenExpiresAt,
-		&srv.AgentVersion, &srv.Labels, &srv.LastSeenAt, &createdAt, &updatedAt,
-	)
+	srv, err := scanServerFields(rows)
 	if err != nil {
 		return nil, fmt.Errorf("scan server row: %w", err)
 	}
-	srv.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
-	srv.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
-	return &srv, nil
+	return srv, nil
 }

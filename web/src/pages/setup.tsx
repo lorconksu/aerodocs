@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '@/lib/api'
+import { validatePassword } from '@/lib/password'
 import type { RegisterRequest, AuthStatusResponse } from '@/types/api'
 
 export function SetupPage() {
@@ -20,20 +21,15 @@ export function SetupPage() {
       .catch(() => {})
   }, [navigate])
 
-  const validatePassword = (pw: string) => {
-    const errors: string[] = []
-    if (pw.length < 12) errors.push('At least 12 characters')
-    if (!/[A-Z]/.test(pw)) errors.push('One uppercase letter')
-    if (!/[a-z]/.test(pw)) errors.push('One lowercase letter')
-    if (!/\d/.test(pw)) errors.push('One digit')
-    if (!/[^a-zA-Z0-9]/.test(pw)) errors.push('One special character')
+  const runValidatePassword = (pw: string) => {
+    const errors = validatePassword(pw)
     setPasswordErrors(errors)
     return errors.length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validatePassword(password)) return
+    if (!runValidatePassword(password)) return
 
     setError('')
     setLoading(true)
@@ -78,7 +74,7 @@ export function SetupPage() {
         <div>
           <input
             type="password" placeholder="password (min 12 chars)" value={password}
-            onChange={(e) => { setPassword(e.target.value); validatePassword(e.target.value) }}
+            onChange={(e) => { setPassword(e.target.value); runValidatePassword(e.target.value) }}
             className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
             required
           />
