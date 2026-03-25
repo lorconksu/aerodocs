@@ -42,11 +42,13 @@ export async function loginViaAPI(page: Page, baseURL: string) {
   const authData = await totpResp.json() as { access_token: string; refresh_token: string }
 
   // Step 3: Inject tokens into localStorage so the SPA picks them up
-  await page.goto(baseURL + '/')
+  // Navigate to a blank page first to set localStorage without redirect interference
+  await page.goto(baseURL + '/api/auth/status')
   await page.evaluate((tokens) => {
     localStorage.setItem('aerodocs_access_token', tokens.access_token)
     localStorage.setItem('aerodocs_refresh_token', tokens.refresh_token)
   }, authData)
 
-  await page.reload()
+  // Now navigate to the app — tokens are in localStorage, so auth will succeed
+  await page.goto(baseURL + '/')
 }
