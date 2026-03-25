@@ -2,7 +2,6 @@ package store
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/model"
@@ -21,48 +20,37 @@ func (s *Store) LogAudit(entry model.AuditEntry) error {
 }
 
 func (s *Store) ListAuditLogs(filter model.AuditFilter) ([]model.AuditEntry, int, error) {
-	var where []string
-	var args []interface{}
+	qb := newQueryBuilder("SELECT id, user_id, action, target, detail, ip_address, created_at FROM audit_logs")
 
 	if filter.UserID != nil {
-		where = append(where, "user_id = ?")
-		args = append(args, *filter.UserID)
+		qb.Where("user_id = ?", *filter.UserID)
 	}
 	if filter.Action != nil {
-		where = append(where, "action = ?")
-		args = append(args, *filter.Action)
+		qb.Where("action = ?", *filter.Action)
 	}
 	if filter.From != nil {
-		where = append(where, "created_at >= ?")
-		args = append(args, *filter.From)
+		qb.Where("created_at >= ?", *filter.From)
 	}
 	if filter.To != nil {
-		where = append(where, "created_at <= ?")
-		args = append(args, *filter.To)
-	}
-
-	whereClause := ""
-	if len(where) > 0 {
-		whereClause = " WHERE " + strings.Join(where, " AND ")
+		qb.Where("created_at <= ?", *filter.To)
 	}
 
 	// Get total count
 	var total int
-	countQuery := "SELECT COUNT(*) FROM audit_logs" + whereClause
-	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	countQuery, countArgs := qb.CountQuery("audit_logs")
+	if err := s.db.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count audit logs: %w", err)
 	}
 
 	// Get paginated results
-	query := "SELECT id, user_id, action, target, detail, ip_address, created_at FROM audit_logs" +
-		whereClause + " ORDER BY created_at DESC"
-
+	qb.OrderBy("created_at DESC")
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
+		qb.Limit(filter.Limit)
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+		qb.Offset(filter.Offset)
 	}
+	query, args := qb.Build()
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
