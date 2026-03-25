@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const sqlWhere = " WHERE "
+
 type queryBuilder struct {
 	base     string
 	wheres   []string
@@ -51,7 +53,7 @@ func (qb *queryBuilder) Offset(n int) {
 func (qb *queryBuilder) Build() (string, []interface{}) {
 	q := qb.base
 	if len(qb.wheres) > 0 {
-		q += " WHERE " + strings.Join(qb.wheres, " AND ")
+		q += sqlWhere + strings.Join(qb.wheres, " AND ")
 	}
 	if qb.orderBy != "" {
 		q += " ORDER BY " + qb.orderBy
@@ -68,7 +70,7 @@ func (qb *queryBuilder) Build() (string, []interface{}) {
 func (qb *queryBuilder) CountQuery(table string) (string, []interface{}) {
 	q := "SELECT COUNT(*) FROM " + table
 	if len(qb.wheres) > 0 {
-		q += " WHERE " + strings.Join(qb.wheres, " AND ")
+		q += sqlWhere + strings.Join(qb.wheres, " AND ")
 	}
 	return q, qb.args
 }
@@ -79,5 +81,5 @@ func (qb *queryBuilder) BuildWhereClause() (string, []interface{}) {
 	if len(qb.wheres) == 0 {
 		return "", qb.args
 	}
-	return " WHERE " + strings.Join(qb.wheres, " AND "), qb.args
+	return sqlWhere + strings.Join(qb.wheres, " AND "), qb.args
 }
