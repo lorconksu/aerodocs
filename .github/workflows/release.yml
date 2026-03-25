@@ -61,6 +61,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
 
   scan-container:
     needs: build-and-push
@@ -73,6 +75,20 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker Scout CVE scan
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: lorconksu/aerodocs:latest
+          sarif-file: scout-results.sarif
+          summary: true
+
+      - name: Docker Scout quickview
+        uses: docker/scout-action@v1
+        with:
+          command: quickview
+          image: lorconksu/aerodocs:latest
 
       - name: Grype container scan
         uses: anchore/scan-action@v6
