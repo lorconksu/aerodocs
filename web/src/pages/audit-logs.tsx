@@ -157,23 +157,23 @@ export function AuditLogsPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
+            {isLoading && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted">Loading...</td></tr>
-            ) : entries.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted">No audit log entries found.</td></tr>
-            ) : (
-              entries.map(entry => (
-                <tr key={entry.id} className="border-b border-border last:border-b-0 hover:bg-surface/50">
-                  <td className="px-4 py-2 text-text-secondary">{formatDate(entry.created_at)}</td>
-                  <td className="px-4 py-2 text-text-primary">{getUsernameById(entry.user_id)}</td>
-                  <td className="px-4 py-2">
-                    <span className="font-mono text-xs bg-elevated px-2 py-0.5 rounded text-text-secondary">{entry.action}</span>
-                  </td>
-                  <td className="px-4 py-2 text-text-muted font-mono text-xs">{entry.target ?? '—'}</td>
-                  <td className="px-4 py-2 text-text-muted font-mono text-xs">{entry.ip_address ?? '—'}</td>
-                </tr>
-              ))
             )}
+            {!isLoading && entries.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted">No audit log entries found.</td></tr>
+            )}
+            {!isLoading && entries.length > 0 && entries.map(entry => (
+              <tr key={entry.id} className="border-b border-border last:border-b-0 hover:bg-surface/50">
+                <td className="px-4 py-2 text-text-secondary">{formatDate(entry.created_at)}</td>
+                <td className="px-4 py-2 text-text-primary">{getUsernameById(entry.user_id)}</td>
+                <td className="px-4 py-2">
+                  <span className="font-mono text-xs bg-elevated px-2 py-0.5 rounded text-text-secondary">{entry.action}</span>
+                </td>
+                <td className="px-4 py-2 text-text-muted font-mono text-xs">{entry.target ?? '—'}</td>
+                <td className="px-4 py-2 text-text-muted font-mono text-xs">{entry.ip_address ?? '—'}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

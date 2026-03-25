@@ -126,7 +126,7 @@ mermaid.initialize({
 })
 
 // Mermaid diagram component
-function MermaidDiagram({ chart }: { chart: string }) {
+function MermaidDiagram({ chart }: Readonly<{ chart: string }>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [svg, setSvg] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -243,7 +243,7 @@ function isMarkdownFile(path: string): boolean {
  */
 function sanitizeHljsHtml(html: string): string {
   // Allow only <span ...> and </span> tags; strip everything else.
-  return html.replace(/<\/?(?!span[\s>]|\/span>)[a-z][^>]*>/gi, '')
+  return html.replaceAll(/<\/?(?!span[\s>]|\/span>)[a-z][^>]*>/gi, '')
 }
 
 // --- Tree Node State ---
@@ -257,6 +257,16 @@ interface TreeNodeState {
 
 // --- FileTreeNode Component ---
 
+interface FileTreeNodeProps {
+  node: FileNode
+  depth: number
+  serverId: string
+  selectedPath: string | null
+  treeState: Record<string, TreeNodeState>
+  onToggleDir: (path: string) => void
+  onSelectFile: (node: FileNode) => void
+}
+
 function FileTreeNode({
   node,
   depth,
@@ -265,15 +275,7 @@ function FileTreeNode({
   treeState,
   onToggleDir,
   onSelectFile,
-}: {
-  node: FileNode
-  depth: number
-  serverId: string
-  selectedPath: string | null
-  treeState: Record<string, TreeNodeState>
-  onToggleDir: (path: string) => void
-  onSelectFile: (node: FileNode) => void
-}) {
+}: Readonly<FileTreeNodeProps>) {
   const state = treeState[node.path]
   const isExpanded = state?.expanded ?? false
   const isLoading = state?.loading ?? false
@@ -291,11 +293,13 @@ function FileTreeNode({
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           disabled={isLoading}
         >
-          {isLoading ? (
+          {isLoading && (
             <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-text-faint" />
-          ) : isExpanded ? (
+          )}
+          {!isLoading && isExpanded && (
             <ChevronDown className="w-3.5 h-3.5 shrink-0 text-text-faint" />
-          ) : (
+          )}
+          {!isLoading && !isExpanded && (
             <ChevronRight className="w-3.5 h-3.5 shrink-0 text-text-faint" />
           )}
           {isExpanded ? (
@@ -365,7 +369,7 @@ function FileTreeNode({
 
 // --- PathManagement Component (Admin Only) ---
 
-function PathManagement({ serverId }: { serverId: string }) {
+function PathManagement({ serverId }: Readonly<{ serverId: string }>) {
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const [newUserId, setNewUserId] = useState('')
@@ -432,8 +436,9 @@ function PathManagement({ serverId }: { serverId: string }) {
           {/* Add Path Form */}
           <form onSubmit={handleAdd} className="flex items-end gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-text-muted mb-1">User</label>
+              <label htmlFor="path-user" className="block text-xs text-text-muted mb-1">User</label>
               <select
+                id="path-user"
                 value={newUserId}
                 onChange={(e) => setNewUserId(e.target.value)}
                 className="w-full bg-elevated border border-border rounded px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
@@ -447,8 +452,9 @@ function PathManagement({ serverId }: { serverId: string }) {
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-xs text-text-muted mb-1">Path</label>
+              <label htmlFor="path-input" className="block text-xs text-text-muted mb-1">Path</label>
               <input
+                id="path-input"
                 type="text"
                 placeholder="/var/log"
                 value={newPath}
@@ -473,13 +479,15 @@ function PathManagement({ serverId }: { serverId: string }) {
           )}
 
           {/* Paths Table */}
-          {pathsLoading ? (
+          {pathsLoading && (
             <div className="text-text-muted text-sm py-4 text-center">Loading permissions...</div>
-          ) : paths.length === 0 ? (
+          )}
+          {!pathsLoading && paths.length === 0 && (
             <div className="text-text-muted text-sm py-4 text-center">
               No path permissions configured yet.
             </div>
-          ) : (
+          )}
+          {!pathsLoading && paths.length > 0 && (
             <div className="border border-border rounded overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
@@ -518,7 +526,7 @@ function PathManagement({ serverId }: { serverId: string }) {
 
 // --- DropzoneUpload Component (Admin Only) ---
 
-function DropzoneUpload({ serverId }: { serverId: string }) {
+function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
   const [expanded, setExpanded] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<{ filename: string; size: number } | null>(null)
@@ -745,7 +753,7 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-surface border border-border rounded-lg w-full max-w-sm mx-4 p-6">
-            {deleteState === 'done' ? (
+            {deleteState === 'done' && (
               <>
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle className="w-5 h-5 text-status-online" />
@@ -763,7 +771,8 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                   </button>
                 </div>
               </>
-            ) : deleteState === 'error' ? (
+            )}
+            {deleteState === 'error' && (
               <>
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle className="w-5 h-5 text-status-error" />
@@ -785,7 +794,8 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                   </button>
                 </div>
               </>
-            ) : deleteState === 'deleting' ? (
+            )}
+            {deleteState === 'deleting' && (
               <>
                 <div className="flex items-center gap-2 mb-3">
                   <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
@@ -800,7 +810,8 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
                   </button>
                 </div>
               </>
-            ) : (
+            )}
+            {deleteState === 'idle' && (
               <>
                 <h3 className="text-text-primary font-semibold mb-3">Delete File?</h3>
                 <p className="text-sm text-text-secondary mb-4">
@@ -847,15 +858,17 @@ const STATUS_LABELS: Record<LiveTailStatus, string> = {
 
 const MAX_LINES = 10_000
 
+interface LiveTailProps {
+  serverId: string
+  filePath: string
+  onStop: () => void
+}
+
 function LiveTail({
   serverId,
   filePath,
   onStop,
-}: {
-  serverId: string
-  filePath: string
-  onStop: () => void
-}) {
+}: Readonly<LiveTailProps>) {
   const [lines, setLines] = useState<string[]>([])
   const [grep, setGrep] = useState('')
   const [grepInput, setGrepInput] = useState('')
@@ -1044,19 +1057,21 @@ function LiveTail({
 
       {/* Log output */}
       <div className="flex-1 overflow-auto bg-base">
-        {lines.length === 0 && status === 'connecting' ? (
+        {lines.length === 0 && status === 'connecting' && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
             <span className="ml-2 text-text-muted text-sm">Connecting to log stream...</span>
           </div>
-        ) : lines.length === 0 && status === 'streaming' ? (
+        )}
+        {lines.length === 0 && status === 'streaming' && (
           <div className="flex items-center justify-center py-16 text-text-muted text-sm">
             Waiting for log data...
           </div>
-        ) : (
+        )}
+        {lines.length > 0 && (
           <pre className="p-3 text-xs font-mono leading-5 whitespace-pre-wrap break-all">
             {lines.map((line, i) => (
-              <div key={i} className="text-emerald-400/90 hover:bg-white/5">
+              <div key={`line-${i}`} className="text-emerald-400/90 hover:bg-white/5">
                 {line}
               </div>
             ))}
@@ -1070,6 +1085,19 @@ function LiveTail({
 
 // --- FileViewerContent Component ---
 
+interface FileViewerContentProps {
+  fileLoading: boolean
+  fileError: Error | null
+  decodedContent: string | null
+  selectedFile: FileNode
+  markdownView: 'raw' | 'rendered'
+  searchTerm: string
+  searchHighlightedHtml: string
+  highlightedHtml: string
+  fileContent: FileReadResponse | undefined
+  onRefetch: () => void
+}
+
 function FileViewerContent({
   fileLoading,
   fileError,
@@ -1081,20 +1109,9 @@ function FileViewerContent({
   highlightedHtml,
   fileContent,
   onRefetch,
-}: {
-  fileLoading: boolean
-  fileError: Error | null
-  decodedContent: string | null
-  selectedFile: FileNode
-  markdownView: 'raw' | 'rendered'
-  searchTerm: string
-  searchHighlightedHtml: string
-  highlightedHtml: string
-  fileContent: FileReadResponse | undefined
-  onRefetch: () => void
-}) {
+}: Readonly<FileViewerContentProps>) {
   const isPartialFile = fileContent && decodedContent && fileContent.total_size > decodedContent.length
-  const htmlToRender = searchTerm ? (searchHighlightedHtml ?? '') : highlightedHtml
+  const htmlToRender = searchTerm ? searchHighlightedHtml : highlightedHtml
 
   if (fileLoading) {
     return (
@@ -1152,7 +1169,7 @@ function FileViewerContent({
 // highlight.js escapes all user text and only produces <span class="hljs-..."> wrappers.
 // sanitizeHljsHtml() strips any non-span tags as a defense-in-depth measure.
 // eslint-disable-next-line react/no-danger
-function HighlightedCodeBlock({ html }: { html: string }) {
+function HighlightedCodeBlock({ html }: Readonly<{ html: string }>) {
   // NOTE: html here is sanitized output from sanitizeHljsHtml() — safe to render.
   // eslint-disable-next-line react/no-danger
   return (
@@ -1163,6 +1180,20 @@ function HighlightedCodeBlock({ html }: { html: string }) {
 }
 
 // --- FileViewerToolbar Component ---
+
+interface FileViewerToolbarProps {
+  selectedFile: FileNode
+  fileContent: FileReadResponse | undefined
+  fileLoading: boolean
+  liveTailing: boolean
+  searchOpen: boolean
+  markdownView: 'raw' | 'rendered'
+  onRefetch: () => void
+  onToggleSearch: () => void
+  onToggleLiveTail: () => void
+  onToggleMarkdownView: () => void
+  breadcrumbs: { name: string; path: string }[]
+}
 
 function FileViewerToolbar({
   selectedFile,
@@ -1176,19 +1207,7 @@ function FileViewerToolbar({
   onToggleLiveTail,
   onToggleMarkdownView,
   breadcrumbs,
-}: {
-  selectedFile: FileNode
-  fileContent: FileReadResponse | undefined
-  fileLoading: boolean
-  liveTailing: boolean
-  searchOpen: boolean
-  markdownView: 'raw' | 'rendered'
-  onRefetch: () => void
-  onToggleSearch: () => void
-  onToggleLiveTail: () => void
-  onToggleMarkdownView: () => void
-  breadcrumbs: { name: string; path: string }[]
-}) {
+}: Readonly<FileViewerToolbarProps>) {
   return (
     <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-surface/50 shrink-0">
       <div className="flex items-center gap-1 text-xs text-text-muted overflow-x-auto min-w-0">
@@ -1220,12 +1239,13 @@ function FileViewerToolbar({
             className="flex items-center gap-1 px-2 py-0.5 text-xs bg-elevated border border-border rounded text-text-secondary hover:text-text-primary transition-colors"
             title={markdownView === 'raw' ? 'Show rendered' : 'Show raw'}
           >
-            {markdownView === 'raw' ? (
+            {markdownView === 'raw' && (
               <>
                 <Eye className="w-3 h-3" />
                 Rendered
               </>
-            ) : (
+            )}
+            {markdownView !== 'raw' && (
               <>
                 <Code className="w-3 h-3" />
                 Raw
@@ -1270,6 +1290,17 @@ function FileViewerToolbar({
 
 // --- FileSearchBar Component ---
 
+interface FileSearchBarProps {
+  searchInput: string
+  matchCount: number
+  currentMatch: number
+  onSearchChange: (value: string) => void
+  onNavigatePrev: () => void
+  onNavigateNext: () => void
+  onClose: () => void
+  inputRef: React.RefObject<HTMLInputElement>
+}
+
 function FileSearchBar({
   searchInput,
   matchCount,
@@ -1279,16 +1310,7 @@ function FileSearchBar({
   onNavigateNext,
   onClose,
   inputRef,
-}: {
-  searchInput: string
-  matchCount: number
-  currentMatch: number
-  onSearchChange: (value: string) => void
-  onNavigatePrev: () => void
-  onNavigateNext: () => void
-  onClose: () => void
-  inputRef: React.RefObject<HTMLInputElement>
-}) {
+}: Readonly<FileSearchBarProps>) {
   return (
     <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-elevated/50 shrink-0">
       <Search className="w-3.5 h-3.5 text-text-muted" />
@@ -1326,6 +1348,19 @@ function FileSearchBar({
 
 // --- FileExplorerSidebar Component ---
 
+interface FileExplorerSidebarProps {
+  sidebarCollapsed: boolean
+  onToggleCollapse: () => void
+  pathsLoading: boolean
+  rootPaths: string[]
+  rootNodes: FileNode[]
+  selectedFile: FileNode | null
+  treeState: Record<string, TreeNodeState>
+  serverId: string
+  onToggleDir: (path: string) => void
+  onSelectFile: (node: FileNode) => void
+}
+
 function FileExplorerSidebar({
   sidebarCollapsed,
   onToggleCollapse,
@@ -1337,18 +1372,7 @@ function FileExplorerSidebar({
   serverId,
   onToggleDir,
   onSelectFile,
-}: {
-  sidebarCollapsed: boolean
-  onToggleCollapse: () => void
-  pathsLoading: boolean
-  rootPaths: string[]
-  rootNodes: FileNode[]
-  selectedFile: FileNode | null
-  treeState: Record<string, TreeNodeState>
-  serverId: string
-  onToggleDir: (path: string) => void
-  onSelectFile: (node: FileNode) => void
-}) {
+}: Readonly<FileExplorerSidebarProps>) {
   return (
     <div className={`${sidebarCollapsed ? 'w-10' : 'w-72'} border-r border-border flex flex-col bg-surface/30 shrink-0 transition-all duration-200`}>
       <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
@@ -1364,16 +1388,18 @@ function FileExplorerSidebar({
         </button>
       </div>
       <div className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'hidden' : ''}`}>
-        {pathsLoading ? (
+        {pathsLoading && (
           <div className="flex items-center gap-2 px-3 py-4 text-text-muted text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
             Loading paths...
           </div>
-        ) : rootPaths.length === 0 ? (
+        )}
+        {!pathsLoading && rootPaths.length === 0 && (
           <div className="px-3 py-4 text-text-muted text-sm">
             No paths configured. Ask an admin to grant access.
           </div>
-        ) : (
+        )}
+        {!pathsLoading && rootPaths.length > 0 && (
           <div className="py-1">
             {rootNodes.map((node) => (
               <FileTreeNode
@@ -1396,7 +1422,7 @@ function FileExplorerSidebar({
 
 // --- ServerDetailHeader Component ---
 
-function ServerDetailHeader({ server }: { server: Server }) {
+function ServerDetailHeader({ server }: Readonly<{ server: Server }>) {
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-border shrink-0">
       <div className="flex items-center gap-4">
@@ -1537,9 +1563,9 @@ export function ServerDetailPage() {
         return sanitizeHljsHtml(result.value)
       } catch {
         return decodedContent
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
+          .replaceAll(/&/g, '&amp;')
+          .replaceAll(/</g, '&lt;')
+          .replaceAll(/>/g, '&gt;')
       }
     }
   }, [decodedContent, selectedFile])
@@ -1664,16 +1690,16 @@ export function ServerDetailPage() {
     positions.forEach((matchPos, idx) => {
       const matchEnd = matchPos + searchTerm.length
       const before = decodedContent.substring(lastEnd, matchPos)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;')
       const match = decodedContent.substring(matchPos, matchEnd)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;')
       const cls = idx === currentMatch ? 'search-match-current' : 'search-match'
       const id = idx === currentMatch ? ' id="current-search-match"' : ''
       result += before + `<mark class="${cls}"${id}>${match}</mark>`
       lastEnd = matchEnd
     })
     result += decodedContent.substring(lastEnd)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;')
 
     return result
   }, [searchTerm, decodedContent, highlightedHtml, currentMatch])
@@ -1788,7 +1814,7 @@ export function ServerDetailPage() {
                 ) : (
                   <FileViewerContent
                     fileLoading={fileLoading}
-                    fileError={fileError as Error | null}
+                    fileError={fileError}
                     decodedContent={decodedContent}
                     selectedFile={selectedFile}
                     markdownView={markdownView}

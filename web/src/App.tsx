@@ -13,7 +13,7 @@ import { AuditLogsPage } from '@/pages/audit-logs'
 import { SettingsPage } from '@/pages/settings'
 import { ServerDetailPage } from '@/pages/server-detail'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const { isAuthenticated, isLoading } = useAuth()
 
   if (isLoading) {

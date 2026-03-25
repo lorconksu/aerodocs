@@ -47,7 +47,8 @@ export function DashboardPage() {
       if (statusFilter) params.set('status', statusFilter)
       if (searchTerm) params.set('search', searchTerm)
       const qs = params.toString()
-      return apiFetch<ServerListResponse>(`/servers${qs ? `?${qs}` : ''}`)
+      const url = qs ? `/servers?${qs}` : '/servers'
+      return apiFetch<ServerListResponse>(url)
     },
     refetchInterval: 10_000,
   })
@@ -169,9 +170,10 @@ export function DashboardPage() {
       )}
 
       {/* Table */}
-      {isLoading ? (
+      {isLoading && (
         <div className="text-text-muted text-sm py-8 text-center">Loading servers...</div>
-      ) : servers.length === 0 ? (
+      )}
+      {!isLoading && servers.length === 0 && (
         <div className="text-text-muted text-sm py-8 text-center">
           No servers found.{' '}
           {isAdmin && (
@@ -180,7 +182,8 @@ export function DashboardPage() {
             </button>
           )}
         </div>
-      ) : (
+      )}
+      {!isLoading && servers.length > 0 && (
         <div className="border border-border rounded overflow-hidden">
           <table className="w-full text-sm">
             <thead>
