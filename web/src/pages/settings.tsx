@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, X } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { apiFetch } from '@/lib/api'
-import { getAvatarColor, setAvatarColor, AVATAR_COLORS } from '@/lib/avatar'
+import { getAvatarColor, setAvatarColor as persistAvatarColor, AVATAR_COLORS } from '@/lib/avatar'
+import { validatePassword } from '@/lib/password'
 import type { ChangePasswordRequest, User, Role, TOTPDisableRequest } from '@/types/api'
 import { CreateUserModal } from '@/pages/create-user-modal'
 
@@ -15,7 +16,7 @@ function ProfileTab() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordErrors, setPasswordErrors] = useState<string[]>([])
   const [success, setSuccess] = useState('')
-  const [avatarColor, setAvatarColorState] = useState(() => getAvatarColor(user?.username ?? ''))
+  const [avatarColor, setAvatarColor] = useState(() => getAvatarColor(user?.username ?? ''))
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { login } = useAuth()
 
@@ -59,13 +60,8 @@ function ProfileTab() {
     avatarMutation.mutate('')
   }
 
-  const validatePassword = (pw: string) => {
-    const errors: string[] = []
-    if (pw.length < 12) errors.push('At least 12 characters')
-    if (!/[A-Z]/.test(pw)) errors.push('One uppercase letter')
-    if (!/[a-z]/.test(pw)) errors.push('One lowercase letter')
-    if (!/\d/.test(pw)) errors.push('One digit')
-    if (!/[^a-zA-Z0-9]/.test(pw)) errors.push('One special character')
+  const runValidatePassword = (pw: string) => {
+    const errors = validatePassword(pw)
     setPasswordErrors(errors)
     return errors.length === 0
   }
@@ -89,7 +85,7 @@ function ProfileTab() {
     e.preventDefault()
     setSuccess('')
 
-    if (!validatePassword(newPassword)) return
+    if (!runValidatePassword(newPassword)) return
     if (newPassword !== confirmPassword) {
       mutation.reset()
       return
@@ -167,7 +163,7 @@ function ProfileTab() {
               {AVATAR_COLORS.map(color => (
                 <button
                   key={color}
-                  onClick={() => { setAvatarColor(color); setAvatarColorState(color) }}
+                  onClick={() => { persistAvatarColor(color); setAvatarColor(color) }}
                   className={`w-6 h-6 rounded-full transition-all ${
                     avatarColor === color ? 'ring-2 ring-offset-2 ring-offset-surface ring-white scale-110' : 'hover:scale-110'
                   }`}
@@ -234,7 +230,7 @@ function ProfileTab() {
               type="password"
               placeholder="New password (min 12 chars)"
               value={newPassword}
-              onChange={e => { setNewPassword(e.target.value); validatePassword(e.target.value) }}
+              onChange={e => { setNewPassword(e.target.value); runValidatePassword(e.target.value) }}
               className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
               required
             />

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/wyiu/aerodocs/hub/internal/migrate"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // registers the SQLite driver
 )
 
 type Store struct {

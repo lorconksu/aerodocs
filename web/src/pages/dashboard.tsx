@@ -105,7 +105,7 @@ export function DashboardPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-semibold text-text-primary">Fleet Dashboard</h2>
-          <p className="text-text-muted text-sm">{total} server{total !== 1 ? 's' : ''}</p>
+          <p className="text-text-muted text-sm">{total} server{total === 1 ? '' : 's'}</p>
         </div>
         {isAdmin && (
           <button

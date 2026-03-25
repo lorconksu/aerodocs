@@ -37,6 +37,7 @@ describe('AuthProvider', () => {
     render(<AuthProvider><TestConsumer /></AuthProvider>)
     // After effect: isLoading = false, no token
     // (effect runs synchronously in jsdom for the no-token path)
+    expect(screen.getByTestId('authenticated').textContent).toBe('false')
   })
 
   it('when no access token, sets isLoading=false and user=null', async () => {

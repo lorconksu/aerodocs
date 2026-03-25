@@ -101,7 +101,7 @@ export function SetupTOTPPage() {
 
           <button
             onClick={handleVerifyClick}
-            disabled={loading || digits.some(d => d === '')}
+            disabled={loading || digits.includes('')}
             className="w-full bg-accent hover:bg-accent-hover text-white text-sm font-semibold rounded py-2 transition-colors disabled:opacity-50"
           >
             {loading ? 'Verifying...' : 'Verify & Enable 2FA'}
