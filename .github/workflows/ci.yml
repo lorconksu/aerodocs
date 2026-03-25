@@ -66,6 +66,16 @@ jobs:
       - name: Integration tests with coverage
         run: cd hub && go test ./internal/integration/ -v -timeout 120s -coverprofile=../coverage-integration.out -covermode=atomic -coverpkg=./internal/...
 
+      - name: Report agent binary coverage
+        if: always()
+        run: |
+          if [ -f coverage-agent-integration.out ]; then
+            echo "=== Agent Binary Integration Coverage ==="
+            cd agent && go tool cover -func=../coverage-agent-integration.out | tail -1
+          else
+            echo "No agent binary coverage file found"
+          fi
+
       - name: Upload integration coverage
         uses: actions/upload-artifact@v4
         with:
