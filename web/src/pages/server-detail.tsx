@@ -611,14 +611,14 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
   }
   /* c8 ignore stop */
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files[0]
     if (file) handleUpload(file)
   }
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
     setDragOver(true)
   }
@@ -1307,7 +1307,7 @@ interface FileSearchBarProps {
   onNavigatePrev: () => void
   onNavigateNext: () => void
   onClose: () => void
-  inputRef: React.RefObject<HTMLInputElement>
+  inputRef: React.RefObject<HTMLInputElement | null>
 }
 
 function FileSearchBar({
