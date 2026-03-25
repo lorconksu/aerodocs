@@ -258,6 +258,39 @@ func (h *TestHarness) HTTPPost(t *testing.T, path string, body interface{}, toke
 	return resp
 }
 
+// HTTPPut performs a PUT request against the hub's HTTP server.
+func (h *TestHarness) HTTPPut(t *testing.T, path string, body interface{}, token string) *http.Response {
+	t.Helper()
+
+	url := fmt.Sprintf("http://%s%s", h.HTTPAddr, path)
+
+	var bodyReader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal body: %v", err)
+		}
+		bodyReader = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequest("PUT", url, bodyReader)
+	if err != nil {
+		t.Fatalf("create PUT request: %v", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT %s: %v", path, err)
+	}
+	return resp
+}
+
 // freePort returns a free TCP port on localhost.
 func freePort(t *testing.T) int {
 	t.Helper()
