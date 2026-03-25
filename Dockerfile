@@ -1,20 +1,19 @@
-# Stage 1: Build frontend
-FROM node:22-alpine AS frontend
+# Stage 1: Build frontend (DHI hardened Node)
+FROM dhi.io/node:25-debian13-dev AS frontend
 WORKDIR /app/web
 COPY web/package*.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-# Stage 2: Build Hub + Agent binaries
-FROM golang:1.26-alpine AS backend
-RUN apk add --no-cache git gcc musl-dev
+# Stage 2: Build Hub + Agent binaries (DHI hardened Go)
+FROM dhi.io/golang:1-debian13-dev AS backend
 WORKDIR /app
 
 # Copy proto module (shared dependency)
 COPY proto/ proto/
 
-# Build Hub (needs CGO for SQLite — statically linked with musl)
+# Build Hub (needs CGO for SQLite)
 COPY hub/ hub/
 COPY --from=frontend /app/web/dist hub/web/dist
 RUN cd hub && CGO_ENABLED=1 go build -ldflags="-s -w" -o /out/aerodocs ./cmd/aerodocs/
@@ -25,12 +24,12 @@ RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" 
 RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o /out/aerodocs-agent-linux-arm64 ./cmd/aerodocs-agent/
 
 # Stage 3: Minimal runtime
-# Build stages use standard images (need shell/gcc for compilation).
-# Only this runtime stage ships — kept minimal with Alpine.
-# Security scanning (Grype, Snyk, Docker Scout) targets this final image.
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata && \
-    adduser -D -H -s /sbin/nologin aerodocs
+FROM debian:trixie-slim
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -r -s /bin/false aerodocs && \
+    mkdir -p /data && chown aerodocs:aerodocs /data
 
 WORKDIR /app
 
@@ -39,7 +38,7 @@ COPY --from=backend /out/aerodocs-agent-linux-amd64 /app/aerodocs-agent-linux-am
 COPY --from=backend /out/aerodocs-agent-linux-arm64 /app/aerodocs-agent-linux-arm64
 COPY hub/static/install.sh /app/static/install.sh
 
-RUN mkdir -p /data && chown -R aerodocs:aerodocs /app /data
+RUN chown -R aerodocs:aerodocs /app
 USER aerodocs
 
 VOLUME /data
