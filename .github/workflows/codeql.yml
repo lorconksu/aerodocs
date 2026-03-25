@@ -1,0 +1,39 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    strategy:
+      matrix:
+        language: [go, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: hub/go.mod
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - if: matrix.language == 'go'
+        name: Build Go
+        run: |
+          cd hub && go build ./...
+          cd ../agent && go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
