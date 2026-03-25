@@ -346,7 +346,13 @@ func (c *Client) resetBackoff() {
 }
 
 func (c *Client) selfCleanup() {
-	script := `#!/bin/bash
+	tmpDir, err := os.MkdirTemp("", "aerodocs-cleanup-*")
+	if err != nil {
+		log.Printf("failed to create temp dir for cleanup script: %v", err)
+		return
+	}
+	scriptPath := filepath.Join(tmpDir, "cleanup.sh")
+	script := fmt.Sprintf(`#!/bin/bash
 # AeroDocs Agent self-cleanup script
 # Stop the service first
 systemctl stop aerodocs-agent 2>/dev/null || true
@@ -366,16 +372,15 @@ rm -f /etc/systemd/system/aerodocs-agent.service
 rm -f /etc/aerodocs/agent.conf
 rm -rf /tmp/aerodocs-dropzone
 systemctl daemon-reload 2>/dev/null || true
-rm -f /tmp/aerodocs-cleanup.sh
-`
-	cleanupPath := "/tmp/aerodocs-cleanup.sh"
-	if err := os.WriteFile(cleanupPath, []byte(script), 0755); err != nil {
+rm -rf %s
+`, tmpDir)
+	if err := os.WriteFile(scriptPath, []byte(script), 0700); err != nil {
 		log.Printf("failed to write cleanup script: %v", err)
 		return
 	}
-	log.Printf("executing cleanup script: %s", cleanupPath)
+	log.Printf("executing cleanup script: %s", scriptPath)
 	// Use syscall.Exec to replace this process with the cleanup script
-	syscall.Exec("/bin/bash", []string{"bash", cleanupPath}, os.Environ())
+	syscall.Exec("/bin/bash", []string{"bash", scriptPath}, os.Environ())
 }
 
 // useTLS returns true if the hub address appears to be a hostname (not an IP),
