@@ -114,59 +114,65 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		if err != nil {
 			return err
 		}
-		switch p := msg.Payload.(type) {
-		case *pb.AgentMessage_Heartbeat:
-			h.connMgr.UpdateHeartbeat(serverID)
-			_ = h.store.UpdateServerLastSeen(serverID, nil)
-			conn := h.connMgr.GetConn(serverID)
-			if conn != nil {
-				conn.SendMu.Lock()
-				err := stream.Send(&pb.HubMessage{
-					Payload: &pb.HubMessage_HeartbeatAck{
-						HeartbeatAck: &pb.HeartbeatAck{
-							Timestamp: time.Now().Unix(),
-						},
-					},
-				})
-				conn.SendMu.Unlock()
-				if err != nil {
-					return err
-				}
-			}
-		case *pb.AgentMessage_FileListResponse:
-			if h.pending != nil {
-				h.pending.Deliver(p.FileListResponse.RequestId, p.FileListResponse)
-			}
-
-		case *pb.AgentMessage_FileReadResponse:
-			if h.pending != nil {
-				h.pending.Deliver(p.FileReadResponse.RequestId, p.FileReadResponse)
-			}
-
-		case *pb.AgentMessage_LogStreamChunk:
-			if h.logSessions != nil {
-				h.logSessions.Deliver(p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
-			}
-
-		case *pb.AgentMessage_FileUploadAck:
-			if h.pending != nil {
-				h.pending.Deliver(p.FileUploadAck.RequestId, p.FileUploadAck)
-			}
-
-		case *pb.AgentMessage_FileDeleteResponse:
-			if h.pending != nil {
-				h.pending.Deliver(p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
-			}
-
-		case *pb.AgentMessage_UnregisterAck:
-			if h.pending != nil {
-				h.pending.Deliver(p.UnregisterAck.RequestId, p.UnregisterAck)
-			}
-
-		default:
-			log.Printf("unhandled message type from %s: %T", serverID, p)
+		if err := h.routeAgentMessage(serverID, stream, msg); err != nil {
+			return err
 		}
 	}
+}
+
+// routeAgentMessage dispatches an incoming agent message to the appropriate handler.
+func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_ConnectServer, msg *pb.AgentMessage) error {
+	switch p := msg.Payload.(type) {
+	case *pb.AgentMessage_Heartbeat:
+		return h.handleStreamHeartbeat(serverID, stream)
+	case *pb.AgentMessage_FileListResponse:
+		if h.pending != nil {
+			h.pending.Deliver(p.FileListResponse.RequestId, p.FileListResponse)
+		}
+	case *pb.AgentMessage_FileReadResponse:
+		if h.pending != nil {
+			h.pending.Deliver(p.FileReadResponse.RequestId, p.FileReadResponse)
+		}
+	case *pb.AgentMessage_LogStreamChunk:
+		if h.logSessions != nil {
+			h.logSessions.Deliver(p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
+		}
+	case *pb.AgentMessage_FileUploadAck:
+		if h.pending != nil {
+			h.pending.Deliver(p.FileUploadAck.RequestId, p.FileUploadAck)
+		}
+	case *pb.AgentMessage_FileDeleteResponse:
+		if h.pending != nil {
+			h.pending.Deliver(p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
+		}
+	case *pb.AgentMessage_UnregisterAck:
+		if h.pending != nil {
+			h.pending.Deliver(p.UnregisterAck.RequestId, p.UnregisterAck)
+		}
+	default:
+		log.Printf("unhandled message type from %s: %T", serverID, p)
+	}
+	return nil
+}
+
+// handleStreamHeartbeat processes an in-stream heartbeat, updates last-seen, and sends an ack.
+func (h *Handler) handleStreamHeartbeat(serverID string, stream pb.AgentService_ConnectServer) error {
+	h.connMgr.UpdateHeartbeat(serverID)
+	_ = h.store.UpdateServerLastSeen(serverID, nil)
+	conn := h.connMgr.GetConn(serverID)
+	if conn == nil {
+		return nil
+	}
+	conn.SendMu.Lock()
+	err := stream.Send(&pb.HubMessage{
+		Payload: &pb.HubMessage_HeartbeatAck{
+			HeartbeatAck: &pb.HeartbeatAck{
+				Timestamp: time.Now().Unix(),
+			},
+		},
+	})
+	conn.SendMu.Unlock()
+	return err
 }
 
 func (h *Handler) handleRegister(rawToken, hostname, ip, os, agentVersion string) (string, error) {
