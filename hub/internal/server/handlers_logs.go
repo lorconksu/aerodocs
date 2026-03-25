@@ -21,21 +21,8 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate path
-	if err := validateRequestPath(path); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
+	if !s.checkFileAccess(w, r, serverID, path) {
 		return
-	}
-
-	// Check permissions
-	userID := UserIDFromContext(r.Context())
-	role := UserRoleFromContext(r.Context())
-	if role != "admin" {
-		allowed, err := s.isPathAllowed(userID, serverID, path)
-		if err != nil || !allowed {
-			respondError(w, http.StatusForbidden, "access denied")
-			return
-		}
 	}
 
 	// Check agent connected
@@ -75,6 +62,7 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Audit log
+	userID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
 	detail := path
 	if grep != "" {

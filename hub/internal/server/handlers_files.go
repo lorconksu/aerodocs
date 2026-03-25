@@ -25,22 +25,9 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		path = "/"
 	}
 
-	// Validate path
-	if err := validateRequestPath(path); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Check permissions
-	userID := UserIDFromContext(r.Context())
-	role := UserRoleFromContext(r.Context())
 	serverID := r.PathValue("id")
-	if role != "admin" {
-		allowed, err := s.isPathAllowed(userID, serverID, path)
-		if err != nil || !allowed {
-			respondError(w, http.StatusForbidden, "access denied")
-			return
-		}
+	if !s.checkFileAccess(w, r, serverID, path) {
+		return
 	}
 
 	// Check agent is connected
@@ -82,21 +69,9 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validateRequestPath(path); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Check permissions
-	userID := UserIDFromContext(r.Context())
-	role := UserRoleFromContext(r.Context())
 	serverID := r.PathValue("id")
-	if role != "admin" {
-		allowed, err := s.isPathAllowed(userID, serverID, path)
-		if err != nil || !allowed {
-			respondError(w, http.StatusForbidden, "access denied")
-			return
-		}
+	if !s.checkFileAccess(w, r, serverID, path) {
+		return
 	}
 
 	// Check agent is connected
@@ -136,6 +111,7 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Audit log
+	userID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
 	detail := path
 	s.store.LogAudit(model.AuditEntry{
@@ -152,6 +128,26 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		"total_size": resp.TotalSize,
 		"mime_type":  resp.MimeType,
 	})
+}
+
+// checkFileAccess validates the path and checks that the user is allowed to access it.
+// Returns false (and writes the error response) if access should be denied.
+func (s *Server) checkFileAccess(w http.ResponseWriter, r *http.Request, serverID, path string) bool {
+	if err := validateRequestPath(path); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return false
+	}
+
+	role := UserRoleFromContext(r.Context())
+	if role != "admin" {
+		userID := UserIDFromContext(r.Context())
+		allowed, err := s.isPathAllowed(userID, serverID, path)
+		if err != nil || !allowed {
+			respondError(w, http.StatusForbidden, "access denied")
+			return false
+		}
+	}
+	return true
 }
 
 // isPathAllowed checks if the requested path is under one of the user's allowed roots.

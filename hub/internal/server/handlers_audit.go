@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
@@ -10,21 +9,9 @@ import (
 func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	filter := model.AuditFilter{
-		Limit:  50,
-		Offset: 0,
-	}
+	filter := model.AuditFilter{}
+	filter.Limit, filter.Offset = parsePagination(q, 50)
 
-	if v := q.Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
-			filter.Limit = n
-		}
-	}
-	if v := q.Get("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			filter.Offset = n
-		}
-	}
 	if v := q.Get("action"); v != "" {
 		filter.Action = &v
 	}
