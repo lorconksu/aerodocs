@@ -7,7 +7,7 @@ interface CreateUserModalProps {
   onClose: () => void
 }
 
-export function CreateUserModal({ onClose }: CreateUserModalProps) {
+export function CreateUserModal({ onClose }: Readonly<CreateUserModalProps>) {
   const queryClient = useQueryClient()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')

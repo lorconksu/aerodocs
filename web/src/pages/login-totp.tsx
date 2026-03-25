@@ -31,14 +31,14 @@ export function LoginTOTPPage() {
     }
 
     // Auto-submit when all 6 digits entered
-    if (newDigits.every(d => d) && index === 5) {
+    if (newDigits.every(Boolean) && index === 5) {
       submitCode(newDigits.join(''))
     }
   }
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    const pasted = e.clipboardData.getData('text').replaceAll(/\D/g, '').slice(0, 6)
     if (!pasted) return
     const newDigits = [...digits]
     for (let i = 0; i < pasted.length; i++) {
@@ -47,7 +47,7 @@ export function LoginTOTPPage() {
     setDigits(newDigits)
     const nextEmpty = pasted.length < 6 ? pasted.length : 5
     inputRefs.current[nextEmpty]?.focus()
-    if (newDigits.every(d => d)) submitCode(newDigits.join(''))
+    if (newDigits.every(Boolean)) submitCode(newDigits.join(''))
   }
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
@@ -92,7 +92,7 @@ export function LoginTOTPPage() {
       <div className="flex gap-2 justify-center mb-4">
         {digits.map((digit, i) => (
           <input
-            key={i}
+            key={`digit-${i}`}
             ref={el => { inputRefs.current[i] = el }}
             type="text"
             inputMode="numeric"
@@ -110,7 +110,7 @@ export function LoginTOTPPage() {
 
       <button
         onClick={() => submitCode(digits.join(''))}
-        disabled={loading || digits.some(d => !d)}
+        disabled={loading || digits.some(d => d === '')}
         className="w-full bg-accent hover:bg-accent-hover text-white text-sm font-semibold rounded py-2 transition-colors disabled:opacity-50"
       >
         {loading ? 'Verifying...' : 'Verify'}

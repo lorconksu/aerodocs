@@ -10,7 +10,7 @@ interface AddServerModalProps {
 
 const TIMEOUT_MS = 2 * 60 * 1000 // 2 minutes
 
-export function AddServerModal({ onClose }: AddServerModalProps) {
+export function AddServerModal({ onClose }: Readonly<AddServerModalProps>) {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [result, setResult] = useState<CreateServerResponse | null>(null)
@@ -84,8 +84,9 @@ export function AddServerModal({ onClose }: AddServerModalProps) {
         {!result ? (
           /* Step 1: Enter name */
           <div>
-            <label className="block text-sm text-text-secondary mb-1">Server Name</label>
+            <label htmlFor="server-name" className="block text-sm text-text-secondary mb-1">Server Name</label>
             <input
+              id="server-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
