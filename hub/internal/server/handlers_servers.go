@@ -68,7 +68,7 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	var req model.CreateServerRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -148,7 +148,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := s.store.GetServerByID(id)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "server not found")
+		respondError(w, http.StatusNotFound, errServerNotFound)
 		return
 	}
 
@@ -185,7 +185,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		Labels string `json:"labels"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -195,7 +195,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.UpdateServer(id, req.Name, req.Labels); err != nil {
-		respondError(w, http.StatusNotFound, "server not found")
+		respondError(w, http.StatusNotFound, errServerNotFound)
 		return
 	}
 
@@ -214,7 +214,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	if err := s.store.DeleteServer(id); err != nil {
-		respondError(w, http.StatusNotFound, "server not found")
+		respondError(w, http.StatusNotFound, errServerNotFound)
 		return
 	}
 
@@ -231,7 +231,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request) {
 	var req model.BatchDeleteRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 

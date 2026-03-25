@@ -148,7 +148,7 @@ func (s *Store) UpdateServer(id, name, labels string) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("server not found")
+		return fmt.Errorf(errServerNotFound)
 	}
 	return nil
 }
@@ -160,7 +160,7 @@ func (s *Store) DeleteServer(id string) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("server not found")
+		return fmt.Errorf(errServerNotFound)
 	}
 	return nil
 }
@@ -195,7 +195,7 @@ func (s *Store) GetServerByToken(tokenHash string) (*model.Server, error) {
 }
 
 func (s *Store) ActivateServer(id, hostname, ip, os, agentVersion string) error {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(sqliteTimeFormat)
 	result, err := s.db.Exec(
 		`UPDATE servers
 		 SET hostname = ?, ip_address = ?, os = ?, agent_version = ?,
@@ -209,7 +209,7 @@ func (s *Store) ActivateServer(id, hostname, ip, os, agentVersion string) error 
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("server not found")
+		return fmt.Errorf(errServerNotFound)
 	}
 	return nil
 }
@@ -224,13 +224,13 @@ func (s *Store) UpdateServerStatus(id, status string) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("server not found")
+		return fmt.Errorf(errServerNotFound)
 	}
 	return nil
 }
 
 func (s *Store) UpdateServerLastSeen(id string, systemInfo *model.SystemInfo) error {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(sqliteTimeFormat)
 	result, err := s.db.Exec(
 		"UPDATE servers SET last_seen_at = ?, updated_at = datetime('now') WHERE id = ?",
 		now, id,
@@ -240,7 +240,7 @@ func (s *Store) UpdateServerLastSeen(id string, systemInfo *model.SystemInfo) er
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("server not found")
+		return fmt.Errorf(errServerNotFound)
 	}
 	return nil
 }
@@ -283,13 +283,13 @@ func (s *Store) scanServer(row *sql.Row) (*model.Server, error) {
 		&srv.AgentVersion, &srv.Labels, &srv.LastSeenAt, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("server not found")
+		return nil, fmt.Errorf(errServerNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan server: %w", err)
 	}
-	srv.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-	srv.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	srv.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
+	srv.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
 	return &srv, nil
 }
 
@@ -304,7 +304,7 @@ func (s *Store) scanServerRow(rows *sql.Rows) (*model.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan server row: %w", err)
 	}
-	srv.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-	srv.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	srv.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
+	srv.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
 	return &srv, nil
 }

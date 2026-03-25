@@ -40,12 +40,12 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 
 	// Check agent connected
 	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 	conn := s.connMgr.GetConn(serverID)
 	if conn == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 

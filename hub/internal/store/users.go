@@ -61,7 +61,7 @@ func (s *Store) DeleteUser(userID string) error {
 		return fmt.Errorf("delete user rows: %w", err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("user not found")
+		return fmt.Errorf(errUserNotFound)
 	}
 	return nil
 }
@@ -79,7 +79,7 @@ func (s *Store) UpdateUserRole(userID string, role model.Role) error {
 		return fmt.Errorf("update role rows: %w", err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("user not found")
+		return fmt.Errorf(errUserNotFound)
 	}
 	return nil
 }
@@ -133,13 +133,13 @@ func (s *Store) scanUser(row *sql.Row) (*model.User, error) {
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role,
 		&u.TOTPSecret, &u.TOTPEnabled, &u.Avatar, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("user not found")
+		return nil, fmt.Errorf(errUserNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan user: %w", err)
 	}
-	u.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-	u.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	u.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
+	u.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
 	return &u, nil
 }
 
@@ -151,7 +151,7 @@ func (s *Store) scanUserRow(rows *sql.Rows) (*model.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan user row: %w", err)
 	}
-	u.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-	u.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	u.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
+	u.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
 	return &u, nil
 }

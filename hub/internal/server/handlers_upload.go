@@ -44,12 +44,12 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Check agent connected
 	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 	conn := s.connMgr.GetConn(serverID)
 	if conn == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	case msg := <-ch:
 		ack, ok := msg.(*pb.FileUploadAck)
 		if !ok {
-			respondError(w, http.StatusInternalServerError, "unexpected response type")
+			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
 			return
 		}
 		if !ack.Success {
@@ -156,12 +156,12 @@ func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request
 	}
 
 	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 	conn := s.connMgr.GetConn(serverID)
 	if conn == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 
@@ -179,7 +179,7 @@ func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request
 		},
 	})
 	if err != nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 
@@ -187,7 +187,7 @@ func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request
 	case msg := <-ch:
 		resp, ok := msg.(*pb.FileDeleteResponse)
 		if !ok {
-			respondError(w, http.StatusInternalServerError, "unexpected response type")
+			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
 			return
 		}
 		if !resp.Success {
@@ -205,12 +205,12 @@ func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
 
 	// Check agent connected
 	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 	conn := s.connMgr.GetConn(serverID)
 	if conn == nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 
@@ -227,7 +227,7 @@ func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	if err != nil {
-		respondError(w, http.StatusBadGateway, "agent not connected")
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
 		return
 	}
 
@@ -235,7 +235,7 @@ func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
 	case msg := <-ch:
 		resp, ok := msg.(*pb.FileListResponse)
 		if !ok {
-			respondError(w, http.StatusInternalServerError, "unexpected response type")
+			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
 			return
 		}
 		if resp.Error != "" {
