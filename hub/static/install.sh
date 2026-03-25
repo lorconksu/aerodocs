@@ -22,11 +22,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Auto-detect piped input (curl | bash) — can't prompt, so force replace
-if [ ! -t 0 ]; then
+if [[ ! -t 0 ]]; then
   FORCE=true
 fi
 
-if [ -z "$TOKEN" ] || [ -z "$HUB" ]; then
+if [[ -z "$TOKEN" ]] || [[ -z "$HUB" ]]; then
   echo "Usage: sudo bash install.sh --token <TOKEN> --hub <GRPC_ADDR>"
   echo "  --token   One-time registration token from Hub"
   echo "  --hub     Hub gRPC address (e.g., 10.0.1.5:9090)"
@@ -43,7 +43,7 @@ case "$ARCH" in
   *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-if [ "$OS" != "linux" ]; then
+if [[ "$OS" != "linux" ]]; then
   echo "Unsupported OS: $OS (only linux is supported)"
   exit 1
 fi
@@ -52,12 +52,12 @@ fi
 EXISTING=false
 if systemctl is-active --quiet aerodocs-agent 2>/dev/null; then
   EXISTING=true
-elif [ -f /usr/local/bin/aerodocs-agent ] || [ -f /etc/systemd/system/aerodocs-agent.service ]; then
+elif [[ -f /usr/local/bin/aerodocs-agent ]] || [[ -f /etc/systemd/system/aerodocs-agent.service ]]; then
   EXISTING=true
 fi
 
-if [ "$EXISTING" = true ]; then
-  if [ "$FORCE" = true ]; then
+if [[ "$EXISTING" = true ]]; then
+  if [[ "$FORCE" = true ]]; then
     echo "==> Existing installation detected — replacing automatically."
   else
     echo ""
@@ -86,7 +86,7 @@ if [ "$EXISTING" = true ]; then
   fi
 
   # Unregister old server from Hub before teardown
-  if [ -x /usr/local/bin/aerodocs-agent ] && [ -f /etc/aerodocs/agent.conf ]; then
+  if [[ -x /usr/local/bin/aerodocs-agent ]] && [[ -f /etc/aerodocs/agent.conf ]]; then
     echo "==> Removing old server from Hub..."
     /usr/local/bin/aerodocs-agent --self-unregister 2>/dev/null || true
   fi
@@ -102,7 +102,7 @@ if [ "$EXISTING" = true ]; then
 fi
 
 # --- Download agent binary ---
-if [ -z "$URL" ]; then
+if [[ -z "$URL" ]]; then
   HUB_HOST=$(echo "$HUB" | cut -d: -f1)
   URL="https://${HUB_HOST}"
 fi
@@ -113,8 +113,8 @@ curl -sSL "$DOWNLOAD_URL" -o /usr/local/bin/aerodocs-agent
 chmod +x /usr/local/bin/aerodocs-agent
 
 # Verify binary was downloaded
-if [ ! -x /usr/local/bin/aerodocs-agent ]; then
-  echo "ERROR: Failed to download agent binary"
+if [[ ! -x /usr/local/bin/aerodocs-agent ]]; then
+  echo "ERROR: Failed to download agent binary" >&2
   exit 1
 fi
 
@@ -147,7 +147,7 @@ systemctl enable --now aerodocs-agent
 echo "==> Waiting for agent to register..."
 TRIES=0
 MAX_TRIES=10
-while [ $TRIES -lt $MAX_TRIES ]; do
+while [[ $TRIES -lt $MAX_TRIES ]]; do
   sleep 2
   if journalctl -u aerodocs-agent --no-pager -n 5 2>/dev/null | grep -q "registered successfully\|connected to hub"; then
     echo ""
