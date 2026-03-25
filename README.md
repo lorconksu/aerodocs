@@ -57,7 +57,7 @@ graph LR
 ### Backend
 | Component | Technology |
 |-----------|-----------|
-| Language | Go 1.22+ |
+| Language | Go 1.26+ |
 | Database | SQLite (via `modernc.org/sqlite`, pure Go) |
 | Auth | JWT (access/refresh/setup/totp tokens) + TOTP |
 | Hub↔Agent | Protocol Buffers / gRPC (bidirectional stream) |
@@ -117,8 +117,8 @@ aerodocs/
 
 ### Prerequisites
 
-- Go 1.22+
-- Node.js 20+
+- Go 1.26+
+- Node.js 25+
 - Make
 
 ### Getting Started

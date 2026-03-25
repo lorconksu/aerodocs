@@ -6,7 +6,7 @@
 
 **Architecture:** Layered Go backend (handler → store → SQLite) serving a Vite-built React SPA via `go:embed`. JWT-based auth with four token types (setup, totp, access, refresh). All users must complete TOTP setup before accessing the app.
 
-**Tech Stack:** Go 1.22+, SQLite (modernc.org/sqlite), React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, TanStack Query, React Router v7, golang-jwt/jwt/v5, pquerna/otp, bcrypt
+**Tech Stack:** Go 1.26+, SQLite (modernc.org/sqlite), React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, TanStack Query, React Router v7, golang-jwt/jwt/v5, pquerna/otp, bcrypt
 
 **Spec:** `docs/superpowers/specs/2026-03-23-foundation-and-auth-design.md`
 

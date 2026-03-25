@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- Go 1.22+
-- Node.js 20+
+- Go 1.26+
+- Node.js 25+
 - Make
 - Git
 

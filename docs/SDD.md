@@ -33,8 +33,8 @@ graph TD
 
 | Component | Language | Role |
 |---|---|---|
-| Hub | Go 1.22+ | Central server. Serves web UI, REST API, gRPC endpoint, database, auth. |
-| Agent | Go 1.22+ | Remote binary. Executes file/log/upload commands received over gRPC. |
+| Hub | Go 1.26+ | Central server. Serves web UI, REST API, gRPC endpoint, database, auth. |
+| Agent | Go 1.26+ | Remote binary. Executes file/log/upload commands received over gRPC. |
 | Frontend | React 19 + TypeScript | SPA embedded into the Hub binary at build time. |
 | Proto | Protocol Buffers v3 | Contract for Hub↔Agent gRPC communication. |
 

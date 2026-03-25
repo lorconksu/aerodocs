@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- Go 1.22+
-- Node.js 20+
+- Go 1.26+
+- Node.js 25+
 - Make
 - A Linux server (amd64 or arm64)
 - A domain name pointing to your server
