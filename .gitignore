@@ -21,3 +21,7 @@ hub/web/dist/
 .DS_Store
 .claude/worktrees/
 .worktrees/
+
+# Coverage
+coverage-*.out
+web/coverage/

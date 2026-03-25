@@ -1,0 +1,15 @@
+.git
+.worktrees
+.superpowers
+.claude
+bin/
+*.db
+test.db
+docs/
+scripts/
+.github/
+*.png
+*.swp
+.DS_Store
+node_modules
+hub/web/dist
