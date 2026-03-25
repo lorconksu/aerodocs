@@ -147,3 +147,148 @@ func TestListUsers(t *testing.T) {
 		t.Fatalf("expected 2 users, got %d", len(users))
 	}
 }
+
+func TestDeleteUser(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin,
+	})
+
+	if err := s.DeleteUser("u1"); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+
+	_, err := s.GetUserByID("u1")
+	if err == nil {
+		t.Fatal("expected error after deletion")
+	}
+}
+
+func TestDeleteUser_NotFound(t *testing.T) {
+	s := testStore(t)
+
+	err := s.DeleteUser("nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent user")
+	}
+}
+
+func TestUpdateUserAvatar(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin,
+	})
+
+	avatar := "data:image/png;base64,abc123"
+	if err := s.UpdateUserAvatar("u1", &avatar); err != nil {
+		t.Fatalf("update avatar: %v", err)
+	}
+
+	user, err := s.GetUserByID("u1")
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if user.Avatar == nil || *user.Avatar != avatar {
+		t.Fatalf("expected avatar '%s', got '%v'", avatar, user.Avatar)
+	}
+}
+
+func TestUpdateUserAvatar_ClearAvatar(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin,
+	})
+
+	// Set avatar
+	avatar := "data:image/png;base64,abc123"
+	s.UpdateUserAvatar("u1", &avatar)
+
+	// Clear avatar
+	if err := s.UpdateUserAvatar("u1", nil); err != nil {
+		t.Fatalf("clear avatar: %v", err)
+	}
+
+	user, _ := s.GetUserByID("u1")
+	if user.Avatar != nil {
+		t.Fatalf("expected nil avatar after clear, got '%v'", user.Avatar)
+	}
+}
+
+func TestUpdateUserPassword(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "oldhash", Role: model.RoleAdmin,
+	})
+
+	if err := s.UpdateUserPassword("u1", "newhash"); err != nil {
+		t.Fatalf("update password: %v", err)
+	}
+
+	user, _ := s.GetUserByID("u1")
+	if user.PasswordHash != "newhash" {
+		t.Fatalf("expected 'newhash', got '%s'", user.PasswordHash)
+	}
+}
+
+func TestGetUserByID_NotFound(t *testing.T) {
+	s := testStore(t)
+
+	_, err := s.GetUserByID("nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent user ID")
+	}
+}
+
+func TestGetUserByUsername_NotFound(t *testing.T) {
+	s := testStore(t)
+
+	_, err := s.GetUserByUsername("nobody")
+	if err == nil {
+		t.Fatal("expected error for nonexistent username")
+	}
+}
+
+func TestUpdateUserTOTP_Clear(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin,
+	})
+
+	secret := "JBSWY3DPEHPK3PXP"
+	s.UpdateUserTOTP("u1", &secret, true)
+
+	// Clear TOTP
+	if err := s.UpdateUserTOTP("u1", nil, false); err != nil {
+		t.Fatalf("clear totp: %v", err)
+	}
+
+	user, _ := s.GetUserByID("u1")
+	if user.TOTPEnabled {
+		t.Fatal("expected totp_enabled=false after clear")
+	}
+	if user.TOTPSecret != nil {
+		t.Fatal("expected nil totp_secret after clear")
+	}
+}
+
+func TestListUsers_Empty(t *testing.T) {
+	s := testStore(t)
+
+	users, err := s.ListUsers()
+	if err != nil {
+		t.Fatalf("list empty users: %v", err)
+	}
+	if users != nil && len(users) != 0 {
+		t.Fatalf("expected 0 users, got %d", len(users))
+	}
+}

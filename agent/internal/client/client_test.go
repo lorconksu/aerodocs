@@ -1,9 +1,19 @@
 package client
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/wyiu/aerodocs/agent/internal/dropzone"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
+
+// newTestDropzone creates a Dropzone using a test directory.
+func newTestDropzone(dir string) *dropzone.Dropzone {
+	return dropzone.New(dir)
+}
 
 func TestNextBackoff(t *testing.T) {
 	c := &Client{
@@ -61,5 +71,429 @@ func TestNewClient(t *testing.T) {
 	}
 	if c.serverID != "srv-1" {
 		t.Fatalf("expected serverID 'srv-1', got '%s'", c.serverID)
+	}
+}
+
+func TestServerID(t *testing.T) {
+	c := New(Config{ServerID: "my-server"})
+	if c.ServerID() != "my-server" {
+		t.Fatalf("expected 'my-server', got '%s'", c.ServerID())
+	}
+}
+
+func TestUseTLS(t *testing.T) {
+	tests := []struct {
+		addr    string
+		wantTLS bool
+	}{
+		{"localhost:9090", false},         // localhost — not a domain
+		{"192.168.1.1:9090", false},       // IP address
+		{"hub.example.com:443", true},     // domain with 443
+		{"hub.example.com", true},         // domain without port
+		{"hub.example.com:9090", true},    // domain with non-443 port (has dot)
+		{"10.0.0.1:443", false},           // IP with 443 — still insecure
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			c := &Client{hubAddr: tt.addr}
+			got := c.useTLS()
+			if got != tt.wantTLS {
+				t.Fatalf("useTLS(%q) = %v, want %v", tt.addr, got, tt.wantTLS)
+			}
+		})
+	}
+}
+
+func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage_FileDeleteRequest{
+		FileDeleteRequest: &pb.FileDeleteRequest{
+			RequestId: "req-1",
+			Path:      "/etc/passwd",
+		},
+	}
+	c.handleFileDeleteRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		ack := resp.GetFileDeleteResponse()
+		if ack == nil {
+			t.Fatal("expected FileDeleteResponse")
+		}
+		if ack.Success {
+			t.Fatal("expected failure for path outside dropzone")
+		}
+		if ack.Error == "" {
+			t.Fatal("expected error message")
+		}
+	default:
+		t.Fatal("expected response on sendCh")
+	}
+}
+
+func TestHandleFileDeleteRequest_NonexistentFile(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage_FileDeleteRequest{
+		FileDeleteRequest: &pb.FileDeleteRequest{
+			RequestId: "req-1",
+			Path:      "/tmp/aerodocs-dropzone/nonexistent-file.txt",
+		},
+	}
+	c.handleFileDeleteRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		ack := resp.GetFileDeleteResponse()
+		if ack == nil {
+			t.Fatal("expected FileDeleteResponse")
+		}
+		if ack.Success {
+			t.Fatal("expected failure for nonexistent file")
+		}
+	default:
+		t.Fatal("expected response on sendCh")
+	}
+}
+
+func TestHandleFileDeleteRequest_Success(t *testing.T) {
+	// Create a temp file in a dropzone-like dir
+	dir := t.TempDir()
+	// We need the path to start with /tmp/aerodocs-dropzone/ but for tests
+	// we use a fake dropzone check by temporarily creating a real file
+
+	// Create the file using the actual dropzone path pattern
+	dropzoneDir := "/tmp/aerodocs-dropzone"
+	if err := os.MkdirAll(dropzoneDir, 0755); err != nil {
+		t.Skipf("cannot create dropzone dir: %v", err)
+	}
+
+	testFile := filepath.Join(dropzoneDir, "test-delete-file.txt")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("create test file: %v", err)
+	}
+	_ = dir
+
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage_FileDeleteRequest{
+		FileDeleteRequest: &pb.FileDeleteRequest{
+			RequestId: "req-del",
+			Path:      testFile,
+		},
+	}
+	c.handleFileDeleteRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		ack := resp.GetFileDeleteResponse()
+		if ack == nil {
+			t.Fatal("expected FileDeleteResponse")
+		}
+		if !ack.Success {
+			t.Fatalf("expected success, got error: %s", ack.Error)
+		}
+	default:
+		t.Fatal("expected response on sendCh")
+	}
+}
+
+func TestHandleLogStreamStop_ExistingSession(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	stop := make(chan struct{})
+	c.tailSessions["session-1"] = stop
+
+	msg := &pb.HubMessage_LogStreamStop{
+		LogStreamStop: &pb.LogStreamStop{RequestId: "session-1"},
+	}
+	c.handleLogStreamStop(msg)
+
+	// channel should be closed and removed
+	if _, ok := c.tailSessions["session-1"]; ok {
+		t.Fatal("expected session to be removed")
+	}
+
+	select {
+	case <-stop:
+		// closed as expected
+	default:
+		t.Fatal("expected stop channel to be closed")
+	}
+}
+
+func TestHandleLogStreamStop_NonexistentSession(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+
+	// Should not panic for nonexistent session
+	msg := &pb.HubMessage_LogStreamStop{
+		LogStreamStop: &pb.LogStreamStop{RequestId: "nonexistent"},
+	}
+	c.handleLogStreamStop(msg)
+}
+
+func TestHandleUnregisterRequest(t *testing.T) {
+	c := &Client{
+		tailSessions: make(map[string]chan struct{}),
+		hubAddr:      "localhost:9090",
+		serverID:     "srv-1",
+	}
+	sendCh := make(chan *pb.AgentMessage, 2)
+
+	msg := &pb.HubMessage_UnregisterRequest{
+		UnregisterRequest: &pb.UnregisterRequest{RequestId: "req-unreg"},
+	}
+	c.handleUnregisterRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		ack := resp.GetUnregisterAck()
+		if ack == nil {
+			t.Fatal("expected UnregisterAck")
+		}
+		if !ack.Success {
+			t.Fatal("expected success")
+		}
+		if ack.RequestId != "req-unreg" {
+			t.Fatalf("expected 'req-unreg', got '%s'", ack.RequestId)
+		}
+	default:
+		t.Fatal("expected ack on sendCh")
+	}
+}
+
+func TestHandleMessage_UnknownType(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	// HeartbeatAck is a HubMessage type not handled in handleMessage
+	msg := &pb.HubMessage{
+		Payload: &pb.HubMessage_HeartbeatAck{
+			HeartbeatAck: &pb.HeartbeatAck{},
+		},
+	}
+	// Should not panic
+	c.handleMessage(msg, sendCh)
+}
+
+func TestHandleFileListRequest(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage_FileListRequest{
+		FileListRequest: &pb.FileListRequest{
+			RequestId: "req-list",
+			Path:      "/tmp",
+		},
+	}
+	c.handleFileListRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		listResp := resp.GetFileListResponse()
+		if listResp == nil {
+			t.Fatal("expected FileListResponse")
+		}
+		if listResp.RequestId != "req-list" {
+			t.Fatalf("expected 'req-list', got '%s'", listResp.RequestId)
+		}
+	default:
+		t.Fatal("expected response on sendCh for /tmp")
+	}
+}
+
+func TestHandleFileReadRequest(t *testing.T) {
+	// Create a temp file
+	tmpFile, err := os.CreateTemp("", "test-read-*.txt")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.WriteString("hello world")
+	tmpFile.Close()
+
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage_FileReadRequest{
+		FileReadRequest: &pb.FileReadRequest{
+			RequestId: "req-read",
+			Path:      tmpFile.Name(),
+			Offset:    0,
+			Limit:     100,
+		},
+	}
+	c.handleFileReadRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		readResp := resp.GetFileReadResponse()
+		if readResp == nil {
+			t.Fatal("expected FileReadResponse")
+		}
+		if readResp.RequestId != "req-read" {
+			t.Fatalf("expected 'req-read', got '%s'", readResp.RequestId)
+		}
+	default:
+		t.Fatal("expected response on sendCh")
+	}
+}
+
+func TestHandleFileUploadRequest(t *testing.T) {
+	dir := t.TempDir()
+	c := &Client{
+		tailSessions: make(map[string]chan struct{}),
+		dropzone:     newTestDropzone(dir),
+	}
+	sendCh := make(chan *pb.AgentMessage, 2)
+
+	// Send file upload with done=true (complete file in one chunk)
+	msg := &pb.HubMessage_FileUploadRequest{
+		FileUploadRequest: &pb.FileUploadRequest{
+			RequestId: "req-upload",
+			Filename:  "test.txt",
+			Chunk:     []byte("hello"),
+			Done:      true,
+		},
+	}
+	c.handleFileUploadRequest(msg, sendCh)
+
+	select {
+	case resp := <-sendCh:
+		ack := resp.GetFileUploadAck()
+		if ack == nil {
+			t.Fatal("expected FileUploadAck")
+		}
+		if !ack.Success {
+			t.Fatalf("expected success, got error: %s", ack.Error)
+		}
+	default:
+		t.Fatal("expected ack on sendCh")
+	}
+}
+
+func TestHandleLogStreamRequest(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 10)
+
+	// Create a temporary log file
+	tmpFile, err := os.CreateTemp("", "test-log-*.txt")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.WriteString("log line 1\n")
+	tmpFile.Close()
+
+	msg := &pb.HubMessage_LogStreamRequest{
+		LogStreamRequest: &pb.LogStreamRequest{
+			RequestId: "req-log",
+			Path:      tmpFile.Name(),
+			Grep:      "",
+			Offset:    0,
+		},
+	}
+	c.handleLogStreamRequest(msg, sendCh)
+
+	// Verify the session was created
+	if _, ok := c.tailSessions["req-log"]; !ok {
+		t.Fatal("expected tail session to be registered")
+	}
+
+	// Stop the session
+	stopMsg := &pb.HubMessage_LogStreamStop{
+		LogStreamStop: &pb.LogStreamStop{RequestId: "req-log"},
+	}
+	c.handleLogStreamStop(stopMsg)
+}
+
+func TestHandleMessage_FileList(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage{
+		Payload: &pb.HubMessage_FileListRequest{
+			FileListRequest: &pb.FileListRequest{
+				RequestId: "req-list",
+				Path:      "/tmp",
+			},
+		},
+	}
+	c.handleMessage(msg, sendCh)
+
+	select {
+	case <-sendCh:
+		// ok
+	default:
+		t.Fatal("expected response on sendCh")
+	}
+}
+
+func TestHandleMessage_FileDelete(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage{
+		Payload: &pb.HubMessage_FileDeleteRequest{
+			FileDeleteRequest: &pb.FileDeleteRequest{
+				RequestId: "req-del",
+				Path:      "/etc/not-allowed",
+			},
+		},
+	}
+	c.handleMessage(msg, sendCh)
+
+	select {
+	case <-sendCh:
+		// ok
+	default:
+		t.Fatal("expected response on sendCh")
+	}
+}
+
+func TestHandleMessage_LogStreamStop(t *testing.T) {
+	c := &Client{tailSessions: make(map[string]chan struct{})}
+	stop := make(chan struct{})
+	c.tailSessions["session-abc"] = stop
+	sendCh := make(chan *pb.AgentMessage, 1)
+
+	msg := &pb.HubMessage{
+		Payload: &pb.HubMessage_LogStreamStop{
+			LogStreamStop: &pb.LogStreamStop{RequestId: "session-abc"},
+		},
+	}
+	c.handleMessage(msg, sendCh)
+
+	select {
+	case <-stop:
+		// closed
+	default:
+		t.Fatal("expected stop channel to be closed")
+	}
+}
+
+func TestHandleMessage_Unregister(t *testing.T) {
+	c := &Client{
+		tailSessions: make(map[string]chan struct{}),
+		hubAddr:      "localhost:9090",
+	}
+	sendCh := make(chan *pb.AgentMessage, 2)
+
+	msg := &pb.HubMessage{
+		Payload: &pb.HubMessage_UnregisterRequest{
+			UnregisterRequest: &pb.UnregisterRequest{RequestId: "req-unreg"},
+		},
+	}
+	c.handleMessage(msg, sendCh)
+
+	select {
+	case <-sendCh:
+		// got ack
+	default:
+		t.Fatal("expected ack on sendCh")
 	}
 }
