@@ -58,57 +58,9 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	ch := s.pending.Register(requestID)
 	defer s.pending.Remove(requestID)
 
-	// Stream file in chunks
-	buf := make([]byte, uploadChunkSize)
-	isFirst := true
-	totalSize := int64(0)
-
-	for {
-		n, readErr := file.Read(buf)
-		if n > 0 {
-			totalSize += int64(n)
-			fname := ""
-			if isFirst {
-				fname = filename
-				isFirst = false
-			}
-
-			sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-				Payload: &pb.HubMessage_FileUploadRequest{
-					FileUploadRequest: &pb.FileUploadRequest{
-						RequestId: requestID,
-						Filename:  fname,
-						Chunk:     buf[:n],
-						Done:      false,
-					},
-				},
-			})
-			if sendErr != nil {
-				respondError(w, http.StatusBadGateway, "failed to send to agent")
-				return
-			}
-		}
-
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			respondError(w, http.StatusInternalServerError, "failed to read file")
-			return
-		}
-	}
-
-	// Send final "done" message
-	sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-		Payload: &pb.HubMessage_FileUploadRequest{
-			FileUploadRequest: &pb.FileUploadRequest{
-				RequestId: requestID,
-				Done:      true,
-			},
-		},
-	})
-	if sendErr != nil {
-		respondError(w, http.StatusBadGateway, "failed to send to agent")
+	totalSize, streamErr := s.streamFileToAgent(serverID, requestID, filename, file)
+	if streamErr != nil {
+		respondError(w, streamErr.statusCode, streamErr.message)
 		return
 	}
 
@@ -145,6 +97,67 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(uploadTimeout):
 		respondError(w, http.StatusGatewayTimeout, "upload timeout")
 	}
+}
+
+type uploadStreamError struct {
+	statusCode int
+	message    string
+}
+
+// streamFileToAgent sends the file contents to the agent in chunks, followed by a final "done"
+// message. It returns the total number of bytes sent, or an uploadStreamError on failure.
+func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io.Reader) (int64, *uploadStreamError) {
+	buf := make([]byte, uploadChunkSize)
+	isFirst := true
+	totalSize := int64(0)
+
+	for {
+		n, readErr := file.Read(buf)
+		if n > 0 {
+			totalSize += int64(n)
+			fname := ""
+			if isFirst {
+				fname = filename
+				isFirst = false
+			}
+
+			sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+				Payload: &pb.HubMessage_FileUploadRequest{
+					FileUploadRequest: &pb.FileUploadRequest{
+						RequestId: requestID,
+						Filename:  fname,
+						Chunk:     buf[:n],
+						Done:      false,
+					},
+				},
+			})
+			if sendErr != nil {
+				return 0, &uploadStreamError{http.StatusBadGateway, "failed to send to agent"}
+			}
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return 0, &uploadStreamError{http.StatusInternalServerError, "failed to read file"}
+		}
+	}
+
+	// Send final "done" message
+	sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+		Payload: &pb.HubMessage_FileUploadRequest{
+			FileUploadRequest: &pb.FileUploadRequest{
+				RequestId: requestID,
+				Done:      true,
+			},
+		},
+	})
+	if sendErr != nil {
+		return 0, &uploadStreamError{http.StatusBadGateway, "failed to send to agent"}
+	}
+
+	return totalSize, nil
 }
 
 func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request) {
