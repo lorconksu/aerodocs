@@ -278,15 +278,19 @@ func TestNewClient_DefaultValues(t *testing.T) {
 	}
 }
 
-// TestHandleFileListRequest_RootDir verifies listing the root directory.
+// TestHandleFileListRequest_RootDir verifies listing a directory.
 func TestHandleFileListRequest_RootDir(t *testing.T) {
 	c := &Client{tailSessions: make(map[string]chan struct{})}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
+	// Use t.TempDir() to avoid listing /tmp which can hang in CI
+	dir := t.TempDir()
+	os.WriteFile(dir+"/testfile.txt", []byte("hello"), 0644)
+
 	msg := &pb.HubMessage_FileListRequest{
 		FileListRequest: &pb.FileListRequest{
 			RequestId: "req-root",
-			Path:      "/tmp",
+			Path:      dir,
 		},
 	}
 	c.handleFileListRequest(msg, sendCh)
@@ -300,8 +304,11 @@ func TestHandleFileListRequest_RootDir(t *testing.T) {
 		if listResp.RequestId != "req-root" {
 			t.Fatalf("expected 'req-root', got '%s'", listResp.RequestId)
 		}
+		if len(listResp.Files) == 0 {
+			t.Fatal("expected at least one file in listing")
+		}
 	default:
-		t.Fatal("expected response on sendCh for /tmp")
+		t.Fatal("expected response on sendCh")
 	}
 }
 
