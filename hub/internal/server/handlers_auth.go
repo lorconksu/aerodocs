@@ -72,7 +72,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	setupToken, err := auth.GenerateSetupToken(s.jwtSecret, user.ID, string(user.Role))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to generate token")
+		respondError(w, http.StatusInternalServerError, errFailedToGenerateToken)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !user.TOTPEnabled {
 		setupToken, err := auth.GenerateSetupToken(s.jwtSecret, user.ID, string(user.Role))
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to generate token")
+			respondError(w, http.StatusInternalServerError, errFailedToGenerateToken)
 			return
 		}
 		respondJSON(w, http.StatusOK, model.LoginResponse{
@@ -126,7 +126,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// TOTP is enabled — require TOTP code
 	totpToken, err := auth.GenerateTOTPToken(s.jwtSecret, user.ID, string(user.Role))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to generate token")
+		respondError(w, http.StatusInternalServerError, errFailedToGenerateToken)
 		return
 	}
 
@@ -167,7 +167,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to generate tokens")
+		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, claims.Subject, claims.Role)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to generate tokens")
+		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
 	}
 
@@ -317,7 +317,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	// Generate full access tokens now that 2FA is enabled
 	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to generate tokens")
+		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
 	}
 

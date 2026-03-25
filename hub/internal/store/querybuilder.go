@@ -72,3 +72,12 @@ func (qb *queryBuilder) CountQuery(table string) (string, []interface{}) {
 	}
 	return q, qb.args
 }
+
+// BuildWhereClause returns just the WHERE clause (including the "WHERE" keyword)
+// and the args. Returns an empty string if there are no conditions.
+func (qb *queryBuilder) BuildWhereClause() (string, []interface{}) {
+	if len(qb.wheres) == 0 {
+		return "", qb.args
+	}
+	return " WHERE " + strings.Join(qb.wheres, " AND "), qb.args
+}

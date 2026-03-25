@@ -49,31 +49,37 @@ func Run(db *sql.DB) error {
 		if !strings.HasSuffix(entry.Name(), ".sql") || applied[entry.Name()] {
 			continue
 		}
-
-		content, err := fs.ReadFile(migrationFS, "migrations/"+entry.Name())
-		if err != nil {
-			return fmt.Errorf("read %s: %w", entry.Name(), err)
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			return fmt.Errorf("begin tx for %s: %w", entry.Name(), err)
-		}
-
-		if _, err := tx.Exec(string(content)); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("execute %s: %w", entry.Name(), err)
-		}
-
-		if _, err := tx.Exec("INSERT INTO _migrations (filename) VALUES (?)", entry.Name()); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("record %s: %w", entry.Name(), err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit %s: %w", entry.Name(), err)
+		if err := applyMigration(db, entry.Name()); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+func applyMigration(db *sql.DB, filename string) error {
+	content, err := fs.ReadFile(migrationFS, "migrations/"+filename)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", filename, err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx for %s: %w", filename, err)
+	}
+
+	if _, err := tx.Exec(string(content)); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("execute %s: %w", filename, err)
+	}
+
+	if _, err := tx.Exec("INSERT INTO _migrations (filename) VALUES (?)", filename); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("record %s: %w", filename, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit %s: %w", filename, err)
+	}
 	return nil
 }
