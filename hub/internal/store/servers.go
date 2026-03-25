@@ -78,30 +78,31 @@ func (s *Store) ListServers(filter model.ServerFilter) ([]model.Server, int, err
 }
 
 func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]model.Server, int, error) {
-	// JOIN with permissions table to restrict to user's servers.
-	// The join arg (userID) must precede any WHERE args, so we prepend it manually.
-	const joinClause = " INNER JOIN permissions p ON servers.id = p.server_id AND p.user_id = ?"
-
+	// Build WHERE conditions using queryBuilder for parameterized safety.
 	qb := newQueryBuilder("")
+	// The JOIN condition on user_id is the first WHERE-like arg.
+	qb.Where("p.user_id = ?", userID)
 	if filter.Status != nil {
 		qb.Where("servers.status = ?", *filter.Status)
 	}
 	if filter.Search != nil {
 		qb.Where("servers.name LIKE ?", "%"+*filter.Search+"%")
 	}
-	_, whereArgs := qb.Build()
 
-	// Prepend userID for the JOIN condition
-	allArgs := append([]interface{}{userID}, whereArgs...)
-
-	whereClause := ""
-	if len(qb.wheres) > 0 {
-		whereClause = " WHERE " + strings.Join(qb.wheres, " AND ")
+	// Build the WHERE clause and args via queryBuilder
+	_, allArgs := qb.Build()
+	whereClause, _ := qb.Build()
+	// Extract just the WHERE portion from the built query
+	whereSQL := ""
+	if idx := strings.Index(whereClause, " WHERE "); idx >= 0 {
+		whereSQL = whereClause[idx:]
 	}
+
+	const joinClause = " INNER JOIN permissions p ON servers.id = p.server_id"
 
 	// Get total count
 	var total int
-	countQuery := "SELECT COUNT(DISTINCT servers.id) FROM servers" + joinClause + whereClause
+	countQuery := "SELECT COUNT(DISTINCT servers.id) FROM servers" + joinClause + whereSQL
 	if err := s.db.QueryRow(countQuery, allArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count servers for user: %w", err)
 	}
@@ -111,7 +112,7 @@ func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]
 	                 servers.os, servers.status, servers.registration_token, servers.token_expires_at,
 	                 servers.agent_version, servers.labels, servers.last_seen_at,
 	                 servers.created_at, servers.updated_at
-	          FROM servers` + joinClause + whereClause + " ORDER BY servers.created_at DESC"
+	          FROM servers` + joinClause + whereSQL + " ORDER BY servers.created_at DESC"
 
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", filter.Limit)

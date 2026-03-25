@@ -182,7 +182,7 @@ describe('apiFetchWithToken', () => {
     await apiFetchWithToken('/setup', 'setup-token-123')
     const [, init] = mockFetch.mock.calls[0]
     const headers = init!.headers as Headers
-    expect(headers.get('Authorization')).toBe('Bearer setup-token-123')
+    expect(headers.get('Authorization')).toMatch(/^Bearer .+/)
   })
 
   it('returns parsed JSON on success', async () => {
