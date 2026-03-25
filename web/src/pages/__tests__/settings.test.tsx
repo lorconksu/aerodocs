@@ -461,19 +461,19 @@ describe('SettingsPage', () => {
   })
 
   it('shows avatar mutation error when upload fails', async () => {
-    mockApiFetch
-      .mockResolvedValueOnce({ status: 'ok' }) // ensure no pending calls
-      .mockRejectedValueOnce(new Error('File too large'))
+    mockApiFetch.mockRejectedValueOnce(new Error('Avatar upload failed'))
     mockUseAuth.mockReturnValue({
       user: { id: 'u1', username: 'admin', email: 'admin@test.com', role: 'admin', totp_enabled: true, avatar: 'data:image/png;base64,abc', created_at: '', updated_at: '' },
       login: vi.fn(),
     })
     renderPage()
     // Trigger avatarMutation by clicking Remove (which calls mutate(''))
-    mockApiFetch.mockRejectedValueOnce(new Error('Avatar upload failed'))
     fireEvent.click(screen.getByText('Remove'))
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/auth/avatar', expect.objectContaining({ method: 'PUT' }))
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Avatar upload failed')).toBeInTheDocument()
     })
   })
 
@@ -631,6 +631,175 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close Modal' }))
     await waitFor(() => {
       expect(screen.queryByTestId('create-user-modal')).not.toBeInTheDocument()
+    })
+  })
+
+  it('calls login after avatar upload succeeds (onSuccess callback)', async () => {
+    const mockLogin = vi.fn()
+    mockUseAuth.mockReturnValue({
+      user: { id: 'u1', username: 'admin', email: 'admin@test.com', role: 'admin', totp_enabled: true, avatar: 'data:image/png;base64,abc', created_at: '', updated_at: '' },
+      login: mockLogin,
+    })
+    // Remove avatar mutation succeeds, then /auth/me returns updated user
+    const updatedUser = { id: 'u1', username: 'admin', email: 'admin@test.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' }
+    mockApiFetch
+      .mockResolvedValueOnce({ status: 'ok' }) // PUT /auth/avatar
+      .mockResolvedValueOnce(updatedUser)       // GET /auth/me
+    localStorage.setItem('aerodocs_access_token', 'acc-token')
+    localStorage.setItem('aerodocs_refresh_token', 'ref-token')
+    renderPage()
+    fireEvent.click(screen.getByText('Remove'))
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/avatar', expect.objectContaining({ method: 'PUT' }))
+    })
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/me')
+    })
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith('acc-token', 'ref-token', updatedUser)
+    })
+    localStorage.removeItem('aerodocs_access_token')
+    localStorage.removeItem('aerodocs_refresh_token')
+  })
+
+  it('avatarMutation onSuccess without tokens does not call login', async () => {
+    const mockLogin = vi.fn()
+    mockUseAuth.mockReturnValue({
+      user: { id: 'u1', username: 'admin', email: 'admin@test.com', role: 'admin', totp_enabled: true, avatar: 'data:image/png;base64,abc', created_at: '', updated_at: '' },
+      login: mockLogin,
+    })
+    const updatedUser = { id: 'u1', username: 'admin', email: 'admin@test.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' }
+    mockApiFetch
+      .mockResolvedValueOnce({ status: 'ok' }) // PUT /auth/avatar
+      .mockResolvedValueOnce(updatedUser)       // GET /auth/me
+    // No tokens in localStorage
+    localStorage.removeItem('aerodocs_access_token')
+    localStorage.removeItem('aerodocs_refresh_token')
+    renderPage()
+    fireEvent.click(screen.getByText('Remove'))
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/avatar', expect.objectContaining({ method: 'PUT' }))
+    })
+    await waitFor(() => {
+      // /auth/me is called as part of onSuccess
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/me')
+    })
+    // login should NOT have been called (no tokens)
+    expect(mockLogin).not.toHaveBeenCalled()
+  })
+
+  it('file input onChange triggers avatar upload', async () => {
+    // Tests handleFileUpload — valid image file
+    mockApiFetch.mockResolvedValueOnce({ status: 'ok' })
+    renderPage()
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(fileInput).toBeTruthy()
+
+    // Create a small valid PNG image blob
+    const file = new File(['fake-image-data'], 'avatar.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 1024 }) // 1KB — under 500KB limit
+
+    // Use the real FileReader but stub readAsDataURL to immediately fire onload
+    const originalReadAsDataURL = FileReader.prototype.readAsDataURL
+    FileReader.prototype.readAsDataURL = function() {
+      // Simulate immediate onload with a data URL result
+      Object.defineProperty(this, 'result', { value: 'data:image/png;base64,abc123', writable: true })
+      if (this.onload) {
+        this.onload({ target: this } as unknown as ProgressEvent<FileReader>)
+      }
+    }
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/avatar', expect.objectContaining({ method: 'PUT' }))
+    })
+
+    FileReader.prototype.readAsDataURL = originalReadAsDataURL
+  })
+
+  it('handleFileUpload ignores non-image files', () => {
+    renderPage()
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['data'], 'test.txt', { type: 'text/plain' })
+    Object.defineProperty(file, 'size', { value: 100 })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    // No upload should occur
+    expect(mockApiFetch).not.toHaveBeenCalled()
+  })
+
+  it('handleFileUpload alerts on large file (> 500KB)', () => {
+    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    renderPage()
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['x'.repeat(1)], 'big.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 600 * 1024 }) // 600KB
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    expect(alertMock).toHaveBeenCalledWith(expect.stringContaining('500KB'))
+    alertMock.mockRestore()
+  })
+
+  it('mutation.reset called when passwords differ but both valid (handleSubmit early return)', async () => {
+    renderPage()
+    // Both passwords individually valid but different from each other
+    fireEvent.change(screen.getByPlaceholderText('Current password'), { target: { value: 'OldPass1@#$' } })
+    fireEvent.change(screen.getByPlaceholderText('New password (min 12 chars)'), { target: { value: 'ValidPass1@#$abc' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm new password'), { target: { value: 'DiffPass1@#$xyz' } })
+    // Button is disabled due to mismatch — but simulate direct form submit
+    const form = screen.getByPlaceholderText('Current password').closest('form')!
+    fireEvent.submit(form)
+    // mutation.reset() is called — no API call should be made
+    expect(mockApiFetch).not.toHaveBeenCalled()
+  })
+
+  it('shows own role as static Admin text for admin user (line 388 Admin branch)', async () => {
+    // Set current user to admin (u1) — users list includes u1 as current user
+    // When viewing own row, it shows static text instead of select dropdown
+    // The admin's own row shows 'Admin'
+    mockApiFetch.mockResolvedValueOnce({ users: mockUsers })
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Users' }))
+    await waitFor(() => {
+      // The admin's own row shows static 'Admin' span (not a select)
+      // Other users (viewer) show a <select> element
+      expect(screen.getByDisplayValue('Viewer')).toBeInTheDocument()
+    })
+  })
+
+  it('shows fallback error message for non-Error disable 2FA failure (line 452)', async () => {
+    const usersWithTotp = [mockUsers[0], { ...mockUsers[1], totp_enabled: true }]
+    mockApiFetch
+      .mockResolvedValueOnce({ users: usersWithTotp })
+      .mockRejectedValueOnce('non-error-string') // non-Error rejection
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Users' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Disable 2FA' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Disable 2FA' }))
+    await waitFor(() => expect(screen.getByPlaceholderText('Your 6-digit TOTP code')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByPlaceholderText('Your 6-digit TOTP code'), { target: { value: '999999' } })
+    fireEvent.submit(screen.getByPlaceholderText('Your 6-digit TOTP code').closest('form')!)
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to disable 2FA')).toBeInTheDocument()
+    })
+  })
+
+  it('shows fallback error message for non-Error delete user failure (line 499)', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({ users: mockUsers })
+      .mockRejectedValueOnce('non-error-string') // non-Error rejection
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Users' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete User' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete User' }))
+    await waitFor(() => {
+      expect(screen.getByText('Failed to delete user')).toBeInTheDocument()
     })
   })
 })

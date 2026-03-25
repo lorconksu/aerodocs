@@ -137,4 +137,26 @@ describe('LoginTOTPPage', () => {
       expect(screen.getByText('Verification failed')).toBeInTheDocument()
     })
   })
+
+  it('onClick handler on Verify button calls submitCode (line 65)', async () => {
+    // When totpToken is present and digits are filled, the button onClick triggers submitCode
+    const authResponse = {
+      access_token: 'acc',
+      refresh_token: 'ref',
+      user: { id: '1', username: 'admin', email: 'a@b.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' },
+    }
+    mockApiFetch.mockResolvedValueOnce(authResponse)
+    renderPage()
+
+    const inputs = screen.getAllByRole('textbox')
+    inputs.forEach((input, i) => {
+      fireEvent.change(input, { target: { value: String(i + 1) } })
+    })
+
+    // Click via onClick prop (button onClick, not via keyboard)
+    fireEvent.click(screen.getByRole('button', { name: /verify/i }))
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/login/totp', expect.objectContaining({ method: 'POST' }))
+    })
+  })
 })

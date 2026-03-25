@@ -352,4 +352,81 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Add Server')).toBeInTheDocument()
     })
   })
+
+  it('shows hours ago for server last seen 2 hours ago (dashboard relativeTime line 22-23)', async () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    const server = { ...mockServers[0], last_seen_at: twoHoursAgo, status: 'offline' }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText(/\d+h ago/)).toBeInTheDocument()
+    })
+  })
+
+  it('shows days ago for server last seen 3 days ago (dashboard relativeTime line 23-24)', async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+    const server = { ...mockServers[0], last_seen_at: threeDaysAgo, status: 'offline' }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText(/\d+d ago/)).toBeInTheDocument()
+    })
+  })
+
+  it('shows — for relativeTime when last_seen_at is null (line 11)', async () => {
+    // Non-pending server with null last_seen_at triggers relativeTime(null) -> '—'
+    const server = { ...mockServers[0], status: 'offline', last_seen_at: null }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      // '—' character should appear for the null last_seen_at
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    })
+  })
+
+  it('shows relativeTime with non-Z timestamp (line 13 false branch)', async () => {
+    // Timestamp without 'Z' suffix to trigger the normalization branch
+    const rawTimestamp = new Date(Date.now() - 30000).toISOString().replace('Z', '')
+    const server = { ...mockServers[0], status: 'offline', last_seen_at: rawTimestamp }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      // Should parse and show a time ago value
+      expect(screen.getByText(/ago/)).toBeInTheDocument()
+    })
+  })
+
+  it('shows — / ip when hostname is null but ip exists (line 234 null-coalescing)', async () => {
+    const server = { ...mockServers[0], hostname: null, ip_address: '10.0.0.1' }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('— / 10.0.0.1')).toBeInTheDocument()
+    })
+  })
+
+  it('toggles individual row checkbox selection and deselection (line 81)', async () => {
+    mockApiFetch.mockResolvedValue({ servers: mockServers, total: 3 })
+    renderPage()
+    await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1))
+
+    const checkboxes = screen.getAllByRole('checkbox')
+    // Select the first row
+    fireEvent.click(checkboxes[1])
+    await waitFor(() => expect(screen.getByText('1 selected')).toBeInTheDocument())
+
+    // Deselect it (triggers the next.has(id) -> next.delete(id) branch on line 81)
+    fireEvent.click(checkboxes[1])
+    await waitFor(() => expect(screen.queryByText('1 selected')).not.toBeInTheDocument())
+  })
+
+  it('shows minutes ago for relativeTime (line 20 true branch)', async () => {
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const server = { ...mockServers[0], status: 'offline', last_seen_at: fiveMinAgo }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText(/\d+ min ago/)).toBeInTheDocument()
+    })
+  })
 })
