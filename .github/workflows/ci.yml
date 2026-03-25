@@ -28,6 +28,9 @@ jobs:
       - name: TypeScript check
         run: cd web && npx tsc --noEmit
 
+      - name: Frontend tests with coverage
+        run: cd web && npx vitest run --coverage
+
       - name: Hub tests with coverage
         run: cd hub && go test ./internal/... -coverprofile=../coverage-hub.out -covermode=atomic
 
