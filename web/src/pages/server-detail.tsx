@@ -54,7 +54,6 @@ import { statusDot } from '@/lib/server-utils'
 import { useAuth } from '@/hooks/use-auth'
 import type {
   Server,
-  ServerStatus,
   FileNode,
   FileListResponse,
   FileReadResponse,
