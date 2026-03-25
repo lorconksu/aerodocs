@@ -132,7 +132,7 @@ function MermaidDiagram({ chart }: { chart: string }) {
   const [error, setError] = useState<string>('')
 
   useEffect(() => {
-    const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`
+    const id = `mermaid-${crypto.randomUUID()}`
     mermaid
       .render(id, chart)
       .then((result) => setSvg(result.svg))
@@ -643,6 +643,15 @@ function DropzoneUpload({ serverId }: { serverId: string }) {
         <div className="border-t border-border px-4 py-3 space-y-4">
           {/* Drag-and-drop area */}
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Upload files by clicking or dragging"
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && !uploading) {
+                e.preventDefault()
+                fileInputRef.current?.click()
+              }
+            }}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
