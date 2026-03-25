@@ -1,0 +1,13 @@
+services:
+  aerodocs:
+    image: lorconksu/aerodocs:latest
+    container_name: aerodocs
+    ports:
+      - "8081:8081"
+      - "9090:9090"
+    volumes:
+      - aerodocs-data:/data
+    restart: unless-stopped
+
+volumes:
+  aerodocs-data:
