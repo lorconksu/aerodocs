@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiFetch } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import type { LoginTOTPRequest, AuthResponse } from '@/types/api'
+import { useTOTPDigits, TOTPDigitInput } from '@/components/totp-digit-input'
 
 export function LoginTOTPPage() {
   const navigate = useNavigate()
@@ -10,51 +11,8 @@ export function LoginTOTPPage() {
   const { login } = useAuth()
   const totpToken = (location.state as { totpToken?: string })?.totpToken
 
-  const [digits, setDigits] = useState(['', '', '', '', '', ''])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
-
-  useEffect(() => {
-    if (!totpToken) navigate('/login')
-  }, [totpToken, navigate])
-
-  const handleDigitChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return
-
-    const newDigits = [...digits]
-    newDigits[index] = value.slice(-1)
-    setDigits(newDigits)
-
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus()
-    }
-
-    // Auto-submit when all 6 digits entered
-    if (newDigits.every(Boolean) && index === 5) {
-      submitCode(newDigits.join(''))
-    }
-  }
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault()
-    const pasted = e.clipboardData.getData('text').replaceAll(/\D/g, '').slice(0, 6)
-    if (!pasted) return
-    const newDigits = [...digits]
-    for (let i = 0; i < pasted.length; i++) {
-      newDigits[i] = pasted[i]
-    }
-    setDigits(newDigits)
-    const nextEmpty = pasted.length < 6 ? pasted.length : 5
-    inputRefs.current[nextEmpty]?.focus()
-    if (newDigits.every(Boolean)) submitCode(newDigits.join(''))
-  }
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !digits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus()
-    }
-  }
 
   const submitCode = async (code: string) => {
     if (!totpToken) return
@@ -71,12 +29,17 @@ export function LoginTOTPPage() {
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')
-      setDigits(['', '', '', '', '', ''])
-      inputRefs.current[0]?.focus()
+      reset()
     } finally {
       setLoading(false)
     }
   }
+
+  const { digits, inputRefs, handleDigitChange, handlePaste, handleKeyDown, reset } = useTOTPDigits(submitCode)
+
+  useEffect(() => {
+    if (!totpToken) navigate('/login')
+  }, [totpToken, navigate])
 
   return (
     <div>
@@ -89,24 +52,14 @@ export function LoginTOTPPage() {
         </div>
       )}
 
-      <div className="flex gap-2 justify-center mb-4">
-        {digits.map((digit, i) => (
-          <input
-            key={`digit-${i}`}
-            ref={el => { inputRefs.current[i] = el }}
-            type="text"
-            inputMode="numeric"
-            maxLength={1}
-            value={digit}
-            onChange={(e) => handleDigitChange(i, e.target.value)}
-            onKeyDown={(e) => handleKeyDown(i, e)}
-            onPaste={handlePaste}
-            className="w-10 h-12 bg-elevated border border-border rounded text-center text-lg font-mono text-text-primary focus:outline-none focus:border-accent"
-            autoFocus={i === 0}
-            disabled={loading}
-          />
-        ))}
-      </div>
+      <TOTPDigitInput
+        digits={digits}
+        inputRefs={inputRefs}
+        handleDigitChange={handleDigitChange}
+        handlePaste={handlePaste}
+        handleKeyDown={handleKeyDown}
+        disabled={loading}
+      />
 
       <button
         onClick={() => submitCode(digits.join(''))}
