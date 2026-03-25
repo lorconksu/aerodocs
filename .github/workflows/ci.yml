@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: hub/go.mod
+          cache-dependency-path: |
+            hub/go.sum
+            agent/go.sum
 
       - uses: actions/setup-node@v4
         with:
