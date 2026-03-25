@@ -350,16 +350,16 @@ function FileTreeNode({
     )
   }
 
+  function fileNodeClass(): string {
+    if (isSelected) return 'bg-accent/15 text-accent'
+    if (node.readable) return 'text-text-secondary hover:bg-elevated/80'
+    return 'text-text-faint cursor-not-allowed'
+  }
+
   return (
     <button
       onClick={() => node.readable && onSelectFile(node)}
-      className={`w-full flex items-center gap-1 px-2 py-1 text-sm transition-colors text-left ${
-        isSelected
-          ? 'bg-accent/15 text-accent'
-          : node.readable
-            ? 'text-text-secondary hover:bg-elevated/80'
-            : 'text-text-faint cursor-not-allowed'
-      }`}
+      className={`w-full flex items-center gap-1 px-2 py-1 text-sm transition-colors text-left ${fileNodeClass()}`}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       disabled={!node.readable}
       title={!node.readable ? 'File not readable' : undefined}
@@ -658,21 +658,15 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
       {expanded && (
         <div className="border-t border-border px-4 py-3 space-y-4">
           {/* Drag-and-drop area */}
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             aria-label="Upload files by clicking or dragging"
-            onKeyDown={(e) => {
-              if ((e.key === 'Enter' || e.key === ' ') && !uploading) {
-                e.preventDefault()
-                fileInputRef.current?.click()
-              }
-            }}
+            disabled={uploading}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onClick={() => !uploading && fileInputRef.current?.click()}
-            className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg px-6 py-8 cursor-pointer transition-colors ${
+            className={`w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg px-6 py-8 cursor-pointer transition-colors ${
               dragOver
                 ? 'border-accent bg-accent/10 text-accent'
                 : 'border-border hover:border-accent/50 text-text-muted hover:text-text-secondary'
@@ -696,7 +690,7 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
                 <span className="text-sm">Drop files here or click to browse</span>
               </>
             )}
-          </div>
+          </button>
 
           {/* Upload result feedback */}
           {uploadResult && !uploading && (
@@ -878,7 +872,8 @@ function LiveTail({
   filePath,
   onStop,
 }: Readonly<LiveTailProps>) {
-  const [lines, setLines] = useState<string[]>([])
+  const lineCounterRef = useRef(0)
+  const [lines, setLines] = useState<{ id: number; text: string }[]>([])
   const [grep, setGrep] = useState('')
   const [grepInput, setGrepInput] = useState('')
   const [status, setStatus] = useState<LiveTailStatus>('connecting')
@@ -920,6 +915,48 @@ function LiveTail({
     setError(null)
     setLines([])
 
+    function parseSseChunk(sseLines: string[]): string[] {
+      const newLogLines: string[] = []
+      for (const sseLine of sseLines) {
+        if (!sseLine.startsWith('data: ')) continue
+        const base64Data = sseLine.slice(6)
+        if (!base64Data) continue
+        try {
+          const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
+          const text = new TextDecoder('utf-8').decode(bytes)
+          for (const dl of text.split('\n')) {
+            if (dl !== '') newLogLines.push(dl)
+          }
+        } catch {
+          // Skip malformed base64 chunks
+        }
+      }
+      return newLogLines
+    }
+
+    async function readStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
+      const decoder = new TextDecoder()
+      let sseBuffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        sseBuffer += decoder.decode(value, { stream: true })
+        const sseLines = sseBuffer.split('\n')
+        sseBuffer = sseLines.pop() || ''
+
+        const newLogLines = parseSseChunk(sseLines)
+        if (newLogLines.length > 0) {
+          setLines((prev) => {
+            const newEntries = newLogLines.map((text) => ({ id: lineCounterRef.current++, text }))
+            const combined = [...prev, ...newEntries]
+            return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
+          })
+        }
+      }
+    }
+
     async function startStream(signal: AbortSignal) {
       try {
         const token = getAccessToken()
@@ -927,9 +964,7 @@ function LiveTail({
         if (grep) params.set('grep', grep)
 
         const response = await fetch(`/api/servers/${serverId}/logs/tail?${params.toString()}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+          headers: { 'Authorization': `Bearer ${token}` },
           signal,
         })
 
@@ -941,49 +976,9 @@ function LiveTail({
         setStatus('streaming')
 
         const reader = response.body?.getReader()
-        if (!reader) {
-          throw new Error('Response body is not readable')
-        }
+        if (!reader) throw new Error('Response body is not readable')
 
-        const decoder = new TextDecoder()
-        let sseBuffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          sseBuffer += decoder.decode(value, { stream: true })
-
-          // Parse SSE events from buffer
-          const sseLines = sseBuffer.split('\n')
-          sseBuffer = sseLines.pop() || '' // keep incomplete line
-
-          const newLogLines: string[] = []
-          for (const sseLine of sseLines) {
-            if (sseLine.startsWith('data: ')) {
-              const base64Data = sseLine.slice(6)
-              if (!base64Data) continue
-              try {
-                const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
-                const text = new TextDecoder('utf-8').decode(bytes)
-                // Split decoded text into individual lines
-                const decoded = text.split('\n')
-                for (const dl of decoded) {
-                  if (dl !== '') newLogLines.push(dl)
-                }
-              } catch {
-                // Skip malformed base64 chunks
-              }
-            }
-          }
-
-          if (newLogLines.length > 0) {
-            setLines((prev) => {
-              const combined = [...prev, ...newLogLines]
-              return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
-            })
-          }
-        }
+        await readStream(reader)
 
         // Stream ended normally
         setStatus('disconnected')
@@ -1079,9 +1074,9 @@ function LiveTail({
         )}
         {lines.length > 0 && (
           <pre className="p-3 text-xs font-mono leading-5 whitespace-pre-wrap break-all">
-            {lines.map((line, i) => (
-              <div key={`line-${i}`} className="text-emerald-400/90 hover:bg-white/5">
-                {line}
+            {lines.map((line) => (
+              <div key={line.id} className="text-emerald-400/90 hover:bg-white/5">
+                {line.text}
               </div>
             ))}
             <div ref={bottomRef} />

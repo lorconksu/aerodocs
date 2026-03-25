@@ -67,6 +67,30 @@ export function AddServerModal({ onClose }: Readonly<AddServerModalProps>) {
 
   const canClose = !result || isOnline || timedOut
 
+  function renderAgentStatus() {
+    if (isOnline) {
+      return (
+        <>
+          <CheckCircle2 className="w-4 h-4 text-status-online" />
+          <span className="text-status-online">Agent connected!</span>
+        </>
+      )
+    }
+    if (timedOut) {
+      return (
+        <p className="text-status-warning text-xs">
+          Agent hasn&apos;t connected yet. Check the install command output for errors.
+        </p>
+      )
+    }
+    return (
+      <>
+        <Loader2 className="w-4 h-4 text-text-muted animate-spin" />
+        <span className="text-text-muted">Waiting for agent to connect...</span>
+      </>
+    )
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-surface border border-border rounded-lg w-full max-w-lg mx-4 p-6">
@@ -134,21 +158,7 @@ export function AddServerModal({ onClose }: Readonly<AddServerModalProps>) {
 
             {/* Status indicator */}
             <div className="mt-4 flex items-center gap-2 text-sm">
-              {isOnline ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-status-online" />
-                  <span className="text-status-online">Agent connected!</span>
-                </>
-              ) : timedOut ? (
-                <p className="text-status-warning text-xs">
-                  Agent hasn't connected yet. Check the install command output for errors.
-                </p>
-              ) : (
-                <>
-                  <Loader2 className="w-4 h-4 text-text-muted animate-spin" />
-                  <span className="text-text-muted">Waiting for agent to connect...</span>
-                </>
-              )}
+              {renderAgentStatus()}
             </div>
 
             <div className="flex justify-end mt-4">

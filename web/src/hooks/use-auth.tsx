@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { apiFetch } from '@/lib/api'
 import { getAccessToken, setTokens, clearTokens } from '@/lib/auth'
 import type { User } from '@/types/api'
@@ -40,14 +40,16 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setUser(null)
   }, [])
 
+  const contextValue = useMemo(() => ({
+    user,
+    isLoading,
+    isAuthenticated: !!user,
+    login,
+    logout,
+  }), [user, isLoading, login, logout])
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      isLoading,
-      isAuthenticated: !!user,
-      login,
-      logout,
-    }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   )
