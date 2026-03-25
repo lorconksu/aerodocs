@@ -26,61 +26,9 @@ type Handler struct {
 }
 
 func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
-	msg, err := stream.Recv()
+	serverID, err := h.performHandshake(stream)
 	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "failed to receive first message: %v", err)
-	}
-
-	var serverID string
-
-	switch p := msg.Payload.(type) {
-	case *pb.AgentMessage_Register:
-		serverID, err = h.handleRegister(
-			p.Register.Token,
-			p.Register.Hostname,
-			p.Register.IpAddress,
-			p.Register.Os,
-			p.Register.AgentVersion,
-		)
-		if err != nil {
-			_ = stream.Send(&pb.HubMessage{
-				Payload: &pb.HubMessage_RegisterAck{
-					RegisterAck: &pb.RegisterAck{
-						Success: false,
-						Error:   err.Error(),
-					},
-				},
-			})
-			return status.Errorf(codes.Unauthenticated, "registration failed: %v", err)
-		}
-		if err := stream.Send(&pb.HubMessage{
-			Payload: &pb.HubMessage_RegisterAck{
-				RegisterAck: &pb.RegisterAck{
-					Success:  true,
-					ServerId: serverID,
-				},
-			},
-		}); err != nil {
-			return status.Errorf(codes.Internal, "failed to send register ack: %v", err)
-		}
-
-	case *pb.AgentMessage_Heartbeat:
-		serverID = p.Heartbeat.ServerId
-		if err := h.handleHeartbeat(serverID); err != nil {
-			return status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
-		}
-		if err := stream.Send(&pb.HubMessage{
-			Payload: &pb.HubMessage_HeartbeatAck{
-				HeartbeatAck: &pb.HeartbeatAck{
-					Timestamp: time.Now().Unix(),
-				},
-			},
-		}); err != nil {
-			return status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
-		}
-
-	default:
-		return status.Errorf(codes.InvalidArgument, "first message must be Register or Heartbeat")
+		return err
 	}
 
 	h.connMgr.Register(serverID, stream)
@@ -118,6 +66,58 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 			return err
 		}
 	}
+}
+
+// performHandshake receives the first message from the agent, handles registration or
+// reconnect-via-heartbeat, sends the appropriate ack, and returns the server ID.
+func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string, error) {
+	msg, err := stream.Recv()
+	if err != nil {
+		return "", status.Errorf(codes.InvalidArgument, "failed to receive first message: %v", err)
+	}
+
+	switch p := msg.Payload.(type) {
+	case *pb.AgentMessage_Register:
+		return h.performRegisterHandshake(stream, p.Register)
+	case *pb.AgentMessage_Heartbeat:
+		return h.performHeartbeatHandshake(stream, p.Heartbeat.ServerId)
+	default:
+		return "", status.Errorf(codes.InvalidArgument, "first message must be Register or Heartbeat")
+	}
+}
+
+func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent) (string, error) {
+	serverID, err := h.handleRegister(reg.Token, reg.Hostname, reg.IpAddress, reg.Os, reg.AgentVersion)
+	if err != nil {
+		_ = stream.Send(&pb.HubMessage{
+			Payload: &pb.HubMessage_RegisterAck{
+				RegisterAck: &pb.RegisterAck{Success: false, Error: err.Error()},
+			},
+		})
+		return "", status.Errorf(codes.Unauthenticated, "registration failed: %v", err)
+	}
+	if err := stream.Send(&pb.HubMessage{
+		Payload: &pb.HubMessage_RegisterAck{
+			RegisterAck: &pb.RegisterAck{Success: true, ServerId: serverID},
+		},
+	}); err != nil {
+		return "", status.Errorf(codes.Internal, "failed to send register ack: %v", err)
+	}
+	return serverID, nil
+}
+
+func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, serverID string) (string, error) {
+	if err := h.handleHeartbeat(serverID); err != nil {
+		return "", status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
+	}
+	if err := stream.Send(&pb.HubMessage{
+		Payload: &pb.HubMessage_HeartbeatAck{
+			HeartbeatAck: &pb.HeartbeatAck{Timestamp: time.Now().Unix()},
+		},
+	}); err != nil {
+		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
+	}
+	return serverID, nil
 }
 
 // routeAgentMessage dispatches an incoming agent message to the appropriate handler.

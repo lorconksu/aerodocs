@@ -57,6 +57,8 @@ type TOTPDigitInputProps = Readonly<{
   disabled?: boolean
 }>
 
+const DIGIT_POSITIONS = [0, 1, 2, 3, 4, 5] as const
+
 export function TOTPDigitInput({
   digits,
   inputRefs,
@@ -67,19 +69,19 @@ export function TOTPDigitInput({
 }: TOTPDigitInputProps) {
   return (
     <div className="flex gap-2 justify-center mb-4">
-      {digits.map((digit, i) => (
+      {DIGIT_POSITIONS.map((position) => (
         <input
-          key={`digit-${i}`}
-          ref={el => { inputRefs.current[i] = el }}
+          key={position}
+          ref={el => { inputRefs.current[position] = el }}
           type="text"
           inputMode="numeric"
           maxLength={1}
-          value={digit}
-          onChange={(e) => handleDigitChange(i, e.target.value)}
-          onKeyDown={(e) => handleKeyDown(i, e)}
+          value={digits[position]}
+          onChange={(e) => handleDigitChange(position, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(position, e)}
           onPaste={handlePaste}
           className="w-10 h-12 bg-elevated border border-border rounded text-center text-lg font-mono text-text-primary focus:outline-none focus:border-accent"
-          autoFocus={i === 0}
+          autoFocus={position === 0}
           disabled={disabled}
         />
       ))}

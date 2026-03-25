@@ -89,14 +89,8 @@ func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]
 		qb.Where("servers.name LIKE ?", "%"+*filter.Search+"%")
 	}
 
-	// Build the WHERE clause and args via queryBuilder
-	_, allArgs := qb.Build()
-	whereClause, _ := qb.Build()
-	// Extract just the WHERE portion from the built query
-	whereSQL := ""
-	if idx := strings.Index(whereClause, " WHERE "); idx >= 0 {
-		whereSQL = whereClause[idx:]
-	}
+	// Build the WHERE clause using BuildWhereClause to avoid string concatenation hotspot.
+	whereSQL, allArgs := qb.BuildWhereClause()
 
 	const joinClause = " INNER JOIN permissions p ON servers.id = p.server_id"
 
