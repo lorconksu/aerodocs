@@ -43,13 +43,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check agent connected
-	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
-		return
-	}
-	conn := s.connMgr.GetConn(serverID)
-	if conn == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+	if _, ok := s.requireAgent(w, r); !ok {
 		return
 	}
 
@@ -161,103 +155,73 @@ func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io
 }
 
 func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request) {
-	serverID := r.PathValue("id")
 	filename := r.URL.Query().Get("filename")
 	if filename == "" {
 		respondError(w, http.StatusBadRequest, "filename is required")
 		return
 	}
 
-	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+	serverID, ok := s.requireAgent(w, r)
+	if !ok {
 		return
 	}
-	conn := s.connMgr.GetConn(serverID)
-	if conn == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
-		return
-	}
-
-	requestID := uuid.NewString()
-	ch := s.pending.Register(requestID)
-	defer s.pending.Remove(requestID)
 
 	path := "/tmp/aerodocs-dropzone/" + filename
-	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-		Payload: &pb.HubMessage_FileDeleteRequest{
-			FileDeleteRequest: &pb.FileDeleteRequest{
-				RequestId: requestID,
-				Path:      path,
+	raw := s.sendAgentRequest(w, serverID, func(requestID string) *pb.HubMessage {
+		return &pb.HubMessage{
+			Payload: &pb.HubMessage_FileDeleteRequest{
+				FileDeleteRequest: &pb.FileDeleteRequest{
+					RequestId: requestID,
+					Path:      path,
+				},
 			},
-		},
-	})
-	if err != nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		}
+	}, agentTimeoutDuration)
+	if raw == nil {
 		return
 	}
 
-	select {
-	case msg := <-ch:
-		resp, ok := msg.(*pb.FileDeleteResponse)
-		if !ok {
-			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
-			return
-		}
-		if !resp.Success {
-			respondError(w, http.StatusInternalServerError, resp.Error)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	case <-time.After(10 * time.Second):
-		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	resp, ok := raw.(*pb.FileDeleteResponse)
+	if !ok {
+		respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
+		return
 	}
+	if !resp.Success {
+		respondError(w, http.StatusInternalServerError, resp.Error)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
-	serverID := r.PathValue("id")
-
-	// Check agent connected
-	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
-		return
-	}
-	conn := s.connMgr.GetConn(serverID)
-	if conn == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+	serverID, ok := s.requireAgent(w, r)
+	if !ok {
 		return
 	}
 
-	requestID := uuid.NewString()
-	ch := s.pending.Register(requestID)
-	defer s.pending.Remove(requestID)
-
-	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-		Payload: &pb.HubMessage_FileListRequest{
-			FileListRequest: &pb.FileListRequest{
-				RequestId: requestID,
-				Path:      "/tmp/aerodocs-dropzone",
+	raw := s.sendAgentRequest(w, serverID, func(requestID string) *pb.HubMessage {
+		return &pb.HubMessage{
+			Payload: &pb.HubMessage_FileListRequest{
+				FileListRequest: &pb.FileListRequest{
+					RequestId: requestID,
+					Path:      "/tmp/aerodocs-dropzone",
+				},
 			},
-		},
-	})
-	if err != nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		}
+	}, agentTimeoutDuration)
+	if raw == nil {
 		return
 	}
 
-	select {
-	case msg := <-ch:
-		resp, ok := msg.(*pb.FileListResponse)
-		if !ok {
-			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
-			return
-		}
-		if resp.Error != "" {
-			// Dropzone dir may not exist yet — return empty list
-			respondJSON(w, http.StatusOK, map[string]interface{}{"files": []interface{}{}})
-			return
-		}
-		respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
-	case <-time.After(10 * time.Second):
-		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	resp, ok := raw.(*pb.FileListResponse)
+	if !ok {
+		respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
+		return
 	}
+	if resp.Error != "" {
+		// Dropzone dir may not exist yet — return empty list
+		respondJSON(w, http.StatusOK, map[string]interface{}{"files": []interface{}{}})
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
 }
