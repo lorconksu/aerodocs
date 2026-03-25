@@ -63,8 +63,14 @@ jobs:
           cache-dependency-path: |
             hub/go.sum
             agent/go.sum
-      - name: Integration tests
-        run: cd hub && go test ./internal/integration/ -v -timeout 120s
+      - name: Integration tests with coverage
+        run: cd hub && go test ./internal/integration/ -v -timeout 120s -coverprofile=../coverage-integration.out -covermode=atomic -coverpkg=./internal/...
+
+      - name: Upload integration coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration
+          path: coverage-integration.out
 
   smoke:
     needs: test
@@ -103,7 +109,7 @@ jobs:
           path: tests/e2e/test-results/
 
   sonarcloud:
-    needs: test
+    needs: [test, integration]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,6 +119,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: coverage
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-integration
 
       - uses: SonarSource/sonarqube-scan-action@v6
         env:
