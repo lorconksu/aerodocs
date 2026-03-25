@@ -1,0 +1,47 @@
+package server
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
+)
+
+// requireAgent checks agent connectivity and returns the server ID.
+// Returns ("", false) if the response has been written with an error.
+func (s *Server) requireAgent(w http.ResponseWriter, r *http.Request) (string, bool) {
+	serverID := r.PathValue("id")
+	if s.connMgr == nil {
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		return "", false
+	}
+	if s.connMgr.GetConn(serverID) == nil {
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		return "", false
+	}
+	return serverID, true
+}
+
+// sendAgentRequest generates a request ID, registers a pending channel, builds the message
+// via buildMsg, sends it to the agent, and waits up to timeout for a response.
+// Returns the raw response interface{}, or writes an error and returns nil.
+func (s *Server) sendAgentRequest(w http.ResponseWriter, serverID string, buildMsg func(requestID string) *pb.HubMessage, timeout time.Duration) interface{} {
+	requestID := uuid.NewString()
+	ch := s.pending.Register(requestID)
+	defer s.pending.Remove(requestID)
+
+	msg := buildMsg(requestID)
+	if err := s.connMgr.SendToAgent(serverID, msg); err != nil {
+		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		return nil
+	}
+
+	select {
+	case resp := <-ch:
+		return resp
+	case <-time.After(timeout):
+		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+		return nil
+	}
+}
