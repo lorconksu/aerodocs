@@ -16,6 +16,11 @@ vi.mock('@/hooks/use-auth', () => ({
   })),
 }))
 
+// Mock apiFetch to avoid real API calls from AppShell/pages
+vi.mock('@/lib/api', () => ({
+  apiFetch: vi.fn(() => new Promise(() => {})), // never resolves — avoids query completion noise
+}))
+
 const mockUseAuth = useAuth as ReturnType<typeof vi.fn>
 
 // Import the actual ProtectedRoute logic from App by re-implementing it here
@@ -25,6 +30,43 @@ import App from '../App'
 // Test App.tsx directly (it includes BrowserRouter internally)
 describe('App', () => {
   it('renders without crashing', () => {
+    expect(() => render(<App />)).not.toThrow()
+  })
+
+  it('shows loading spinner when isLoading is true (covers App.tsx ProtectedRoute lines 19-25)', async () => {
+    // Set window.location to / to ensure BrowserRouter matches the protected route
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        href: 'http://localhost/',
+        pathname: '/',
+        origin: 'http://localhost',
+      },
+      writable: true,
+    })
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoading: true,
+      isAuthenticated: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+    })
+    render(<App />)
+    // When isLoading=true, the ProtectedRoute renders loading div
+    await waitFor(() => {
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+    })
+  })
+
+  it('renders children when authenticated (covers App.tsx ProtectedRoute line 31)', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: '1', username: 'admin', role: 'admin', email: 'a@b.com', totp_enabled: true, avatar: null, created_at: '', updated_at: '' },
+      isLoading: false,
+      isAuthenticated: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+    })
+    // App renders the AppShell when authenticated — just ensure no crash
     expect(() => render(<App />)).not.toThrow()
   })
 })

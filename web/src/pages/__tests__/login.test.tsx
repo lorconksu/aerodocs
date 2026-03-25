@@ -141,4 +141,20 @@ describe('LoginPage', () => {
       expect(screen.getByPlaceholderText('username')).toBeInTheDocument()
     })
   })
+
+  it('does nothing when login response has no totp_token or requires_totp_setup (line 34 false branch)', async () => {
+    // Login succeeds but no TOTP required (unusual scenario, covers the else-if false branch)
+    mockApiFetch.mockResolvedValueOnce({}) // empty response — no totp_token, no requires_totp_setup
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByPlaceholderText('password'), { target: { value: 'secret' } })
+    fireEvent.submit(screen.getByRole('button', { name: /sign in/i }).closest('form')!)
+
+    // No navigation should occur
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/auth/login', expect.any(Object))
+    })
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
 })

@@ -204,4 +204,29 @@ describe('SetupTOTPPage', () => {
       expect(mockApiFetchWithToken).toHaveBeenCalledTimes(1)
     })
   })
+
+  it('onClick handler on Verify & Enable 2FA button calls submitCode (line 100)', async () => {
+    const authResponse = {
+      access_token: 'acc',
+      refresh_token: 'ref',
+      user: { id: '1', username: 'admin', email: 'a@b.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' },
+    }
+    mockApiFetchWithToken
+      .mockResolvedValueOnce(totpData)
+      .mockResolvedValueOnce(authResponse)
+
+    renderPage()
+    const verifyBtn = await screen.findByRole('button', { name: /verify & enable 2fa/i })
+
+    const inputs = screen.getAllByRole('textbox')
+    inputs.forEach((input, i) => {
+      fireEvent.change(input, { target: { value: String(i + 1) } })
+    })
+
+    // Direct click on the button (covers the onClick arrow function on line 100)
+    fireEvent.click(verifyBtn)
+    await waitFor(() => {
+      expect(mockApiFetchWithToken).toHaveBeenCalledWith('/auth/totp/enable', 'setup-tok-123', expect.objectContaining({ method: 'POST' }))
+    })
+  })
 })
