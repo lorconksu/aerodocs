@@ -17,7 +17,7 @@ export function getAvatarColor(username: string): string {
 
   // Deterministic default based on username
   let hash = 0
-  for (const ch of username) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0
+  for (const ch of username) hash = Math.trunc(((hash << 5) - hash + (ch.codePointAt(0) ?? 0)))
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 

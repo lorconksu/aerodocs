@@ -370,65 +370,65 @@ function UsersTab() {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
+            {isLoading && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-text-muted">Loading...</td></tr>
-            ) : !users || users.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-text-muted">No users found.</td></tr>
-            ) : (
-              users.map(u => (
-                <tr key={u.id} className="border-b border-border last:border-b-0 hover:bg-surface/50">
-                  <td className="px-4 py-2 text-text-primary">{u.username}</td>
-                  <td className="px-4 py-2 text-text-secondary">{u.email}</td>
-                  <td className="px-4 py-2">
-                    {u.id === currentUser?.id ? (
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        u.role === 'admin' ? 'bg-accent/20 text-accent' : 'bg-elevated text-text-muted'
-                      }`}>
-                        {u.role === 'admin' ? 'Admin' : 'Viewer'}
-                      </span>
-                    ) : (
-                      <select
-                        value={u.role}
-                        onChange={e => updateRoleMutation.mutate({ userId: u.id, role: e.target.value as Role })}
-                        disabled={updateRoleMutation.isPending}
-                        className="bg-elevated border border-border rounded px-2 py-0.5 text-xs text-text-primary focus:outline-none focus:border-accent"
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {u.totp_enabled ? (
-                      <span className="text-xs text-status-online">Enabled</span>
-                    ) : (
-                      <span className="text-xs text-status-warning">Not set up</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-text-muted text-xs">{formatDate(u.created_at)}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-3">
-                      {u.id !== currentUser?.id && u.totp_enabled && (
-                        <button
-                          onClick={() => setDisableTotpUserId(u.id)}
-                          className="text-xs text-status-warning hover:text-status-error transition-colors"
-                        >
-                          Disable 2FA
-                        </button>
-                      )}
-                      {u.id !== currentUser?.id && (
-                        <button
-                          onClick={() => { setDeleteUserId(u.id); setDeleteUsername(u.username) }}
-                          className="text-xs text-text-muted hover:text-status-error transition-colors"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
             )}
+            {!isLoading && (!users || users.length === 0) && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-text-muted">No users found.</td></tr>
+            )}
+            {!isLoading && users && users.length > 0 && users.map(u => (
+              <tr key={u.id} className="border-b border-border last:border-b-0 hover:bg-surface/50">
+                <td className="px-4 py-2 text-text-primary">{u.username}</td>
+                <td className="px-4 py-2 text-text-secondary">{u.email}</td>
+                <td className="px-4 py-2">
+                  {u.id === currentUser?.id ? (
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      u.role === 'admin' ? 'bg-accent/20 text-accent' : 'bg-elevated text-text-muted'
+                    }`}>
+                      {u.role === 'admin' ? 'Admin' : 'Viewer'}
+                    </span>
+                  ) : (
+                    <select
+                      value={u.role}
+                      onChange={e => updateRoleMutation.mutate({ userId: u.id, role: e.target.value as Role })}
+                      disabled={updateRoleMutation.isPending}
+                      className="bg-elevated border border-border rounded px-2 py-0.5 text-xs text-text-primary focus:outline-none focus:border-accent"
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  {u.totp_enabled ? (
+                    <span className="text-xs text-status-online">Enabled</span>
+                  ) : (
+                    <span className="text-xs text-status-warning">Not set up</span>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-text-muted text-xs">{formatDate(u.created_at)}</td>
+                <td className="px-4 py-2">
+                  <div className="flex items-center gap-3">
+                    {u.id !== currentUser?.id && u.totp_enabled && (
+                      <button
+                        onClick={() => setDisableTotpUserId(u.id)}
+                        className="text-xs text-status-warning hover:text-status-error transition-colors"
+                      >
+                        Disable 2FA
+                      </button>
+                    )}
+                    {u.id !== currentUser?.id && (
+                      <button
+                        onClick={() => { setDeleteUserId(u.id); setDeleteUsername(u.username) }}
+                        className="text-xs text-text-muted hover:text-status-error transition-colors"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

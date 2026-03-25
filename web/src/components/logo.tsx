@@ -3,7 +3,7 @@ interface LogoProps {
   className?: string
 }
 
-export function Logo({ layout = 'horizontal', className = '' }: LogoProps) {
+export function Logo({ layout = 'horizontal', className = '' }: Readonly<LogoProps>) {
   if (layout === 'vertical') {
     return (
       <img
