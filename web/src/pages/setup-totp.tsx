@@ -4,6 +4,7 @@ import { Copy, Check } from 'lucide-react'
 import { apiFetchWithToken } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import type { TOTPSetupResponse, TOTPEnableRequest, AuthResponse } from '@/types/api'
+import { useTOTPDigits, TOTPDigitInput } from '@/components/totp-digit-input'
 
 export function SetupTOTPPage() {
   const navigate = useNavigate()
@@ -12,51 +13,10 @@ export function SetupTOTPPage() {
   const setupToken = (location.state as { setupToken?: string })?.setupToken
 
   const [totpData, setTotpData] = useState<TOTPSetupResponse | null>(null)
-  const [digits, setDigits] = useState(['', '', '', '', '', ''])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const hasFetched = useRef(false)
-
-  useEffect(() => {
-    if (!setupToken) { navigate('/login'); return }
-    if (hasFetched.current) return
-    hasFetched.current = true
-
-    apiFetchWithToken<TOTPSetupResponse>('/auth/totp/setup', setupToken, { method: 'POST' })
-      .then(setTotpData)
-      .catch(() => setError('Failed to generate TOTP secret'))
-  }, [setupToken, navigate])
-
-  const handleDigitChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return
-    const newDigits = [...digits]
-    newDigits[index] = value.slice(-1)
-    setDigits(newDigits)
-    if (value && index < 5) inputRefs.current[index + 1]?.focus()
-    if (newDigits.every(Boolean) && index === 5) submitCode(newDigits.join(''))
-  }
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault()
-    const pasted = e.clipboardData.getData('text').replaceAll(/\D/g, '').slice(0, 6)
-    if (!pasted) return
-    const newDigits = [...digits]
-    for (let i = 0; i < pasted.length; i++) {
-      newDigits[i] = pasted[i]
-    }
-    setDigits(newDigits)
-    const nextEmpty = pasted.length < 6 ? pasted.length : 5
-    inputRefs.current[nextEmpty]?.focus()
-    if (newDigits.every(Boolean)) submitCode(newDigits.join(''))
-  }
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !digits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus()
-    }
-  }
 
   const submitCode = async (code: string) => {
     if (!setupToken) return
@@ -73,12 +33,23 @@ export function SetupTOTPPage() {
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')
-      setDigits(['', '', '', '', '', ''])
-      inputRefs.current[0]?.focus()
+      reset()
     } finally {
       setLoading(false)
     }
   }
+
+  const { digits, inputRefs, handleDigitChange, handlePaste, handleKeyDown, reset } = useTOTPDigits(submitCode)
+
+  useEffect(() => {
+    if (!setupToken) { navigate('/login'); return }
+    if (hasFetched.current) return
+    hasFetched.current = true
+
+    apiFetchWithToken<TOTPSetupResponse>('/auth/totp/setup', setupToken, { method: 'POST' })
+      .then(setTotpData)
+      .catch(() => setError('Failed to generate TOTP secret'))
+  }, [setupToken, navigate])
 
   return (
     <div>
@@ -116,22 +87,14 @@ export function SetupTOTPPage() {
             <code className="text-text-primary text-xs font-mono break-all select-all">{totpData.secret}</code>
           </div>
 
-          <div className="flex gap-2 justify-center mb-4">
-            {digits.map((digit, i) => (
-              <input
-                key={`digit-${i}`}
-                ref={el => { inputRefs.current[i] = el }}
-                type="text" inputMode="numeric" maxLength={1}
-                value={digit}
-                onChange={(e) => handleDigitChange(i, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(i, e)}
-                onPaste={handlePaste}
-                className="w-10 h-12 bg-elevated border border-border rounded text-center text-lg font-mono text-text-primary focus:outline-none focus:border-accent"
-                autoFocus={i === 0}
-                disabled={loading}
-              />
-            ))}
-          </div>
+          <TOTPDigitInput
+            digits={digits}
+            inputRefs={inputRefs}
+            handleDigitChange={handleDigitChange}
+            handlePaste={handlePaste}
+            handleKeyDown={handleKeyDown}
+            disabled={loading}
+          />
 
           <button
             onClick={() => submitCode(digits.join(''))}
