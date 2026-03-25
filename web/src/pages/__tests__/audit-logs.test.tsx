@@ -211,4 +211,62 @@ describe('AuditLogsPage', () => {
       expect(screen.getByText('unknown-id')).toBeInTheDocument()
     })
   })
+
+  it('"to" date filter input triggers refetch (line 113-119)', async () => {
+    renderPage()
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalled())
+
+    const dateInputs = document.querySelectorAll('input[type="date"]')
+    const toInput = dateInputs[1] as HTMLInputElement // second date input is "to"
+    expect(toInput).toBeTruthy()
+
+    mockApiFetch
+      .mockResolvedValueOnce({ entries: [], total: 0, limit: 50, offset: 0 })
+      .mockResolvedValueOnce({ users: mockUsers })
+    fireEvent.change(toInput, { target: { value: '2024-12-31' } })
+    await waitFor(() => {
+      // Clear Filters button appears when filter is active
+      expect(screen.getByText('Clear Filters')).toBeInTheDocument()
+    })
+  })
+
+  it('Previous button works when on page 2 (line 187)', async () => {
+    mockApiFetch.mockReset()
+    mockApiFetch
+      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
+      .mockResolvedValueOnce({ users: mockUsers })
+      // After clicking Next (offset=50)
+      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 50 })
+      .mockResolvedValueOnce({ users: mockUsers })
+      // After clicking Previous (offset=0)
+      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
+      .mockResolvedValueOnce({ users: mockUsers })
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument())
+
+    // Go to page 2
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(screen.getByText(/Showing 51/)).toBeInTheDocument())
+
+    // Now Previous button should be enabled — click it
+    const prevBtn = screen.getByRole('button', { name: 'Previous' })
+    expect(prevBtn).not.toBeDisabled()
+    fireEvent.click(prevBtn)
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 1-50 of 100/)).toBeInTheDocument()
+    })
+  })
+
+  it('user filter select shows users in dropdown', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getAllByText('admin').length).toBeGreaterThan(0)
+    })
+    // Select user filter
+    const userSelect = screen.getByDisplayValue('All Users')
+    fireEvent.change(userSelect, { target: { value: 'u1' } })
+    await waitFor(() => {
+      expect(screen.getByText('Clear Filters')).toBeInTheDocument()
+    })
+  })
 })

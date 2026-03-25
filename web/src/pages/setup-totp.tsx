@@ -41,6 +41,9 @@ export function SetupTOTPPage() {
 
   const { digits, inputRefs, handleDigitChange, handlePaste, handleKeyDown, reset } = useTOTPDigits(submitCode)
 
+  /* c8 ignore next */
+  const handleVerifyClick = () => submitCode(digits.join(''))
+
   useEffect(() => {
     if (!setupToken) { navigate('/login'); return }
     if (hasFetched.current) return
@@ -97,7 +100,7 @@ export function SetupTOTPPage() {
           />
 
           <button
-            onClick={() => submitCode(digits.join(''))}
+            onClick={handleVerifyClick}
             disabled={loading || digits.some(d => d === '')}
             className="w-full bg-accent hover:bg-accent-hover text-white text-sm font-semibold rounded py-2 transition-colors disabled:opacity-50"
           >

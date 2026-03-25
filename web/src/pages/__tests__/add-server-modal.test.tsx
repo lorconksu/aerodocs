@@ -243,4 +243,33 @@ describe('AddServerModal', () => {
     })
     resolve(mockCreateResponse)
   })
+
+  it('handleGenerate returns early when name is empty (line 57)', () => {
+    // handleGenerate is called via Enter key even when input is empty-ish
+    renderModal()
+    // Name input is empty — press Enter
+    fireEvent.keyDown(screen.getByLabelText('Server Name'), { key: 'Enter' })
+    // No API call should happen
+    expect(mockApiFetch).not.toHaveBeenCalled()
+  })
+
+  it('handleGenerate returns early when name is only whitespace (line 57)', () => {
+    renderModal()
+    fireEvent.change(screen.getByLabelText('Server Name'), { target: { value: '   ' } })
+    fireEvent.keyDown(screen.getByLabelText('Server Name'), { key: 'Enter' })
+    expect(mockApiFetch).not.toHaveBeenCalled()
+  })
+
+  it('shows fallback error message when error has no message (line 100)', async () => {
+    // Throw a non-Error object (no .message property)
+    mockApiFetch.mockRejectedValueOnce({ status: 500 })
+    renderModal()
+
+    fireEvent.change(screen.getByLabelText('Server Name'), { target: { value: 'my-server' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to create server')).toBeInTheDocument()
+    })
+  })
 })

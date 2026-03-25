@@ -147,6 +147,19 @@ describe('apiFetch', () => {
     expect(window.location.href).toBe('/login')
   })
 
+  it('on 401 with refresh token: clears tokens when refresh fetch throws (catch block)', async () => {
+    localStorage.setItem('aerodocs_access_token', 'old-token')
+    localStorage.setItem('aerodocs_refresh_token', 'refresh-token')
+
+    // First call returns 401
+    mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Unauthorized' }, 401))
+    // Refresh fetch itself throws (network error — covers catch block in refreshTokens, line 26)
+    mockFetch.mockRejectedValueOnce(new Error('Network error'))
+
+    await expect(apiFetch('/protected')).rejects.toThrow('Session expired')
+    expect(window.location.href).toBe('/login')
+  })
+
   it('on 401 without refresh token: throws the error immediately', async () => {
     localStorage.setItem('aerodocs_access_token', 'bad-token')
     // No refresh token
