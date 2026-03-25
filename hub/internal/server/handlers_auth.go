@@ -32,7 +32,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	var req model.RegisterRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -85,7 +85,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req model.LoginRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -138,7 +138,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	var req model.LoginTOTPRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -151,7 +151,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.store.GetUserByID(claims.Subject)
 	if err != nil {
-		respondError(w, http.StatusUnauthorized, "user not found")
+		respondError(w, http.StatusUnauthorized, errUserNotFound)
 		return
 	}
 
@@ -187,7 +187,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	var req model.RefreshRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -213,7 +213,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 	user, err := s.store.GetUserByID(userID)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "user not found")
+		respondError(w, http.StatusNotFound, errUserNotFound)
 		return
 	}
 	respondJSON(w, http.StatusOK, user)
@@ -222,7 +222,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateAvatar(w http.ResponseWriter, r *http.Request) {
 	var req model.UpdateAvatarRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -250,7 +250,7 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 	user, err := s.store.GetUserByID(userID)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "user not found")
+		respondError(w, http.StatusNotFound, errUserNotFound)
 		return
 	}
 
@@ -282,14 +282,14 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	var req model.TOTPEnableRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
 	userID := UserIDFromContext(r.Context())
 	user, err := s.store.GetUserByID(userID)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "user not found")
+		respondError(w, http.StatusNotFound, errUserNotFound)
 		return
 	}
 
@@ -334,14 +334,14 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	var req model.ChangePasswordRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
 	userID := UserIDFromContext(r.Context())
 	user, err := s.store.GetUserByID(userID)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "user not found")
+		respondError(w, http.StatusNotFound, errUserNotFound)
 		return
 	}
 
@@ -378,7 +378,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 	var req model.TOTPDisableRequest
 	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
