@@ -60,7 +60,7 @@ export async function apiFetch<T>(
       res = await fetch(`${BASE_URL}${path}`, { ...options, headers: retryHeaders })
     } else {
       clearTokens()
-      window.location.href = '/login'
+      globalThis.location.href = '/login'
       throw new Error('Session expired')
     }
   }

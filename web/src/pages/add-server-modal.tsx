@@ -105,36 +105,7 @@ export function AddServerModal({ onClose }: Readonly<AddServerModalProps>) {
           </button>
         </div>
 
-        {!result ? (
-          /* Step 1: Enter name */
-          <div>
-            <label htmlFor="server-name" className="block text-sm text-text-secondary mb-1">Server Name</label>
-            <input
-              id="server-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-              placeholder="e.g., web-prod-1"
-              className="w-full px-3 py-2 bg-elevated border border-border rounded text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
-              autoFocus
-            />
-            {createMutation.isError && (
-              <p className="text-status-error text-xs mt-2">
-                {createMutation.error?.message || 'Failed to create server'}
-              </p>
-            )}
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={handleGenerate}
-                disabled={!name.trim() || createMutation.isPending}
-                className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white text-sm rounded transition-colors"
-              >
-                {createMutation.isPending ? 'Generating...' : 'Generate'}
-              </button>
-            </div>
-          </div>
-        ) : (
+        {result ? (
           /* Step 2: Show install command + wait for agent */
           <div>
             <p className="text-sm text-text-secondary mb-3">
@@ -168,6 +139,35 @@ export function AddServerModal({ onClose }: Readonly<AddServerModalProps>) {
                 className="px-4 py-2 bg-elevated hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-text-primary text-sm rounded transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Step 1: Enter name */
+          <div>
+            <label htmlFor="server-name" className="block text-sm text-text-secondary mb-1">Server Name</label>
+            <input
+              id="server-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+              placeholder="e.g., web-prod-1"
+              className="w-full px-3 py-2 bg-elevated border border-border rounded text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
+              autoFocus
+            />
+            {createMutation.isError && (
+              <p className="text-status-error text-xs mt-2">
+                {createMutation.error?.message || 'Failed to create server'}
+              </p>
+            )}
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={handleGenerate}
+                disabled={!name.trim() || createMutation.isPending}
+                className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white text-sm rounded transition-colors"
+              >
+                {createMutation.isPending ? 'Generating...' : 'Generate'}
               </button>
             </div>
           </div>

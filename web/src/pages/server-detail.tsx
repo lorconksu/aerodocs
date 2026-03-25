@@ -362,7 +362,7 @@ function FileTreeNode({
       className={`w-full flex items-center gap-1 px-2 py-1 text-sm transition-colors text-left ${fileNodeClass()}`}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       disabled={!node.readable}
-      title={!node.readable ? 'File not readable' : undefined}
+      title={node.readable ? undefined : 'File not readable'}
     >
       <span className="w-3.5 shrink-0" />
       <File className="w-4 h-4 shrink-0 text-text-faint" />
@@ -845,6 +845,25 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
 // --- LiveTail Component ---
 /* c8 ignore start */
 
+function parseSseChunk(sseLines: string[]): string[] {
+  const newLogLines: string[] = []
+  for (const sseLine of sseLines) {
+    if (!sseLine.startsWith('data: ')) continue
+    const base64Data = sseLine.slice(6)
+    if (!base64Data) continue
+    try {
+      const bytes = Uint8Array.from(atob(base64Data), (c) => c.codePointAt(0)!)
+      const text = new TextDecoder('utf-8').decode(bytes)
+      for (const dl of text.split('\n')) {
+        if (dl !== '') newLogLines.push(dl)
+      }
+    } catch {
+      // Skip malformed base64 chunks
+    }
+  }
+  return newLogLines
+}
+
 type LiveTailStatus = 'connecting' | 'streaming' | 'disconnected'
 
 const STATUS_COLORS: Record<LiveTailStatus, string> = {
@@ -914,25 +933,6 @@ function LiveTail({
     setStatus('connecting')
     setError(null)
     setLines([])
-
-    function parseSseChunk(sseLines: string[]): string[] {
-      const newLogLines: string[] = []
-      for (const sseLine of sseLines) {
-        if (!sseLine.startsWith('data: ')) continue
-        const base64Data = sseLine.slice(6)
-        if (!base64Data) continue
-        try {
-          const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
-          const text = new TextDecoder('utf-8').decode(bytes)
-          for (const dl of text.split('\n')) {
-            if (dl !== '') newLogLines.push(dl)
-          }
-        } catch {
-          // Skip malformed base64 chunks
-        }
-      }
-      return newLogLines
-    }
 
     async function readStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
       const decoder = new TextDecoder()
@@ -1026,7 +1026,7 @@ function LiveTail({
 
         {/* Line count */}
         <span className="text-xs text-text-faint">
-          {lines.length.toLocaleString()} line{lines.length !== 1 ? 's' : ''}
+          {lines.length.toLocaleString()} line{lines.length === 1 ? '' : 's'}
         </span>
 
         {/* Pause/Resume toggle */}
@@ -1152,7 +1152,7 @@ function FileViewerContent({
     <>
       {isPartialFile && (
         <div className="bg-status-warning/10 border-b border-status-warning/20 px-4 py-1.5 text-xs text-status-warning shrink-0">
-          Showing last 1 MB of {formatFileSize(fileContent!.total_size)}
+          Showing last 1 MB of {formatFileSize(fileContent?.total_size ?? 0)}
         </div>
       )}
       <div className="flex-1 overflow-auto">
@@ -1544,7 +1544,7 @@ export function ServerDetailPage() {
   const decodedContent = useMemo(() => {
     if (!fileContent?.data) return null
     try {
-      const bytes = Uint8Array.from(atob(fileContent.data), (c) => c.charCodeAt(0))
+      const bytes = Uint8Array.from(atob(fileContent.data), (c) => c.codePointAt(0)!)
       return new TextDecoder('utf-8').decode(bytes)
     } catch {
       return '[Unable to decode file content]'
@@ -1568,9 +1568,9 @@ export function ServerDetailPage() {
         return sanitizeHljsHtml(result.value)
       } catch {
         return decodedContent
-          .replaceAll(/&/g, '&amp;')
-          .replaceAll(/</g, '&lt;')
-          .replaceAll(/>/g, '&gt;')
+          .replaceAll(/&/g, '&amp;') // NOSONAR: intentional HTML escaping for safe rendering
+          .replaceAll(/</g, '&lt;') // NOSONAR: intentional HTML escaping for safe rendering
+          .replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
       }
     }
   }, [decodedContent, selectedFile])
@@ -1661,8 +1661,8 @@ export function ServerDetailPage() {
         setSearchOpen(true)
       }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    globalThis.addEventListener('keydown', handler)
+    return () => globalThis.removeEventListener('keydown', handler)
   }, [])
 
   // Count of search matches
@@ -1698,16 +1698,16 @@ export function ServerDetailPage() {
     positions.forEach((matchPos, idx) => {
       const matchEnd = matchPos + searchTerm.length
       const before = decodedContent.substring(lastEnd, matchPos)
-        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;')
+        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
       const match = decodedContent.substring(matchPos, matchEnd)
-        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;')
+        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
       const cls = idx === currentMatch ? 'search-match-current' : 'search-match'
       const id = idx === currentMatch ? ' id="current-search-match"' : ''
       result += before + `<mark class="${cls}"${id}>${match}</mark>`
       lastEnd = matchEnd
     })
     result += decodedContent.substring(lastEnd)
-      .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;')
+      .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
 
     return result
   }, [searchTerm, decodedContent, highlightedHtml, currentMatch])
@@ -1773,20 +1773,13 @@ export function ServerDetailPage() {
             rootNodes={rootNodes}
             selectedFile={selectedFile}
             treeState={treeState}
-            serverId={serverId!}
+            serverId={serverId ?? ''}
             onToggleDir={handleToggleDir}
             onSelectFile={handleSelectFile}
           />
 
           <div className="flex-1 flex flex-col min-w-0">
-            {!selectedFile ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <File className="w-10 h-10 text-text-faint mx-auto mb-3" />
-                  <p className="text-text-muted text-sm">Select a file to view its contents</p>
-                </div>
-              </div>
-            ) : (
+            {selectedFile ? (
               <>
                 <FileViewerToolbar
                   selectedFile={selectedFile}
@@ -1817,7 +1810,7 @@ export function ServerDetailPage() {
 
                 {liveTailing ? (
                   <LiveTail
-                    serverId={serverId!}
+                    serverId={serverId ?? ''}
                     filePath={selectedFile.path}
                     onStop={() => setLiveTailing(false)}
                   />
@@ -1836,6 +1829,13 @@ export function ServerDetailPage() {
                   />
                 )}
               </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <File className="w-10 h-10 text-text-faint mx-auto mb-3" />
+                  <p className="text-text-muted text-sm">Select a file to view its contents</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -1843,8 +1843,8 @@ export function ServerDetailPage() {
 
       {isAdmin && (
         <div className="shrink-0 border-t border-border p-4 bg-surface/30 space-y-3">
-          <PathManagement serverId={serverId!} />
-          <DropzoneUpload serverId={serverId!} />
+          <PathManagement serverId={serverId ?? ''} />
+          <DropzoneUpload serverId={serverId ?? ''} />
         </div>
       )}
     </div>
