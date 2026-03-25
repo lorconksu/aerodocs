@@ -47,6 +47,7 @@ jobs:
           path: |
             coverage-hub.out
             coverage-agent.out
+            web/coverage/lcov.info
 
   sonarcloud:
     needs: test
