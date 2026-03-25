@@ -88,3 +88,228 @@ func TestRateLimiter(t *testing.T) {
 		t.Fatal("different IP should be allowed")
 	}
 }
+
+func TestRateLimiter_Middleware_Blocked(t *testing.T) {
+	rl := newRateLimiter(1, time.Minute)
+
+	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Use X-Forwarded-For so both requests have same IP string
+	req1 := httptest.NewRequest("POST", "/login", nil)
+	req1.Header.Set("X-Forwarded-For", "10.0.0.1")
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", rec1.Code)
+	}
+
+	// Second request same IP should be blocked
+	req2 := httptest.NewRequest("POST", "/login", nil)
+	req2.Header.Set("X-Forwarded-For", "10.0.0.1")
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", rec2.Code)
+	}
+}
+
+func TestRateLimiter_Middleware_XForwardedFor(t *testing.T) {
+	rl := newRateLimiter(1, time.Minute)
+
+	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req1 := httptest.NewRequest("POST", "/login", nil)
+	req1.Header.Set("X-Forwarded-For", "192.168.1.1, 10.0.0.1")
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", rec1.Code)
+	}
+
+	req2 := httptest.NewRequest("POST", "/login", nil)
+	req2.Header.Set("X-Forwarded-For", "192.168.1.1")
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 for same forwarded IP, got %d", rec2.Code)
+	}
+}
+
+func TestCORSMiddleware_Dev(t *testing.T) {
+	s := &Server{isDev: true}
+
+	handler := s.corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
+		t.Fatal("expected CORS header in dev mode")
+	}
+}
+
+func TestCORSMiddleware_DevOptions(t *testing.T) {
+	s := &Server{isDev: true}
+
+	handler := s.corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called for OPTIONS preflight")
+	}))
+
+	req := httptest.NewRequest("OPTIONS", "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for OPTIONS, got %d", rec.Code)
+	}
+}
+
+func TestCORSMiddleware_Production(t *testing.T) {
+	s := &Server{isDev: false}
+
+	handler := s.corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("expected no CORS header in production mode")
+	}
+}
+
+func TestAdminOnly_Viewer(t *testing.T) {
+	secret := "test-secret-key-256-bits-long!!!"
+	s := &Server{jwtSecret: secret}
+
+	_, viewerRefresh, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer")
+	_ = viewerRefresh
+
+	// Generate a viewer access token directly
+	viewerAccess, _, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer")
+
+	handler := s.authMiddleware(auth.TokenTypeAccess,
+		s.adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Fatal("handler should not be called for viewer")
+		})))
+
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+viewerAccess)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestAdminOnly_Admin(t *testing.T) {
+	secret := "test-secret-key-256-bits-long!!!"
+	s := &Server{jwtSecret: secret}
+
+	adminAccess, _, _ := auth.GenerateTokenPair(secret, "admin-1", "admin")
+
+	called := false
+	handler := s.authMiddleware(auth.TokenTypeAccess,
+		s.adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.WriteHeader(http.StatusOK)
+		})))
+
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+adminAccess)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !called {
+		t.Fatal("expected handler to be called for admin")
+	}
+}
+
+func TestAuthMiddleware_InvalidToken(t *testing.T) {
+	s := &Server{jwtSecret: "test-secret"}
+
+	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer totally-invalid-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestLoggingMiddleware(t *testing.T) {
+	called := false
+	handler := loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("expected handler to be called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestClientIP_XForwardedFor(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("X-Forwarded-For", "203.0.113.1, 10.0.0.1")
+
+	ip := clientIP(req)
+	if ip != "203.0.113.1" {
+		t.Fatalf("expected '203.0.113.1', got '%s'", ip)
+	}
+}
+
+func TestClientIP_RemoteAddr(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "192.168.1.1:12345"
+
+	ip := clientIP(req)
+	if ip != "192.168.1.1:12345" {
+		t.Fatalf("expected '192.168.1.1:12345', got '%s'", ip)
+	}
+}
+
+func TestContextHelpers(t *testing.T) {
+	ctx := httptest.NewRequest("GET", "/", nil).Context()
+
+	if UserIDFromContext(ctx) != "" {
+		t.Fatal("expected empty user ID from bare context")
+	}
+	if UserRoleFromContext(ctx) != "" {
+		t.Fatal("expected empty role from bare context")
+	}
+	if TokenTypeFromContext(ctx) != "" {
+		t.Fatal("expected empty token type from bare context")
+	}
+}
