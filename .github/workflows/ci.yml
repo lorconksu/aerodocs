@@ -85,3 +85,13 @@ jobs:
         with:
           command: test
           args: --all-projects --severity-threshold=high
+
+      - name: Snyk Monitor (upload to dashboard)
+        if: github.ref == 'refs/heads/main'
+        uses: snyk/actions/golang@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: monitor
+          args: --all-projects
