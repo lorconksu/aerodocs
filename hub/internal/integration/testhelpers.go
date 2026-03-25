@@ -19,6 +19,13 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const (
+	// httpURLFormat is the format string used to build HTTP URLs for the test harness.
+	httpURLFormat = "http://%s%s"
+	// bearerPrefix is the Authorization header prefix for bearer tokens.
+	bearerPrefix = "Bearer "
+)
+
 // TestHarness holds all components for an in-process hub integration test.
 type TestHarness struct {
 	Store       *store.Store
@@ -209,13 +216,13 @@ func (h *TestHarness) CreateServer(t *testing.T, accessToken, name string) (serv
 func (h *TestHarness) HTTPGet(t *testing.T, path, token string) *http.Response {
 	t.Helper()
 
-	url := fmt.Sprintf("http://%s%s", h.HTTPAddr, path)
+	url := fmt.Sprintf(httpURLFormat, h.HTTPAddr, path)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		t.Fatalf("create GET request: %v", err)
 	}
 	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", bearerPrefix+token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -225,11 +232,12 @@ func (h *TestHarness) HTTPGet(t *testing.T, path, token string) *http.Response {
 	return resp
 }
 
-// HTTPPost performs a POST request against the hub's HTTP server.
-func (h *TestHarness) HTTPPost(t *testing.T, path string, body interface{}, token string) *http.Response {
+// httpRequestWithBody builds and executes an HTTP request with an optional JSON body.
+// It is the shared implementation for HTTPPost and HTTPPut.
+func (h *TestHarness) httpRequestWithBody(t *testing.T, method, path string, body interface{}, token string) *http.Response {
 	t.Helper()
 
-	url := fmt.Sprintf("http://%s%s", h.HTTPAddr, path)
+	url := fmt.Sprintf(httpURLFormat, h.HTTPAddr, path)
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -240,55 +248,34 @@ func (h *TestHarness) HTTPPost(t *testing.T, path string, body interface{}, toke
 		bodyReader = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequest("POST", url, bodyReader)
+	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
-		t.Fatalf("create POST request: %v", err)
+		t.Fatalf("create %s request: %v", method, err)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", bearerPrefix+token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("POST %s: %v", path, err)
+		t.Fatalf("%s %s: %v", method, path, err)
 	}
 	return resp
+}
+
+// HTTPPost performs a POST request against the hub's HTTP server.
+func (h *TestHarness) HTTPPost(t *testing.T, path string, body interface{}, token string) *http.Response {
+	t.Helper()
+	return h.httpRequestWithBody(t, "POST", path, body, token)
 }
 
 // HTTPPut performs a PUT request against the hub's HTTP server.
 func (h *TestHarness) HTTPPut(t *testing.T, path string, body interface{}, token string) *http.Response {
 	t.Helper()
-
-	url := fmt.Sprintf("http://%s%s", h.HTTPAddr, path)
-
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			t.Fatalf("marshal body: %v", err)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-
-	req, err := http.NewRequest("PUT", url, bodyReader)
-	if err != nil {
-		t.Fatalf("create PUT request: %v", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("PUT %s: %v", path, err)
-	}
-	return resp
+	return h.httpRequestWithBody(t, "PUT", path, body, token)
 }
 
 // freePort returns a free TCP port on localhost.

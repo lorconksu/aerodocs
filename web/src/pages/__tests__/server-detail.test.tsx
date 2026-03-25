@@ -848,7 +848,7 @@ describe('relativeTime via ServerDetailHeader', () => {
       </QueryClientProvider>,
     )
     await waitFor(() => {
-      expect(screen.getByText(/Last seen: --/)).toBeInTheDocument()
+      expect(screen.getByText(/Last seen: —/)).toBeInTheDocument()
     })
   })
 })
