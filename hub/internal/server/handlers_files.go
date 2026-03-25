@@ -14,13 +14,12 @@ import (
 )
 
 const (
-	maxFileReadSize = 1048576  // 1MB
-	maxFileViewSize = 10485760 // 10MB hard cap
-	agentTimeout    = 10 * time.Second
+	maxFileReadSize      = 1048576  // 1MB
+	maxFileViewSize      = 10485760 // 10MB hard cap
+	agentTimeoutDuration = 10 * time.Second
 )
 
 func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
-	serverID := r.PathValue("id")
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		path = "/"
@@ -35,6 +34,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	// Check permissions
 	userID := UserIDFromContext(r.Context())
 	role := UserRoleFromContext(r.Context())
+	serverID := r.PathValue("id")
 	if role != "admin" {
 		allowed, err := s.isPathAllowed(userID, serverID, path)
 		if err != nil || !allowed {
@@ -44,54 +44,38 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check agent is connected
-	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
-		return
-	}
-	conn := s.connMgr.GetConn(serverID)
-	if conn == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+	if _, ok := s.requireAgent(w, r); !ok {
 		return
 	}
 
-	// Send request via gRPC
-	requestID := uuid.NewString()
-	ch := s.pending.Register(requestID)
-	defer s.pending.Remove(requestID)
-
-	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-		Payload: &pb.HubMessage_FileListRequest{
-			FileListRequest: &pb.FileListRequest{
-				RequestId: requestID,
-				Path:      path,
+	// Send request via gRPC and wait for response
+	raw := s.sendAgentRequest(w, serverID, func(requestID string) *pb.HubMessage {
+		return &pb.HubMessage{
+			Payload: &pb.HubMessage_FileListRequest{
+				FileListRequest: &pb.FileListRequest{
+					RequestId: requestID,
+					Path:      path,
+				},
 			},
-		},
-	})
-	if err != nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		}
+	}, agentTimeoutDuration)
+	if raw == nil {
 		return
 	}
 
-	// Wait for response
-	select {
-	case msg := <-ch:
-		resp, ok := msg.(*pb.FileListResponse)
-		if !ok {
-			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
-			return
-		}
-		if resp.Error != "" {
-			respondError(w, http.StatusNotFound, resp.Error)
-			return
-		}
-		respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
-	case <-time.After(agentTimeout):
-		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	resp, ok := raw.(*pb.FileListResponse)
+	if !ok {
+		respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
+		return
 	}
+	if resp.Error != "" {
+		respondError(w, http.StatusNotFound, resp.Error)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
 }
 
 func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
-	serverID := r.PathValue("id")
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		respondError(w, http.StatusBadRequest, "path is required")
@@ -106,6 +90,7 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	// Check permissions
 	userID := UserIDFromContext(r.Context())
 	role := UserRoleFromContext(r.Context())
+	serverID := r.PathValue("id")
 	if role != "admin" {
 		allowed, err := s.isPathAllowed(userID, serverID, path)
 		if err != nil || !allowed {
@@ -115,72 +100,58 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check agent is connected
-	if s.connMgr == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
-		return
-	}
-	conn := s.connMgr.GetConn(serverID)
-	if conn == nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+	if _, ok := s.requireAgent(w, r); !ok {
 		return
 	}
 
 	// Send request — always request last 1MB
-	requestID := uuid.NewString()
-	ch := s.pending.Register(requestID)
-	defer s.pending.Remove(requestID)
-
-	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-		Payload: &pb.HubMessage_FileReadRequest{
-			FileReadRequest: &pb.FileReadRequest{
-				RequestId: requestID,
-				Path:      path,
-				Offset:    0,
-				Limit:     maxFileReadSize,
+	raw := s.sendAgentRequest(w, serverID, func(requestID string) *pb.HubMessage {
+		return &pb.HubMessage{
+			Payload: &pb.HubMessage_FileReadRequest{
+				FileReadRequest: &pb.FileReadRequest{
+					RequestId: requestID,
+					Path:      path,
+					Offset:    0,
+					Limit:     maxFileReadSize,
+				},
 			},
-		},
-	})
-	if err != nil {
-		respondError(w, http.StatusBadGateway, errAgentNotConnected)
+		}
+	}, agentTimeoutDuration)
+	if raw == nil {
 		return
 	}
 
-	select {
-	case msg := <-ch:
-		resp, ok := msg.(*pb.FileReadResponse)
-		if !ok {
-			respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
-			return
-		}
-		if resp.Error != "" {
-			respondError(w, http.StatusNotFound, resp.Error)
-			return
-		}
-		if resp.TotalSize > maxFileViewSize {
-			respondError(w, http.StatusRequestEntityTooLarge, "file too large for viewing")
-			return
-		}
-
-		// Audit log
-		ip := clientIP(r)
-		detail := path
-		s.store.LogAudit(model.AuditEntry{
-			ID:        uuid.NewString(),
-			UserID:    &userID,
-			Action:    model.AuditFileRead,
-			Target:    &serverID,
-			Detail:    &detail,
-			IPAddress: &ip,
-		})
-
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"data":       base64.StdEncoding.EncodeToString(resp.Data),
-			"total_size": resp.TotalSize,
-			"mime_type":  resp.MimeType,
-		})
-	case <-time.After(agentTimeout):
-		respondError(w, http.StatusGatewayTimeout, "agent timeout")
+	resp, ok := raw.(*pb.FileReadResponse)
+	if !ok {
+		respondError(w, http.StatusInternalServerError, errUnexpectedResponse)
+		return
 	}
+	if resp.Error != "" {
+		respondError(w, http.StatusNotFound, resp.Error)
+		return
+	}
+	if resp.TotalSize > maxFileViewSize {
+		respondError(w, http.StatusRequestEntityTooLarge, "file too large for viewing")
+		return
+	}
+
+	// Audit log
+	ip := clientIP(r)
+	detail := path
+	s.store.LogAudit(model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &userID,
+		Action:    model.AuditFileRead,
+		Target:    &serverID,
+		Detail:    &detail,
+		IPAddress: &ip,
+	})
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"data":       base64.StdEncoding.EncodeToString(resp.Data),
+		"total_size": resp.TotalSize,
+		"mime_type":  resp.MimeType,
+	})
 }
 
 // isPathAllowed checks if the requested path is under one of the user's allowed roots.
