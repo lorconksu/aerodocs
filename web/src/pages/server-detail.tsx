@@ -49,6 +49,8 @@ import remarkGfm from 'remark-gfm'
 import mermaid from 'mermaid'
 import { apiFetch } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth'
+import { relativeTime } from '@/lib/time'
+import { statusDot } from '@/lib/server-utils'
 import { useAuth } from '@/hooks/use-auth'
 import type {
   Server,
@@ -82,27 +84,6 @@ hljs.registerLanguage('yaml', yaml)
 
 // --- Utilities ---
 
-const statusDot: Record<ServerStatus, string> = {
-  online: 'text-status-online',
-  offline: 'text-status-offline',
-  pending: 'text-status-warning',
-}
-
-function relativeTime(dateStr: string | null): string {
-  if (!dateStr) return '--'
-  const normalized = dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z'
-  const date = new Date(normalized)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  if (diffSec < 60) return `${diffSec}s ago`
-  const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin} min ago`
-  const diffHr = Math.floor(diffMin / 60)
-  if (diffHr < 24) return `${diffHr}h ago`
-  const diffDay = Math.floor(diffHr / 24)
-  return `${diffDay}d ago`
-}
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -925,6 +906,35 @@ function LiveTail({
     }
   }, [])
 
+  // Appends new log lines into state, capped at MAX_LINES.
+  const appendLogLines = useCallback((newLogLines: string[]) => {
+    setLines((prev) => {
+      const newEntries = newLogLines.map((text) => ({ id: lineCounterRef.current++, text }))
+      const combined = [...prev, ...newEntries]
+      return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
+    })
+  }, [])
+
+  // Reads an SSE stream and forwards parsed log lines via appendLogLines.
+  const readStream = useCallback(async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+    const decoder = new TextDecoder()
+    let sseBuffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      sseBuffer += decoder.decode(value, { stream: true })
+      const sseLines = sseBuffer.split('\n')
+      sseBuffer = sseLines.pop() || ''
+
+      const newLogLines = parseSseChunk(sseLines)
+      if (newLogLines.length > 0) {
+        appendLogLines(newLogLines)
+      }
+    }
+  }, [appendLogLines])
+
   // SSE connection effect
   useEffect(() => {
     const controller = new AbortController()
@@ -933,33 +943,6 @@ function LiveTail({
     setStatus('connecting')
     setError(null)
     setLines([])
-
-    function appendLogLines(newLogLines: string[]) {
-      setLines((prev) => {
-        const newEntries = newLogLines.map((text) => ({ id: lineCounterRef.current++, text }))
-        const combined = [...prev, ...newEntries]
-        return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
-      })
-    }
-
-    async function readStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
-      const decoder = new TextDecoder()
-      let sseBuffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        sseBuffer += decoder.decode(value, { stream: true })
-        const sseLines = sseBuffer.split('\n')
-        sseBuffer = sseLines.pop() || ''
-
-        const newLogLines = parseSseChunk(sseLines)
-        if (newLogLines.length > 0) {
-          appendLogLines(newLogLines)
-        }
-      }
-    }
 
     async function startStream(signal: AbortSignal) {
       try {
@@ -999,7 +982,7 @@ function LiveTail({
     return () => {
       controller.abort()
     }
-  }, [serverId, filePath, grep])
+  }, [serverId, filePath, grep, readStream])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
