@@ -934,6 +934,14 @@ function LiveTail({
     setError(null)
     setLines([])
 
+    function appendLogLines(newLogLines: string[]) {
+      setLines((prev) => {
+        const newEntries = newLogLines.map((text) => ({ id: lineCounterRef.current++, text }))
+        const combined = [...prev, ...newEntries]
+        return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
+      })
+    }
+
     async function readStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
       const decoder = new TextDecoder()
       let sseBuffer = ''
@@ -948,11 +956,7 @@ function LiveTail({
 
         const newLogLines = parseSseChunk(sseLines)
         if (newLogLines.length > 0) {
-          setLines((prev) => {
-            const newEntries = newLogLines.map((text) => ({ id: lineCounterRef.current++, text }))
-            const combined = [...prev, ...newEntries]
-            return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
-          })
+          appendLogLines(newLogLines)
         }
       }
     }
