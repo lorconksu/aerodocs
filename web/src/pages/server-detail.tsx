@@ -1068,14 +1068,372 @@ function LiveTail({
   )
 }
 
+// --- FileViewerContent Component ---
+
+function FileViewerContent({
+  fileLoading,
+  fileError,
+  decodedContent,
+  selectedFile,
+  markdownView,
+  searchTerm,
+  searchHighlightedHtml,
+  highlightedHtml,
+  fileContent,
+  onRefetch,
+}: {
+  fileLoading: boolean
+  fileError: Error | null
+  decodedContent: string | null
+  selectedFile: FileNode
+  markdownView: 'raw' | 'rendered'
+  searchTerm: string
+  searchHighlightedHtml: string
+  highlightedHtml: string
+  fileContent: FileReadResponse | undefined
+  onRefetch: () => void
+}) {
+  const isPartialFile = fileContent && decodedContent && fileContent.total_size > decodedContent.length
+  const htmlToRender = searchTerm ? (searchHighlightedHtml ?? '') : highlightedHtml
+
+  if (fileLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
+        <span className="ml-2 text-text-muted text-sm">Loading file...</span>
+      </div>
+    )
+  }
+
+  if (fileError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-6 h-6 text-status-error mb-2" />
+        <p className="text-text-primary text-sm mb-1">Failed to load file</p>
+        <p className="text-text-muted text-xs mb-3">
+          {fileError instanceof Error ? fileError.message : 'Unknown error'}
+        </p>
+        <button
+          onClick={onRefetch}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-elevated border border-border rounded text-sm text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  if (decodedContent === null) return null
+
+  return (
+    <>
+      {isPartialFile && (
+        <div className="bg-status-warning/10 border-b border-status-warning/20 px-4 py-1.5 text-xs text-status-warning shrink-0">
+          Showing last 1 MB of {formatFileSize(fileContent!.total_size)}
+        </div>
+      )}
+      <div className="flex-1 overflow-auto">
+        {isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
+          <div className="markdown-body p-6">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {decodedContent}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <HighlightedCodeBlock html={htmlToRender} />
+        )}
+      </div>
+    </>
+  )
+}
+
+// HighlightedCodeBlock renders pre-sanitized hljs HTML.
+// highlight.js escapes all user text and only produces <span class="hljs-..."> wrappers.
+// sanitizeHljsHtml() strips any non-span tags as a defense-in-depth measure.
+// eslint-disable-next-line react/no-danger
+function HighlightedCodeBlock({ html }: { html: string }) {
+  // NOTE: html here is sanitized output from sanitizeHljsHtml() — safe to render.
+  // eslint-disable-next-line react/no-danger
+  return (
+    <pre className="p-4 text-sm font-mono leading-relaxed overflow-x-auto">
+      <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+    </pre>
+  )
+}
+
+// --- FileViewerToolbar Component ---
+
+function FileViewerToolbar({
+  selectedFile,
+  fileContent,
+  fileLoading,
+  liveTailing,
+  searchOpen,
+  markdownView,
+  onRefetch,
+  onToggleSearch,
+  onToggleLiveTail,
+  onToggleMarkdownView,
+  breadcrumbs,
+}: {
+  selectedFile: FileNode
+  fileContent: FileReadResponse | undefined
+  fileLoading: boolean
+  liveTailing: boolean
+  searchOpen: boolean
+  markdownView: 'raw' | 'rendered'
+  onRefetch: () => void
+  onToggleSearch: () => void
+  onToggleLiveTail: () => void
+  onToggleMarkdownView: () => void
+  breadcrumbs: { name: string; path: string }[]
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-surface/50 shrink-0">
+      <div className="flex items-center gap-1 text-xs text-text-muted overflow-x-auto min-w-0">
+        {breadcrumbs.map((crumb, i) => (
+          <span key={crumb.path} className="flex items-center gap-1 shrink-0">
+            {i > 0 && <span className="text-text-faint">/</span>}
+            <span
+              className={
+                i === breadcrumbs.length - 1
+                  ? 'text-text-primary font-medium'
+                  : 'text-text-muted'
+              }
+            >
+              {crumb.name}
+            </span>
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 shrink-0 ml-2">
+        {fileContent && (
+          <span className="text-xs text-text-faint">
+            {formatFileSize(fileContent.total_size)}
+            {fileContent.mime_type && ` \u00B7 ${fileContent.mime_type}`}
+          </span>
+        )}
+        {isMarkdownFile(selectedFile.path) && (
+          <button
+            onClick={onToggleMarkdownView}
+            className="flex items-center gap-1 px-2 py-0.5 text-xs bg-elevated border border-border rounded text-text-secondary hover:text-text-primary transition-colors"
+            title={markdownView === 'raw' ? 'Show rendered' : 'Show raw'}
+          >
+            {markdownView === 'raw' ? (
+              <>
+                <Eye className="w-3 h-3" />
+                Rendered
+              </>
+            ) : (
+              <>
+                <Code className="w-3 h-3" />
+                Raw
+              </>
+            )}
+          </button>
+        )}
+        <button
+          onClick={onRefetch}
+          disabled={fileLoading || liveTailing}
+          className="p-1 text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+          title="Refresh file"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${fileLoading ? 'animate-spin' : ''}`} />
+        </button>
+        <button
+          onClick={onToggleSearch}
+          disabled={liveTailing}
+          className={`p-1 transition-colors disabled:opacity-50 ${searchOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'}`}
+          title="Search in file (Ctrl+F)"
+        >
+          <Search className="w-3.5 h-3.5" />
+        </button>
+        {!selectedFile.is_dir && (
+          <button
+            onClick={onToggleLiveTail}
+            className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors ${
+              liveTailing
+                ? 'bg-status-error/15 border-status-error/30 text-status-error'
+                : 'bg-elevated border-border text-text-secondary hover:text-text-primary'
+            }`}
+            title={liveTailing ? 'Stop live tail' : 'Start live tail'}
+          >
+            {liveTailing ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            {liveTailing ? 'Stop' : 'Live Tail'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// --- FileSearchBar Component ---
+
+function FileSearchBar({
+  searchInput,
+  matchCount,
+  currentMatch,
+  onSearchChange,
+  onNavigatePrev,
+  onNavigateNext,
+  onClose,
+  inputRef,
+}: {
+  searchInput: string
+  matchCount: number
+  currentMatch: number
+  onSearchChange: (value: string) => void
+  onNavigatePrev: () => void
+  onNavigateNext: () => void
+  onClose: () => void
+  inputRef: React.RefObject<HTMLInputElement>
+}) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-elevated/50 shrink-0">
+      <Search className="w-3.5 h-3.5 text-text-muted" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={searchInput}
+        onChange={(e) => onSearchChange(e.target.value)}
+        placeholder="Search in file..."
+        className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-faint focus:outline-none"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose()
+          if (e.key === 'Enter' && !e.shiftKey) onNavigateNext()
+          if (e.key === 'Enter' && e.shiftKey) onNavigatePrev()
+        }}
+      />
+      {searchInput && (
+        <span className="text-xs text-text-muted whitespace-nowrap">
+          {matchCount > 0 ? `${currentMatch + 1} of ${matchCount}` : 'No matches'}
+        </span>
+      )}
+      <button onClick={onNavigatePrev} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
+        <ChevronUp className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={onNavigateNext} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
+        <ChevronDown className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={onClose} className="p-0.5 text-text-muted hover:text-text-primary">
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
+}
+
+// --- FileExplorerSidebar Component ---
+
+function FileExplorerSidebar({
+  sidebarCollapsed,
+  onToggleCollapse,
+  pathsLoading,
+  rootPaths,
+  rootNodes,
+  selectedFile,
+  treeState,
+  serverId,
+  onToggleDir,
+  onSelectFile,
+}: {
+  sidebarCollapsed: boolean
+  onToggleCollapse: () => void
+  pathsLoading: boolean
+  rootPaths: string[]
+  rootNodes: FileNode[]
+  selectedFile: FileNode | null
+  treeState: Record<string, TreeNodeState>
+  serverId: string
+  onToggleDir: (path: string) => void
+  onSelectFile: (node: FileNode) => void
+}) {
+  return (
+    <div className={`${sidebarCollapsed ? 'w-10' : 'w-72'} border-r border-border flex flex-col bg-surface/30 shrink-0 transition-all duration-200`}>
+      <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
+        {!sidebarCollapsed && (
+          <span className="text-xs text-text-muted uppercase tracking-wider font-medium pl-1">File Explorer</span>
+        )}
+        <button
+          onClick={onToggleCollapse}
+          className="p-1 text-text-muted hover:text-text-primary transition-colors"
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>
+      </div>
+      <div className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'hidden' : ''}`}>
+        {pathsLoading ? (
+          <div className="flex items-center gap-2 px-3 py-4 text-text-muted text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading paths...
+          </div>
+        ) : rootPaths.length === 0 ? (
+          <div className="px-3 py-4 text-text-muted text-sm">
+            No paths configured. Ask an admin to grant access.
+          </div>
+        ) : (
+          <div className="py-1">
+            {rootNodes.map((node) => (
+              <FileTreeNode
+                key={node.path}
+                node={node}
+                depth={0}
+                serverId={serverId}
+                selectedPath={selectedFile?.path ?? null}
+                treeState={treeState}
+                onToggleDir={onToggleDir}
+                onSelectFile={onSelectFile}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// --- ServerDetailHeader Component ---
+
+function ServerDetailHeader({ server }: { server: Server }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-border shrink-0">
+      <div className="flex items-center gap-4">
+        <Link
+          to="/"
+          className="text-text-muted hover:text-text-secondary transition-colors"
+          title="Back to dashboard"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </Link>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={statusDot[server.status]}>&#x25CF;</span>
+            <h1 className="text-lg font-semibold text-text-primary">{server.name}</h1>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-text-muted mt-0.5">
+            {(server.hostname || server.ip_address) && (
+              <span className="font-mono">
+                {server.hostname ?? '--'} / {server.ip_address ?? '--'}
+              </span>
+            )}
+            {server.os && <span>{server.os}</span>}
+            {server.agent_version && <span>v{server.agent_version}</span>}
+            <span>Last seen: {relativeTime(server.last_seen_at)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- Main Page Component ---
 
 export function ServerDetailPage() {
   const { id: serverId } = useParams<{ id: string }>()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-
-
 
   // File tree state
   const [treeState, setTreeState] = useState<Record<string, TreeNodeState>>({})
@@ -1328,10 +1686,6 @@ export function ServerDetailPage() {
     }
   }, [currentMatch, searchTerm, matchCount])
 
-  // Partial-file banner
-  const isPartialFile =
-    fileContent && decodedContent && fileContent.total_size > decodedContent.length
-
   // --- Render ---
 
   if (serverLoading) {
@@ -1362,36 +1716,8 @@ export function ServerDetailPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-92px)]">
-      {/* Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-border shrink-0">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/"
-            className="text-text-muted hover:text-text-secondary transition-colors"
-            title="Back to dashboard"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={statusDot[server.status]}>&#x25CF;</span>
-              <h1 className="text-lg font-semibold text-text-primary">{server.name}</h1>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-text-muted mt-0.5">
-              {(server.hostname || server.ip_address) && (
-                <span className="font-mono">
-                  {server.hostname ?? '--'} / {server.ip_address ?? '--'}
-                </span>
-              )}
-              {server.os && <span>{server.os}</span>}
-              {server.agent_version && <span>v{server.agent_version}</span>}
-              <span>Last seen: {relativeTime(server.last_seen_at)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ServerDetailHeader server={server} />
 
-      {/* Offline banner */}
       {isOffline && (
         <div className="bg-status-error/10 border-b border-status-error/20 px-4 py-2.5 flex items-center gap-2 shrink-0">
           <AlertTriangle className="w-4 h-4 text-status-error" />
@@ -1401,53 +1727,21 @@ export function ServerDetailPage() {
         </div>
       )}
 
-      {/* Main content area */}
       {!isOffline && (
         <div className="flex flex-1 min-h-0">
-          {/* Left Sidebar - File Tree */}
-          <div className={`${sidebarCollapsed ? 'w-10' : 'w-72'} border-r border-border flex flex-col bg-surface/30 shrink-0 transition-all duration-200`}>
-            <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
-              {!sidebarCollapsed && (
-                <span className="text-xs text-text-muted uppercase tracking-wider font-medium pl-1">File Explorer</span>
-              )}
-              <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-1 text-text-muted hover:text-text-primary transition-colors"
-                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              >
-                {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'hidden' : ''}`}>
-              {pathsLoading ? (
-                <div className="flex items-center gap-2 px-3 py-4 text-text-muted text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading paths...
-                </div>
-              ) : rootPaths.length === 0 ? (
-                <div className="px-3 py-4 text-text-muted text-sm">
-                  No paths configured. Ask an admin to grant access.
-                </div>
-              ) : (
-                <div className="py-1">
-                  {rootNodes.map((node) => (
-                    <FileTreeNode
-                      key={node.path}
-                      node={node}
-                      depth={0}
-                      serverId={serverId!}
-                      selectedPath={selectedFile?.path ?? null}
-                      treeState={treeState}
-                      onToggleDir={handleToggleDir}
-                      onSelectFile={handleSelectFile}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <FileExplorerSidebar
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+            pathsLoading={pathsLoading}
+            rootPaths={rootPaths}
+            rootNodes={rootNodes}
+            selectedFile={selectedFile}
+            treeState={treeState}
+            serverId={serverId!}
+            onToggleDir={handleToggleDir}
+            onSelectFile={handleSelectFile}
+          />
 
-          {/* Right Pane - File Viewer */}
           <div className="flex-1 flex flex-col min-w-0">
             {!selectedFile ? (
               <div className="flex-1 flex items-center justify-center">
@@ -1458,120 +1752,31 @@ export function ServerDetailPage() {
               </div>
             ) : (
               <>
-                {/* Breadcrumb + controls */}
-                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-surface/50 shrink-0">
-                  <div className="flex items-center gap-1 text-xs text-text-muted overflow-x-auto min-w-0">
-                    {breadcrumbs.map((crumb, i) => (
-                      <span key={crumb.path} className="flex items-center gap-1 shrink-0">
-                        {i > 0 && <span className="text-text-faint">/</span>}
-                        <span
-                          className={
-                            i === breadcrumbs.length - 1
-                              ? 'text-text-primary font-medium'
-                              : 'text-text-muted'
-                          }
-                        >
-                          {crumb.name}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {fileContent && (
-                      <span className="text-xs text-text-faint">
-                        {formatFileSize(fileContent.total_size)}
-                        {fileContent.mime_type && ` \u00B7 ${fileContent.mime_type}`}
-                      </span>
-                    )}
-                    {isMarkdownFile(selectedFile.path) && (
-                      <button
-                        onClick={() =>
-                          setMarkdownView((v) => (v === 'raw' ? 'rendered' : 'raw'))
-                        }
-                        className="flex items-center gap-1 px-2 py-0.5 text-xs bg-elevated border border-border rounded text-text-secondary hover:text-text-primary transition-colors"
-                        title={markdownView === 'raw' ? 'Show rendered' : 'Show raw'}
-                      >
-                        {markdownView === 'raw' ? (
-                          <>
-                            <Eye className="w-3 h-3" />
-                            Rendered
-                          </>
-                        ) : (
-                          <>
-                            <Code className="w-3 h-3" />
-                            Raw
-                          </>
-                        )}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => refetchFile()}
-                      disabled={fileLoading || liveTailing}
-                      className="p-1 text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-                      title="Refresh file"
-                    >
-                      <RefreshCw
-                        className={`w-3.5 h-3.5 ${fileLoading ? 'animate-spin' : ''}`}
-                      />
-                    </button>
-                    <button
-                      onClick={() => setSearchOpen(v => !v)}
-                      disabled={liveTailing}
-                      className={`p-1 transition-colors disabled:opacity-50 ${searchOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'}`}
-                      title="Search in file (Ctrl+F)"
-                    >
-                      <Search className="w-3.5 h-3.5" />
-                    </button>
-                    {!selectedFile.is_dir && (
-                      <button
-                        onClick={() => setLiveTailing((v) => !v)}
-                        className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors ${
-                          liveTailing
-                            ? 'bg-status-error/15 border-status-error/30 text-status-error'
-                            : 'bg-elevated border-border text-text-secondary hover:text-text-primary'
-                        }`}
-                        title={liveTailing ? 'Stop live tail' : 'Start live tail'}
-                      >
-                        {liveTailing ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                        {liveTailing ? 'Stop' : 'Live Tail'}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <FileViewerToolbar
+                  selectedFile={selectedFile}
+                  fileContent={fileContent}
+                  fileLoading={fileLoading}
+                  liveTailing={liveTailing}
+                  searchOpen={searchOpen}
+                  markdownView={markdownView}
+                  onRefetch={() => refetchFile()}
+                  onToggleSearch={() => setSearchOpen((v) => !v)}
+                  onToggleLiveTail={() => setLiveTailing((v) => !v)}
+                  onToggleMarkdownView={() => setMarkdownView((v) => (v === 'raw' ? 'rendered' : 'raw'))}
+                  breadcrumbs={breadcrumbs}
+                />
 
-                {/* Search bar */}
                 {searchOpen && !liveTailing && (
-                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-elevated/50 shrink-0">
-                    <Search className="w-3.5 h-3.5 text-text-muted" />
-                    <input
-                      ref={searchInputRef}
-                      type="text"
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      placeholder="Search in file..."
-                      className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-faint focus:outline-none"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') { setSearchOpen(false); setSearchInput(''); setSearchTerm('') }
-                        if (e.key === 'Enter' && !e.shiftKey) { setCurrentMatch(i => matchCount > 0 ? (i + 1) % matchCount : 0) }
-                        if (e.key === 'Enter' && e.shiftKey) { setCurrentMatch(i => matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0) }
-                      }}
-                    />
-                    {searchInput && (
-                      <span className="text-xs text-text-muted whitespace-nowrap">
-                        {matchCount > 0 ? `${currentMatch + 1} of ${matchCount}` : 'No matches'}
-                      </span>
-                    )}
-                    <button onClick={() => setCurrentMatch(i => matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0)} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
-                      <ChevronUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => setCurrentMatch(i => matchCount > 0 ? (i + 1) % matchCount : 0)} disabled={matchCount === 0} className="p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30">
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => { setSearchOpen(false); setSearchInput(''); setSearchTerm('') }} className="p-0.5 text-text-muted hover:text-text-primary">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <FileSearchBar
+                    searchInput={searchInput}
+                    matchCount={matchCount}
+                    currentMatch={currentMatch}
+                    onSearchChange={setSearchInput}
+                    onNavigatePrev={() => setCurrentMatch((i) => (matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0))}
+                    onNavigateNext={() => setCurrentMatch((i) => (matchCount > 0 ? (i + 1) % matchCount : 0))}
+                    onClose={() => { setSearchOpen(false); setSearchInput(''); setSearchTerm('') }}
+                    inputRef={searchInputRef}
+                  />
                 )}
 
                 {liveTailing ? (
@@ -1581,48 +1786,18 @@ export function ServerDetailPage() {
                     onStop={() => setLiveTailing(false)}
                   />
                 ) : (
-                  <>
-                    {isPartialFile && (
-                      <div className="bg-status-warning/10 border-b border-status-warning/20 px-4 py-1.5 text-xs text-status-warning shrink-0">
-                        Showing last 1 MB of {formatFileSize(fileContent!.total_size)}
-                      </div>
-                    )}
-                    <div className="flex-1 overflow-auto">
-                      {fileLoading ? (
-                        <div className="flex items-center justify-center py-16">
-                          <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
-                          <span className="ml-2 text-text-muted text-sm">Loading file...</span>
-                        </div>
-                      ) : fileError ? (
-                        <div className="flex flex-col items-center justify-center py-16">
-                          <AlertTriangle className="w-6 h-6 text-status-error mb-2" />
-                          <p className="text-text-primary text-sm mb-1">Failed to load file</p>
-                          <p className="text-text-muted text-xs mb-3">
-                            {fileError instanceof Error ? fileError.message : 'Unknown error'}
-                          </p>
-                          <button
-                            onClick={() => refetchFile()}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-elevated border border-border rounded text-sm text-text-secondary hover:text-text-primary transition-colors"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Retry
-                          </button>
-                        </div>
-                      ) : decodedContent !== null ? (
-                        isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
-                          <div className="markdown-body p-6">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                              {decodedContent}
-                            </ReactMarkdown>
-                          </div>
-                        ) : (
-                          <pre className="p-4 text-sm font-mono leading-relaxed overflow-x-auto">
-                            <code className="hljs" dangerouslySetInnerHTML={{ __html: searchTerm ? (searchHighlightedHtml ?? '') : highlightedHtml }} />
-                          </pre>
-                        )
-                      ) : null}
-                    </div>
-                  </>
+                  <FileViewerContent
+                    fileLoading={fileLoading}
+                    fileError={fileError as Error | null}
+                    decodedContent={decodedContent}
+                    selectedFile={selectedFile}
+                    markdownView={markdownView}
+                    searchTerm={searchTerm}
+                    searchHighlightedHtml={searchHighlightedHtml}
+                    highlightedHtml={highlightedHtml}
+                    fileContent={fileContent}
+                    onRefetch={() => refetchFile()}
+                  />
                 )}
               </>
             )}
@@ -1630,14 +1805,12 @@ export function ServerDetailPage() {
         </div>
       )}
 
-      {/* Admin Path Management */}
       {isAdmin && (
         <div className="shrink-0 border-t border-border p-4 bg-surface/30 space-y-3">
           <PathManagement serverId={serverId!} />
           <DropzoneUpload serverId={serverId!} />
         </div>
       )}
-
     </div>
   )
 }
