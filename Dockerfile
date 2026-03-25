@@ -1,5 +1,9 @@
+# Build args allow CI to override private DHI base images with public equivalents
+ARG NODE_IMAGE=dhi.io/node:25-debian13-dev
+ARG GO_IMAGE=dhi.io/golang:1-debian13-dev
+
 # Stage 1: Build frontend (DHI hardened Node)
-FROM dhi.io/node:25-debian13-dev AS frontend
+FROM ${NODE_IMAGE} AS frontend
 WORKDIR /app/web
 COPY web/package*.json ./
 RUN npm ci
@@ -7,7 +11,9 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build Hub + Agent binaries (DHI hardened Go)
-FROM dhi.io/golang:1-debian13-dev AS backend
+FROM ${GO_IMAGE} AS backend
+# Ensure gcc and libc6-dev are present for CGO/SQLite (no-op if already installed in DHI image)
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/* || true
 WORKDIR /app
 
 # Copy proto module (shared dependency)
