@@ -220,6 +220,9 @@ func TestHandleTOTPDisable_Success(t *testing.T) {
 
 	adminUser, _ := s.store.GetUserByUsername("admin")
 
+	// Clear replay cache so the code (already used during enable) can be reused in this test
+	s.totpCache.Clear()
+
 	// Generate a valid TOTP code for the admin
 	adminCode, err := auth.GenerateValidCode(*adminUser.TOTPSecret)
 	if err != nil {

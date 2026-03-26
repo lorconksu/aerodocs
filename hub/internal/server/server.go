@@ -25,6 +25,7 @@ type Server struct {
 	connMgr     *connmgr.ConnManager
 	pending     *grpcserver.PendingRequests
 	logSessions *grpcserver.LogSessions
+	totpCache   *auth.TOTPUsedCodes
 }
 
 type Config struct {
@@ -51,6 +52,7 @@ func New(cfg Config) *Server {
 		connMgr:     cfg.ConnMgr,
 		pending:     cfg.Pending,
 		logSessions: cfg.LogSessions,
+		totpCache:   auth.NewTOTPUsedCodes(),
 	}
 
 	mux := s.routes()
@@ -73,6 +75,12 @@ func (s *Server) Start() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
+}
+
+// ClearTOTPCache removes all tracked TOTP codes from the replay cache.
+// Intended for use in tests where the same TOTP code may be reused across steps.
+func (s *Server) ClearTOTPCache() {
+	s.totpCache.Clear()
 }
 
 // spaHandler serves the embedded frontend SPA. In dev mode, it returns a

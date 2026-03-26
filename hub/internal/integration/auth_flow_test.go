@@ -127,6 +127,8 @@ func TestFullAuthFlow(t *testing.T) {
 	t.Log("login: got totp_token ✓")
 
 	// 7. Generate TOTP code and POST /api/auth/login/totp → get access/refresh tokens
+	// Clear the replay cache so the code (already used during enable) can be reused
+	h.HTTPServer.ClearTOTPCache()
 	loginTOTPCode, err := auth.GenerateValidCode(totpSetupResult.Secret)
 	if err != nil {
 		t.Fatalf("generate TOTP login code: %v", err)
