@@ -88,13 +88,18 @@ func TestHandleSelfUnregister_NotFound(t *testing.T) {
 	}
 }
 
-// TestHandleSelfUnregister_Success verifies that self-unregister for an existing server deletes it.
+// TestHandleSelfUnregister_Success verifies that self-unregister for an existing server deletes it
+// when the request comes from the matching agent IP.
 func TestHandleSelfUnregister_Success(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 
 	// Create a server to self-unregister
 	serverID := createTestServer(t, s, adminToken, "self-unregister-server")
+
+	// Set the server's IP to match the default httptest RemoteAddr
+	agentIP := "192.0.2.1:1234"
+	s.store.SetServerIP(serverID, agentIP)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
 	rec := httptest.NewRecorder()
@@ -108,6 +113,57 @@ func TestHandleSelfUnregister_Success(t *testing.T) {
 	_, err := s.store.GetServerByID(serverID)
 	if err == nil {
 		t.Fatal("expected server to be deleted after self-unregister")
+	}
+}
+
+// TestHandleSelfUnregister_WrongIP verifies that self-unregister is rejected when the
+// request comes from a different IP than the registered agent.
+func TestHandleSelfUnregister_WrongIP(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+
+	serverID := createTestServer(t, s, adminToken, "wrong-ip-server")
+
+	// Set a different IP than what httptest will send (192.0.2.1:1234)
+	agentIP := "10.0.0.99:5678"
+	s.store.SetServerIP(serverID, agentIP)
+
+	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for wrong IP, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify server still exists
+	_, err := s.store.GetServerByID(serverID)
+	if err != nil {
+		t.Fatal("expected server to still exist after rejected self-unregister")
+	}
+}
+
+// TestHandleSelfUnregister_NilIP verifies that self-unregister is rejected when the
+// server has no IP address recorded (IPAddress is nil).
+func TestHandleSelfUnregister_NilIP(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+
+	// Create server via API — IPAddress will be nil by default
+	serverID := createTestServer(t, s, adminToken, "nil-ip-server")
+
+	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for nil IP, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify server still exists
+	_, err := s.store.GetServerByID(serverID)
+	if err != nil {
+		t.Fatal("expected server to still exist after rejected self-unregister")
 	}
 }
 
