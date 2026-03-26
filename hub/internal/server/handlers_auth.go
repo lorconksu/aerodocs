@@ -60,7 +60,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.CreateUser(user); err != nil {
-		respondError(w, http.StatusConflict, "user already exists")
+		// Unique constraint violation = another request won the race
+		respondError(w, http.StatusConflict, "setup already completed")
 		return
 	}
 
