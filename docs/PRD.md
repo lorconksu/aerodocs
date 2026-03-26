@@ -54,7 +54,7 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 - Username and password login with bcrypt password hashing.
 - Mandatory TOTP (Time-based One-Time Password) two-factor authentication for every user - the system cannot be used without 2FA enrolled.
 - JWT token system with four distinct token types: access, refresh, setup (for TOTP enrollment flow), and totp (intermediate token between password-check and TOTP-check).
-- Rate limiting on authentication endpoints (5 attempts per IP per minute).
+- Rate limiting on authentication endpoints (10 attempts per IP per minute).
 - Session management via access/refresh token pair; refresh tokens exchange for new access tokens without re-login.
 - CLI break-glass command for emergency TOTP reset on the Hub server directly.
 

@@ -264,7 +264,7 @@ Secure coding practices are evident throughout the codebase:
 - **Input validation** - Password policy enforcement (`ValidatePasswordPolicy`), username validation (3-32 chars, alphanumeric + underscore), path traversal prevention
 - **Password hashing** - bcrypt at cost 12 (`hub/internal/auth/password.go:12`)
 - **JWT type enforcement** -4 distinct token types with strict endpoint matching; a valid access token cannot be used on a setup endpoint (`hub/internal/server/middleware.go:59-62`)
-- **Rate limiting** -5 attempts per IP per 60-second window on auth endpoints (`hub/internal/server/middleware.go:109-163`)
+- **Rate limiting** -10 attempts per IP per 60-second window on auth endpoints (`hub/internal/server/middleware.go:109-163`)
 - **Path traversal prevention** - `..` rejection, `filepath.Clean`, `filepath.EvalSymlinks`, absolute path requirement
 - **Cryptographic randomness** - `crypto/rand` used for temporary password generation (`hub/internal/auth/password.go:96-98`)
 - **Short token lifetimes** - Access: 15 min, TOTP: 60 sec, Setup: 10 min (`hub/internal/auth/jwt.go:16-19`)
@@ -366,7 +366,7 @@ Security-relevant defaults are hardened out of the box:
 | SQLite journal mode | WAL | `hub/internal/store/store.go` |
 | Foreign keys | Enabled | `hub/internal/store/store.go` |
 | Password minimum length | 12 characters | `hub/internal/auth/password.go:27` |
-| Rate limit | 5 per IP per 60s | `hub/internal/server/middleware.go` |
+| Rate limit | 10 per IP per 60s | `hub/internal/server/middleware.go` |
 | Docker user | Non-root `aerodocs` | `Dockerfile:48` |
 | CORS | Disabled in production | `hub/internal/server/middleware.go:93-106` |
 

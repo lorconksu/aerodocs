@@ -51,7 +51,7 @@ TOTP secrets are generated using `github.com/pquerna/otp/totp` with standard par
 
 ### Rate Limiting
 
-Login endpoints (`/api/auth/login`, `/api/auth/login/totp`, `/api/auth/register`) are protected by an in-memory rate limiter configured at **5 attempts per IP per 60-second window**.
+Login endpoints (`/api/auth/login`, `/api/auth/login/totp`, `/api/auth/register`) are protected by an in-memory rate limiter configured at **10 attempts per IP per 60-second window**.
 
 ```go
 loginLimiter := newRateLimiter(5, 60*time.Second)
