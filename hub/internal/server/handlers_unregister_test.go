@@ -97,8 +97,8 @@ func TestHandleSelfUnregister_Success(t *testing.T) {
 	// Create a server to self-unregister
 	serverID := createTestServer(t, s, adminToken, "self-unregister-server")
 
-	// Set the server's IP to match the default httptest RemoteAddr
-	agentIP := "192.0.2.1:1234"
+	// Set the server's IP to match the default httptest RemoteAddr (port stripped by handler)
+	agentIP := "192.0.2.1"
 	s.store.SetServerIP(serverID, agentIP)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
