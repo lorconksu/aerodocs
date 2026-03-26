@@ -10,7 +10,7 @@ import (
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
-	loginLimiter := newRateLimiter(5, 60*time.Second)
+	loginLimiter := newRateLimiter(10, 60*time.Second)
 
 	// Public auth endpoints (rate-limited)
 	mux.Handle("GET /api/auth/status", loggingMiddleware(http.HandlerFunc(s.handleAuthStatus)))
