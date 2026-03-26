@@ -705,6 +705,77 @@ func TestTOTPDisable_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestTOTPSetup_AlreadyEnabled(t *testing.T) {
+	s := testServer(t)
+
+	// Register to get setup token
+	regBody, _ := json.Marshal(model.RegisterRequest{
+		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
+	})
+	regReq := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(regBody))
+	regRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(regRec, regReq)
+
+	var regResp map[string]interface{}
+	json.NewDecoder(regRec.Body).Decode(&regResp)
+	setupToken := regResp["setup_token"].(string)
+
+	// Setup TOTP
+	setupReq := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
+	setupReq.Header.Set("Authorization", "Bearer "+setupToken)
+	setupRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(setupRec, setupReq)
+
+	var totpResp model.TOTPSetupResponse
+	json.NewDecoder(setupRec.Body).Decode(&totpResp)
+
+	// Enable TOTP
+	code, _ := auth.GenerateValidCode(totpResp.Secret)
+	enableBody, _ := json.Marshal(model.TOTPEnableRequest{Code: code})
+	enableReq := httptest.NewRequest("POST", "/api/auth/totp/enable", bytes.NewReader(enableBody))
+	enableReq.Header.Set("Authorization", "Bearer "+setupToken)
+	enableRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(enableRec, enableReq)
+
+	if enableRec.Code != http.StatusOK {
+		t.Fatalf("enable failed: %d: %s", enableRec.Code, enableRec.Body.String())
+	}
+
+	// Try to setup TOTP again — should get 409
+	setupReq2 := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
+	setupReq2.Header.Set("Authorization", "Bearer "+setupToken)
+	setupRec2 := httptest.NewRecorder()
+	s.routes().ServeHTTP(setupRec2, setupReq2)
+
+	if setupRec2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict, got %d: %s", setupRec2.Code, setupRec2.Body.String())
+	}
+}
+
+func TestTOTPDisable_AdminSelfDisable(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+
+	// Get admin user ID
+	adminUser, _ := s.store.GetUserByUsername("admin")
+
+	s.totpCache.Clear()
+	adminCode, _ := auth.GenerateValidCode(*adminUser.TOTPSecret)
+
+	body, _ := json.Marshal(model.TOTPDisableRequest{
+		UserID:        adminUser.ID,
+		AdminTOTPCode: adminCode,
+	})
+	req := httptest.NewRequest("POST", "/api/auth/totp/disable", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleMe(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
