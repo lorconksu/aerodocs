@@ -25,14 +25,11 @@ func ValidateTOTPCode(secret, code string) bool {
 
 // ValidateTOTPWithReplay checks the code is valid AND has not been used before.
 func ValidateTOTPWithReplay(cache *TOTPUsedCodes, userID, secret, code string) bool {
-	if cache != nil && cache.WasUsed(userID, code) {
-		return false
-	}
 	if !totp.Validate(code, secret) {
 		return false
 	}
 	if cache != nil {
-		cache.MarkUsed(userID, code)
+		return cache.CheckAndMark(userID, code)
 	}
 	return true
 }
