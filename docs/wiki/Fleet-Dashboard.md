@@ -12,13 +12,13 @@ The Fleet Dashboard is the main screen of AeroDocs. It shows all the servers tha
 
 Each server is displayed as a card showing:
 
-- **Server name** — the label you gave it when adding it
-- **Status indicator** — a coloured dot showing whether the server is reachable
-- **Hostname and IP address** — populated automatically when the agent registers
-- **Operating system** — detected by the agent
-- **Agent version** — the version of the AeroDocs agent running on that server
-- **Labels** — any tags you assigned when creating the server
-- **Last seen** — when the Hub last received a heartbeat from the agent
+- **Server name** -the label you gave it when adding it
+- **Status indicator** -a coloured dot showing whether the server is reachable
+- **Hostname and IP address** -populated automatically when the agent registers
+- **Operating system** -detected by the agent
+- **Agent version** -the version of the AeroDocs agent running on that server
+- **Labels** -any tags you assigned when creating the server
+- **Last seen** -when the Hub last received a heartbeat from the agent
 
 ---
 
@@ -26,9 +26,9 @@ Each server is displayed as a card showing:
 
 | Colour | Meaning |
 |--------|---------|
-| Green | Online — the agent is connected and responding |
-| Red | Offline — the agent was previously connected but is no longer reachable |
-| Amber / Yellow | Pending — the server record has been created but the agent has not registered yet |
+| Green | Online -the agent is connected and responding |
+| Red | Offline -the agent was previously connected but is no longer reachable |
+| Amber / Yellow | Pending -the server record has been created but the agent has not registered yet |
 
 A server stays in "pending" state until you run the install command on that machine. Once the agent runs and calls home, the status moves to "online."
 
@@ -43,7 +43,7 @@ Only admins can add servers.
 
 ![Add Server Modal](../screenshots/06-add-server-modal.png)
 
-3. Enter a **Name** for the server (this is just a label — it does not have to match the actual hostname).
+3. Enter a **Name** for the server (this is just a label -it does not have to match the actual hostname).
 4. Optionally add **Labels** to help you organise servers (e.g. `env:production`, `region:eu-west`).
 5. Click **Add Server**.
 6. AeroDocs creates the server record and generates a one-time install command. It will look something like:
@@ -53,7 +53,7 @@ Only admins can add servers.
    ```
 
 7. Copy the command and run it on the target server as root (or with `sudo`). The script downloads and installs the AeroDocs agent, then registers the server with the Hub using the embedded token.
-8. Once the agent connects, the server card changes from amber (Pending) to green (Online) automatically — no page refresh needed.
+8. Once the agent connects, the server card changes from amber (Pending) to green (Online) automatically -no page refresh needed.
 
 The registration token is single-use and expires after a short period. If you do not run the command in time, delete the server and add it again to get a fresh token.
 
