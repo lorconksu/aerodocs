@@ -97,12 +97,3 @@ jobs:
           fail-build: false
           severity-cutoff: high
           output-format: table
-
-      - name: Snyk container scan
-        uses: snyk/actions/docker@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          image: lorconksu/aerodocs:latest
-          args: --severity-threshold=high
