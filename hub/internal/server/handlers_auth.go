@@ -155,7 +155,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.TOTPSecret == nil || !auth.ValidateTOTPCode(*user.TOTPSecret, req.Code) {
+	if user.TOTPSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, user.ID, *user.TOTPSecret, req.Code) {
 		ip := clientIP(r)
 		s.store.LogAudit(model.AuditEntry{
 			ID: uuid.NewString(), UserID: &user.ID,
@@ -306,7 +306,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !auth.ValidateTOTPCode(*user.TOTPSecret, req.Code) {
+	if !auth.ValidateTOTPWithReplay(s.totpCache, userID, *user.TOTPSecret, req.Code) {
 		respondError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
 	}
@@ -398,7 +398,7 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if admin.TOTPSecret == nil || !auth.ValidateTOTPCode(*admin.TOTPSecret, req.AdminTOTPCode) {
+	if admin.TOTPSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, adminID, *admin.TOTPSecret, req.AdminTOTPCode) {
 		respondError(w, http.StatusUnauthorized, "invalid admin TOTP code")
 		return
 	}

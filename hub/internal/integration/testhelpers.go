@@ -32,6 +32,7 @@ type TestHarness struct {
 	ConnMgr     *connmgr.ConnManager
 	Pending     *grpcserver.PendingRequests
 	LogSessions *grpcserver.LogSessions
+	HTTPServer  *server.Server
 	GRPCAddr    string
 	HTTPAddr    string
 	JWTSecret   string
@@ -129,6 +130,7 @@ func StartHarness(t *testing.T) *TestHarness {
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		HTTPServer:  hs,
 		GRPCAddr:    grpcAddr,
 		HTTPAddr:    httpAddr,
 		JWTSecret:   jwtSecret,
