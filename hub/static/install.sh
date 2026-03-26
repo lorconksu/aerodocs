@@ -26,6 +26,16 @@ if [[ ! -t 0 ]]; then
   FORCE=true
 fi
 
+# Validate inputs to prevent injection
+if [[ -n "$HUB" ]] && ! echo "$HUB" | grep -qE '^[a-zA-Z0-9._:-]+$'; then
+    echo "ERROR: Invalid hub address format" >&2
+    exit 1
+fi
+if [[ -n "$TOKEN" ]] && ! echo "$TOKEN" | grep -qE '^[a-zA-Z0-9-]+$'; then
+    echo "ERROR: Invalid token format" >&2
+    exit 1
+fi
+
 if [[ -z "$TOKEN" ]] || [[ -z "$HUB" ]]; then
   echo "Usage: sudo bash install.sh --token <TOKEN> --hub <GRPC_ADDR>"
   echo "  --token   One-time registration token from Hub"
@@ -124,7 +134,7 @@ mkdir -p /etc/aerodocs
 
 # --- Install systemd service ---
 echo "==> Installing systemd service..."
-cat > /etc/systemd/system/aerodocs-agent.service <<EOF
+cat > /etc/systemd/system/aerodocs-agent.service <<'EOF'
 [Unit]
 Description=AeroDocs Agent
 After=network-online.target
@@ -132,13 +142,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/aerodocs-agent --hub ${HUB} --token ${TOKEN}
+ExecStart=/usr/local/bin/aerodocs-agent --hub __HUB_ADDR__ --token __REG_TOKEN__
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
+sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g" /etc/systemd/system/aerodocs-agent.service
 
 systemctl daemon-reload
 systemctl enable --now aerodocs-agent
