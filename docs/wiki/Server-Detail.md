@@ -2,7 +2,7 @@
 
 The Server Detail page is the per-server workspace in AeroDocs. Open it by clicking a server name on the [[Fleet Dashboard]].
 
-![Server Detail -File Tree](../screenshots/10-server-detail-filetree.png)
+![Server Detail - File Tree](../screenshots/10-server-detail-filetree.png)
 
 > **Admin vs Viewer:** Viewers can browse the file tree and tail logs on servers where they have been granted path access. Only admins can upload files via the Dropzone and manage path access permissions.
 
@@ -12,9 +12,9 @@ The Server Detail page is the per-server workspace in AeroDocs. Open it by click
 
 The page is divided into three main areas:
 
-1. **Header** -displays the server name, current status, hostname, IP address, OS, and agent version.
-2. **File Tree sidebar** -a collapsible panel on the left for navigating the remote filesystem.
-3. **Main panel** -shows the currently viewed file, the Live Tail console, or the Dropzone uploader depending on what you have selected.
+1. **Header** - displays the server name, current status, hostname, IP address, OS, and agent version.
+2. **File Tree sidebar** - a collapsible panel on the left for navigating the remote filesystem.
+3. **Main panel** - shows the currently viewed file, the Live Tail console, or the Dropzone uploader depending on what you have selected.
 
 An additional **Admin Tools sidebar** is available on the right for admins, providing path access management controls.
 
@@ -29,14 +29,14 @@ The File Tree is the left sidebar. It lets you navigate the remote server's file
 - Directories are shown with a folder icon and a disclosure arrow.
 - Click a directory name or the arrow to **expand** it and reveal its contents.
 - Click again to **collapse** it.
-- The tree loads directory contents on demand -it does not pre-fetch the entire filesystem.
+- The tree loads directory contents on demand - it does not pre-fetch the entire filesystem.
 
 ### Opening Files
 
 - Click a file name to open it in the main panel.
 - Only paths the current user has been granted access to are visible. If you cannot see a path you expect, ask an admin to grant you access (see [Managing File Access](#managing-file-access) below).
 
-> **Note:** Some files may appear greyed out in the tree. These are binary files or permission-restricted paths that are visible in the directory listing but cannot be read. This is by design -the file tree shows an "honest" view of the directory structure rather than hiding files that exist but aren't readable.
+> **Note:** Some files may appear greyed out in the tree. These are binary files or permission-restricted paths that are visible in the directory listing but cannot be read. This is by design - the file tree shows an "honest" view of the directory structure rather than hiding files that exist but aren't readable.
 
 ### Collapsing the Sidebar
 
@@ -63,24 +63,24 @@ Markdown files (`.md`) are rendered as formatted HTML by default:
 
 When viewing a Markdown file, a toggle in the top-right of the viewer lets you switch between:
 
-- **Rendered** -formatted HTML output (default)
-- **Raw** -the plain Markdown source text
+- **Rendered** - formatted HTML output (default)
+- **Raw** - the plain Markdown source text
 
 ### In-File Search
 
 Press **Ctrl+F** (or **Cmd+F** on Mac) while a file is open in the viewer to open the search bar.
 
-- Type to search -matches are highlighted in **yellow/orange** throughout the file content.
+- Type to search - matches are highlighted in **yellow/orange** throughout the file content.
 - Use the **prev** and **next** buttons in the search bar to jump between matches.
 - The match count is shown next to the navigation buttons (e.g. `3 / 12`).
-- The search is **debounced** -there is a short delay before results update, which keeps large files responsive while you type.
+- The search is **debounced** - there is a short delay before results update, which keeps large files responsive while you type.
 - Press **Escape** or click the close button to dismiss the search bar and clear highlights.
 
 ---
 
 ## Live Tail
 
-Live Tail streams log output from a file on the remote server directly into your browser in real time. It is equivalent to running `tail -f` on the server, but without needing SSH access.
+Live Tail streams log output from a file on the remote server directly into your browser in real time. It is equivalent to running `tail - f` on the server, but without needing SSH access.
 
 Both admins and viewers can use Live Tail on paths they have been granted access to.
 
@@ -120,14 +120,14 @@ The Dropzone lets you transfer files from your local machine to the server witho
 3. Alternatively, click inside the drop area to open a file picker.
 4. Each file shows an upload progress indicator. When complete, a confirmation appears.
 
-Files are uploaded to the path configured by an admin for your account. If no upload path has been set, the Dropzone will display an error -contact an admin.
+Files are uploaded to the path configured by an admin for your account. If no upload path has been set, the Dropzone will display an error - contact an admin.
 
 ### Dropped Files List
 
 Below the drop area, a list shows all files that have been successfully uploaded in the current session:
 
 - **Filename** and upload timestamp
-- **Delete** button -removes the file from the server immediately
+- **Delete** button - removes the file from the server immediately
 
 ### Deleting an Uploaded File
 
