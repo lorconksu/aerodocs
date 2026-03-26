@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,8 +37,8 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	filename := header.Filename
-	if filename == "" {
+	filename := filepath.Base(header.Filename)
+	if filename == "" || filename == "." || filename == "/" {
 		respondError(w, http.StatusBadRequest, "filename is required")
 		return
 	}
@@ -158,6 +159,12 @@ func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request
 	filename := r.URL.Query().Get("filename")
 	if filename == "" {
 		respondError(w, http.StatusBadRequest, "filename is required")
+		return
+	}
+
+	filename = filepath.Base(filename)
+	if filename == "." || filename == "/" {
+		respondError(w, http.StatusBadRequest, "invalid filename")
 		return
 	}
 
