@@ -1,5 +1,13 @@
 # AeroDocs Development Guide
 
+> **TL;DR**
+> - **What:** Local development setup with Go backend + Vite frontend dev server
+> - **Who:** Contributors and developers working on AeroDocs
+> - **Why:** Hot-reload frontend, API proxy, full-stack local testing
+> - **Where:** Two terminals: `make dev-hub` (Go on :8080) + `make dev-web` (Vite on :5173)
+> - **When:** After cloning the repo and installing prerequisites (Go 1.26+, Node 25+, Make)
+> - **How:** Vite proxies `/api` to Go backend; `make build` for production binary; `make test` for test suite
+
 ## Prerequisites
 
 - Go 1.26+

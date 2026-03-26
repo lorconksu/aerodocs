@@ -1,5 +1,13 @@
 # AeroDocs Architecture
 
+> **TL;DR**
+> - **What:** Hub-and-Spoke architecture — one central Go server (Hub) + lightweight agents on each managed server
+> - **Who:** DevOps teams, sysadmins, home lab operators managing Linux server fleets
+> - **Why:** Provides structured, auditable remote access without direct SSH; single binary, no external dependencies
+> - **Where:** Hub runs on any Linux server; agents deployed on each managed machine; frontend embedded in Hub binary
+> - **When:** Agents connect on startup via persistent gRPC stream; Hub enforces auth/authz on every request
+> - **How:** Browser → REST API → Hub → gRPC → Agent; SQLite for persistence; JWT + TOTP for auth
+
 ## Hub-and-Spoke Model
 
 AeroDocs is built on a Hub-and-Spoke architecture. There is one central Hub server that all users interact with, and a lightweight Agent binary deployed on each managed server. Users never communicate directly with agents — everything flows through the Hub.

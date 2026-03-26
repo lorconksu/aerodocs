@@ -1,5 +1,13 @@
 # AeroDocs Deployment Guide
 
+> **TL;DR**
+> - **What:** Single binary deployment with embedded frontend; systemd service + Traefik reverse proxy
+> - **Who:** The person deploying AeroDocs Hub and agents
+> - **Why:** Zero external dependencies; one file to copy, one command to run
+> - **Where:** Hub on a central server behind Traefik; agents on each managed server
+> - **When:** Build from source, copy binary, create systemd service, configure Traefik
+> - **How:** `make build` → copy `bin/aerodocs` → systemd unit → Traefik dynamic config
+
 ## Prerequisites
 
 - Go 1.26+
