@@ -197,7 +197,15 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, claims.Subject, claims.Role)
+	// Verify user still exists and use current role from DB
+	user, err := s.store.GetUserByID(claims.Subject)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "user no longer exists")
+		return
+	}
+
+	// Use user.Role from DB, not claims.Role from the old token
+	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
