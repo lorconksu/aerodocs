@@ -4,7 +4,7 @@ services:
     container_name: aerodocs
     ports:
       - "8081:8081"
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"  # gRPC - agents connect via Traefik, not directly
     volumes:
       - aerodocs-data:/data
     restart: unless-stopped
