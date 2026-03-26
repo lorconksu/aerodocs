@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,7 +33,8 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return &pb.FileListResponse{Error: fmt.Sprintf("cannot resolve path: %v", err)}, nil
+		log.Printf("ListDir: cannot resolve path %q: %v", path, err)
+		return &pb.FileListResponse{Error: "cannot access path"}, nil
 	}
 	// Ensure symlinks don't escape above the requested directory
 	cleanPath := filepath.Clean(path)
@@ -42,7 +44,8 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 
 	entries, err := os.ReadDir(resolved)
 	if err != nil {
-		return &pb.FileListResponse{Error: fmt.Sprintf("cannot read directory: %v", err)}, nil
+		log.Printf("ListDir: cannot read directory %q: %v", resolved, err)
+		return &pb.FileListResponse{Error: "cannot read directory"}, nil
 	}
 
 	var dirs, files []*pb.FileNode
@@ -94,7 +97,8 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return &pb.FileReadResponse{Error: fmt.Sprintf("cannot resolve path: %v", err)}, nil
+		log.Printf("ReadFile: cannot resolve path %q: %v", path, err)
+		return &pb.FileReadResponse{Error: "cannot access path"}, nil
 	}
 	// Ensure symlinks don't escape above the requested directory
 	cleanPath := filepath.Clean(path)
@@ -104,7 +108,8 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 
 	info, err := os.Stat(resolved)
 	if err != nil {
-		return &pb.FileReadResponse{Error: fmt.Sprintf("cannot stat file: %v", err)}, nil
+		log.Printf("ReadFile: cannot stat file %q: %v", resolved, err)
+		return &pb.FileReadResponse{Error: "cannot read file"}, nil
 	}
 	if info.IsDir() {
 		return &pb.FileReadResponse{Error: "path is a directory"}, nil
@@ -112,20 +117,23 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 
 	f, err := os.Open(resolved)
 	if err != nil {
-		return &pb.FileReadResponse{Error: fmt.Sprintf("cannot open file: %v", err)}, nil
+		log.Printf("ReadFile: cannot open file %q: %v", resolved, err)
+		return &pb.FileReadResponse{Error: "cannot read file"}, nil
 	}
 	defer f.Close()
 
 	if offset > 0 {
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
-			return &pb.FileReadResponse{Error: fmt.Sprintf("seek failed: %v", err)}, nil
+			log.Printf("ReadFile: seek failed for %q at offset %d: %v", resolved, offset, err)
+			return &pb.FileReadResponse{Error: "cannot read file"}, nil
 		}
 	}
 
 	data := make([]byte, limit)
 	n, err := io.ReadFull(f, data)
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return &pb.FileReadResponse{Error: fmt.Sprintf("read failed: %v", err)}, nil
+		log.Printf("ReadFile: read failed for %q: %v", resolved, err)
+		return &pb.FileReadResponse{Error: "cannot read file"}, nil
 	}
 
 	return &pb.FileReadResponse{
