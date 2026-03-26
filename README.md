@@ -121,4 +121,4 @@ Single binary. The React frontend is compiled by Vite and embedded into the Go b
 
 ## License
 
-TBD
+Licensed under the [Business Source License 1.1](LICENSE). You may use, copy, modify, and redistribute AeroDocs freely for non-commercial purposes. Commercial use that competes with AeroDocs requires a separate license. On **March 26, 2030**, the license automatically converts to **Apache 2.0**.
