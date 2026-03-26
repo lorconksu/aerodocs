@@ -59,7 +59,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, resp.Error)
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
+	respondJSON(w, http.StatusOK, model.FileListResult{Files: resp.Files})
 }
 
 func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
@@ -123,10 +123,10 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		IPAddress: &ip,
 	})
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"data":       base64.StdEncoding.EncodeToString(resp.Data),
-		"total_size": resp.TotalSize,
-		"mime_type":  resp.MimeType,
+	respondJSON(w, http.StatusOK, model.FileReadResult{
+		Data:      base64.StdEncoding.EncodeToString(resp.Data),
+		TotalSize: resp.TotalSize,
+		MimeType:  resp.MimeType,
 	})
 }
 
