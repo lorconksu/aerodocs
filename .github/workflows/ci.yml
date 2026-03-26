@@ -140,7 +140,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  snyk:
+  vulnerability-scan:
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -153,33 +153,21 @@ jobs:
             hub/go.sum
             agent/go.sum
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Create frontend embed stub
         run: mkdir -p hub/web/dist && touch hub/web/dist/index.html
 
-      - name: Snyk Code Test (SAST)
-        uses: snyk/actions/golang@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: code test
-          args: --severity-threshold=high
+      - name: govulncheck (Hub)
+        run: cd hub && govulncheck ./...
 
-      - name: Snyk Open Source (Dependencies)
-        uses: snyk/actions/golang@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: test
-          args: --all-projects --severity-threshold=high
+      - name: govulncheck (Agent)
+        run: cd agent && govulncheck ./...
 
-      - name: Snyk Monitor (upload to dashboard)
-        if: github.ref == 'refs/heads/main'
-        uses: snyk/actions/golang@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: monitor
-          args: --all-projects
+      - name: npm audit (Frontend)
+        run: cd web && npm ci && npm audit --audit-level=high
