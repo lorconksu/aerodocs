@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -45,8 +46,9 @@ type Client struct {
 	agentVersion string
 	backoff      time.Duration
 	maxBackoff   time.Duration
-	tailSessions map[string]chan struct{}
-	dropzone     *dropzone.Dropzone
+	tailSessionsMu sync.Mutex
+	tailSessions   map[string]chan struct{}
+	dropzone       *dropzone.Dropzone
 }
 
 func New(cfg Config) *Client {
@@ -155,15 +157,22 @@ func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh 
 func (c *Client) handleLogStreamRequest(p *pb.HubMessage_LogStreamRequest, sendCh chan<- *pb.AgentMessage) {
 	req := p.LogStreamRequest
 	stop := make(chan struct{})
+	c.tailSessionsMu.Lock()
 	c.tailSessions[req.RequestId] = stop
+	c.tailSessionsMu.Unlock()
 	go logtailer.StartTail(req.Path, req.Grep, req.Offset, sendCh, req.RequestId, stop)
 	log.Printf("started log tail: %s path=%s grep=%s", req.RequestId, req.Path, req.Grep)
 }
 
 func (c *Client) handleLogStreamStop(p *pb.HubMessage_LogStreamStop) {
-	if stop, ok := c.tailSessions[p.LogStreamStop.RequestId]; ok {
-		close(stop)
+	c.tailSessionsMu.Lock()
+	stop, ok := c.tailSessions[p.LogStreamStop.RequestId]
+	if ok {
 		delete(c.tailSessions, p.LogStreamStop.RequestId)
+	}
+	c.tailSessionsMu.Unlock()
+	if ok {
+		close(stop)
 		log.Printf("stopped log tail: %s", p.LogStreamStop.RequestId)
 	}
 }
@@ -352,10 +361,12 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 
 	sendCh := make(chan *pb.AgentMessage, 16)
 	defer func() {
+		c.tailSessionsMu.Lock()
 		for id, stop := range c.tailSessions {
 			close(stop)
 			delete(c.tailSessions, id)
 		}
+		c.tailSessionsMu.Unlock()
 		c.dropzone.Cleanup()
 	}()
 	hbStop := make(chan struct{})
