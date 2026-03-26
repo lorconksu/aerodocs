@@ -161,7 +161,7 @@ func TestRouteAgentMessage_FileListResponse(t *testing.T) {
 
 	stream := &mockStream{}
 	reqID := "req-file-list-1"
-	ch := h.pending.Register(reqID)
+	ch := h.pending.Register("s1", reqID)
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_FileListResponse{
@@ -189,7 +189,7 @@ func TestRouteAgentMessage_FileReadResponse(t *testing.T) {
 
 	stream := &mockStream{}
 	reqID := "req-file-read-1"
-	ch := h.pending.Register(reqID)
+	ch := h.pending.Register("s1", reqID)
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_FileReadResponse{
@@ -217,7 +217,7 @@ func TestRouteAgentMessage_FileUploadAck(t *testing.T) {
 
 	stream := &mockStream{}
 	reqID := "req-upload-1"
-	ch := h.pending.Register(reqID)
+	ch := h.pending.Register("s1", reqID)
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_FileUploadAck{
@@ -245,7 +245,7 @@ func TestRouteAgentMessage_FileDeleteResponse(t *testing.T) {
 
 	stream := &mockStream{}
 	reqID := "req-delete-1"
-	ch := h.pending.Register(reqID)
+	ch := h.pending.Register("s1", reqID)
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_FileDeleteResponse{
@@ -273,7 +273,7 @@ func TestRouteAgentMessage_UnregisterAck(t *testing.T) {
 
 	stream := &mockStream{}
 	reqID := "req-unregister-1"
-	ch := h.pending.Register(reqID)
+	ch := h.pending.Register("s1", reqID)
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_UnregisterAck{

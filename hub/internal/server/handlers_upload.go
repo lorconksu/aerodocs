@@ -50,8 +50,8 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Generate request ID and register for ack
 	requestID := uuid.NewString()
-	ch := s.pending.Register(requestID)
-	defer s.pending.Remove(requestID)
+	ch := s.pending.Register(serverID, requestID)
+	defer s.pending.Remove(serverID, requestID)
 
 	totalSize, streamErr := s.streamFileToAgent(serverID, requestID, filename, file)
 	if streamErr != nil {

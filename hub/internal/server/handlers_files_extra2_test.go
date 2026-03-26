@@ -25,7 +25,7 @@ func (m *mockGRPCStreamFileErrors) Send(msg *pb.HubMessage) error {
 					RequestId: p.FileListRequest.RequestId,
 					Error:     "permission denied",
 				}
-				m.pending.Deliver(p.FileListRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileListRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileReadRequest:
 			go func() {
@@ -36,7 +36,7 @@ func (m *mockGRPCStreamFileErrors) Send(msg *pb.HubMessage) error {
 					TotalSize: int64(maxFileViewSize + 1),
 					MimeType:  "text/plain",
 				}
-				m.pending.Deliver(p.FileReadRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileReadRequest.RequestId, resp)
 			}()
 		}
 	}
@@ -76,6 +76,7 @@ func testServerWithFileErrorAgent(t *testing.T) (s *Server, adminToken, serverID
 
 	stream := &mockGRPCStreamFileErrors{}
 	stream.pending = pending
+	stream.serverID = serverID
 	cm.Register(serverID, stream)
 	t.Cleanup(func() { cm.Unregister(serverID) })
 
