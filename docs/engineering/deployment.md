@@ -1,127 +1,123 @@
 # AeroDocs Deployment Guide
 
 > **TL;DR**
-> - **What:** Single binary deployment with embedded frontend; systemd service + Traefik reverse proxy
+> - **What:** Docker-first deployment with a single `docker-compose.yml`; bare-metal binary also available
 > - **Who:** The person deploying AeroDocs Hub and agents
-> - **Why:** Zero external dependencies; one file to copy, one command to run
-> - **Where:** Hub on a central server behind Traefik; agents on each managed server
-> - **When:** Build from source, copy binary, create systemd service, configure Traefik
-> - **How:** `make build` → copy `bin/aerodocs` → systemd unit → Traefik dynamic config
+> - **Why:** One file to download, one command to run - no cloning, no building
+> - **Where:** Hub on a central server (Docker or bare-metal); agents on each managed server
+> - **When:** `curl` the compose file, `docker compose up -d`, open the browser
+> - **How:** Docker Compose (primary) or build from source (contributors)
 
 ## Prerequisites
 
-- Go 1.26+
-- Node.js 25+
-- Make
+- Docker and Docker Compose (v2+)
 - A Linux server (amd64 or arm64)
-- A domain name pointing to your server
-- Traefik v2+ as a reverse proxy (recommended)
+- A domain name pointing to your server (for production use with TLS)
 
 ---
 
-## Building from Source
+## Quick Start with Docker
 
 ```bash
-git clone https://github.com/wyiu/aerodocs.git
-cd aerodocs
-make build
+# Download the compose file
+curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
+
+# Start AeroDocs
+docker compose up -d
 ```
 
-The `make build` target runs three steps in sequence:
+The Hub starts on port 8081 (HTTP) and 9090 (gRPC). Open `http://localhost:8081` in your browser to create the initial admin account and set up 2FA. Then run the one-liner shown in the UI on each server you want to manage.
 
-1. `build-web` - Runs `npm run build` inside `web/`, producing `web/dist/`
-2. `embed-web` - Copies `web/dist/` to `hub/web/dist/` so it's picked up by `go:embed`
-3. `build-hub` - Compiles `hub/cmd/aerodocs/` into `bin/aerodocs`
-
-The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no separate web server, no external dependencies.
+That's it. No cloning, no building, no dependencies.
 
 ---
 
-## Running the Binary
+## Docker Compose Configuration
 
-```bash
-./bin/aerodocs [flags]
+The default `docker-compose.yml`:
+
+```yaml
+services:
+  aerodocs:
+    image: lorconksu/aerodocs:latest
+    container_name: aerodocs
+    ports:
+      - "8081:8081"   # HTTP - web UI and REST API
+      - "9090:9090"   # gRPC - agent connections
+    volumes:
+      - aerodocs-data:/data   # SQLite DB and persistent state
+    restart: unless-stopped
+
+volumes:
+  aerodocs-data:
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--addr` | `:8080` | HTTP listen address and port |
-| `--grpc-addr` | `:9090` | gRPC listen address for agent connections |
-| `--db` | `aerodocs.db` | Path to the SQLite database file |
-| `--agent-bin-dir` | `` | Directory containing agent binaries served via `/install/{os}/{arch}` |
-| `--dev` | `false` | Enable development mode (permissive CORS, no embedded frontend served) |
+### Configuration details
 
-**Example:**
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Image | `lorconksu/aerodocs:latest` | Pin to a specific tag (e.g. `lorconksu/aerodocs:1.0.0`) for reproducible deployments |
+| HTTP port | `8081` | Web UI and REST API |
+| gRPC port | `9090` | Agent connections - must be reachable by agents |
+| Data volume | `aerodocs-data` mounted at `/data` | Contains the SQLite database (`/data/aerodocs.db`) and all persistent state |
+| Binary path | `/app/aerodocs` | The Hub binary inside the container |
 
-```bash
-./bin/aerodocs \
-  --addr 127.0.0.1:8080 \
-  --grpc-addr 0.0.0.0:9090 \
-  --db /var/lib/aerodocs/aerodocs.db \
-  --agent-bin-dir /opt/aerodocs/agent-bins
-```
+### Pinning a version
 
-Bind HTTP to `127.0.0.1` (loopback only) when running behind a reverse proxy. The gRPC port (`9090`) must be reachable by agents - bind to `0.0.0.0` or the server's public interface.
+Replace `latest` with a specific version tag to avoid unexpected upgrades:
 
-On first run, migrations execute automatically and the database file is created. Navigate to your domain in a browser to complete initial setup.
-
----
-
-## Systemd Service
-
-Create `/etc/systemd/system/aerodocs.service`:
-
-```ini
-[Unit]
-Description=AeroDocs Hub
-After=network.target
-
-[Service]
-Type=simple
-User=aerodocs
-Group=aerodocs
-WorkingDirectory=/opt/aerodocs
-ExecStart=/opt/aerodocs/bin/aerodocs \
-  --addr 127.0.0.1:8080 \
-  --grpc-addr 0.0.0.0:9090 \
-  --db /var/lib/aerodocs/aerodocs.db \
-  --agent-bin-dir /opt/aerodocs/agent-bins
-Restart=on-failure
-RestartSec=5s
-
-# Harden the service
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/aerodocs /opt/aerodocs/agent-bins
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
-
-```bash
-# Create the user and directories
-useradd --system --no-create-home --shell /usr/sbin/nologin aerodocs
-mkdir - p /opt/aerodocs/bin /var/lib/aerodocs
-cp bin/aerodocs /opt/aerodocs/bin/aerodocs
-chown - R aerodocs:aerodocs /opt/aerodocs /var/lib/aerodocs
-
-# Enable and start
-systemctl daemon-reload
-systemctl enable aerodocs
-systemctl start aerodocs
-systemctl status aerodocs
+```yaml
+image: lorconksu/aerodocs:1.0.0
 ```
 
 ---
 
-## Reverse Proxy with Traefik
+## Running Behind Traefik
 
-AeroDocs is designed to run behind Traefik. Traefik handles both HTTP (the web UI and REST API) and gRPC (agent connections) routing.
+### Docker Compose with Traefik labels
 
-Create `/etc/traefik/dynamic/aerodocs.yml`:
+If Traefik is also running in Docker, add labels to the AeroDocs service. Create a `docker-compose.traefik.yml`:
+
+```yaml
+services:
+  aerodocs:
+    image: lorconksu/aerodocs:latest
+    container_name: aerodocs
+    volumes:
+      - aerodocs-data:/data
+    restart: unless-stopped
+    labels:
+      # HTTP router - web UI and REST API
+      - "traefik.enable=true"
+      - "traefik.http.routers.aerodocs.rule=Host(`aerodocs.example.com`)"
+      - "traefik.http.routers.aerodocs.entrypoints=websecure"
+      - "traefik.http.routers.aerodocs.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.aerodocs.service=aerodocs"
+      - "traefik.http.services.aerodocs.loadbalancer.server.port=8081"
+
+      # gRPC router - agent connections (path prefix matches the proto package)
+      - "traefik.http.routers.aerodocs-grpc.rule=Host(`aerodocs.example.com`) && PathPrefix(`/aerodocs.v1.`)"
+      - "traefik.http.routers.aerodocs-grpc.entrypoints=websecure"
+      - "traefik.http.routers.aerodocs-grpc.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.aerodocs-grpc.service=aerodocs-grpc"
+      - "traefik.http.services.aerodocs-grpc.loadbalancer.server.port=9090"
+      - "traefik.http.services.aerodocs-grpc.loadbalancer.server.scheme=h2c"
+    networks:
+      - traefik
+
+volumes:
+  aerodocs-data:
+
+networks:
+  traefik:
+    external: true
+```
+
+No port mappings are needed when Traefik handles routing - traffic flows through the Docker network.
+
+### Bare-metal Traefik (file provider)
+
+If Traefik runs outside Docker, use a file provider config. Create `/etc/traefik/dynamic/aerodocs.yml`:
 
 ```yaml
 http:
@@ -148,7 +144,7 @@ http:
     aerodocs:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:8080"
+          - url: "http://127.0.0.1:8081"
 
     # h2c (cleartext HTTP/2) is required for gRPC backends without TLS
     aerodocs-grpc:
@@ -156,8 +152,6 @@ http:
         servers:
           - url: "h2c://127.0.0.1:9090"
 ```
-
-Traefik handles TLS termination (Let's Encrypt). The Hub sees plain HTTP on port 8080 and cleartext gRPC (h2c) on port 9090. The `PathPrefix('/aerodocs.v1.')` matcher routes agent gRPC connections correctly because gRPC uses the proto package path as the HTTP/2 `:path` header.
 
 Make sure your main `traefik.yml` has the file provider enabled:
 
@@ -167,6 +161,8 @@ providers:
     directory: /etc/traefik/dynamic
     watch: true
 ```
+
+Traefik handles TLS termination (Let's Encrypt). The Hub sees plain HTTP on port 8081 and cleartext gRPC (h2c) on port 9090. The `PathPrefix('/aerodocs.v1.')` matcher routes agent gRPC connections correctly because gRPC uses the proto package path as the HTTP/2 `:path` header.
 
 ---
 
@@ -179,7 +175,7 @@ Agents are lightweight Go binaries deployed on each managed server. They dial ou
 The Hub serves an install script and the agent binaries. On the managed server, run:
 
 ```bash
-curl - sSL https://aerodocs.example.com/install.sh | sudo bash - s -- \
+curl -sSL https://aerodocs.example.com/install.sh | sudo bash -s -- \
   --token <REGISTRATION_TOKEN> \
   --hub aerodocs.example.com:443
 ```
@@ -205,7 +201,7 @@ If you prefer not to pipe to bash:
 
 ```bash
 # Download the binary (example: linux/amd64)
-curl - Lo /usr/local/bin/aerodocs-agent \
+curl -Lo /usr/local/bin/aerodocs-agent \
   https://aerodocs.example.com/install/linux/amd64
 chmod +x /usr/local/bin/aerodocs-agent
 
@@ -266,8 +262,8 @@ WantedBy=multi-user.target
 ### TLS auto-detection
 
 The agent infers the connection security mode from the hub address:
-- **Hostname** (e.g. `aerodocs.example.com:443`) → TLS enabled
-- **IP address** (e.g. `192.168.1.10:9090`) → insecure (no TLS)
+- **Hostname** (e.g. `aerodocs.example.com:443`) - TLS enabled
+- **IP address** (e.g. `192.168.1.10:9090`) - insecure (no TLS)
 
 ### Reconnect behavior
 
@@ -277,8 +273,8 @@ The agent reconnects with **exponential backoff** - starting at 1 second and cap
 
 | Direction | Protocol | Port | Notes |
 |-----------|----------|------|-------|
-| Agent → Hub | gRPC (HTTP/2) | 9090 (or 443 via Traefik) | Must be reachable from agent host |
-| Hub → Agent | None | -| Agents always dial out; Hub never initiates |
+| Agent - Hub | gRPC (HTTP/2) | 9090 (or 443 via Traefik) | Must be reachable from agent host |
+| Hub - Agent | None | - | Agents always dial out; Hub never initiates |
 
 ---
 
@@ -296,18 +292,21 @@ Traefik will automatically obtain a Let's Encrypt certificate on first request o
 
 ## Database Management
 
-AeroDocs uses SQLite with WAL mode. The database is a single file (default: `aerodocs.db`).
+AeroDocs uses SQLite with WAL mode. The database is a single file.
+
+- **Docker:** The database lives at `/data/aerodocs.db` inside the container, persisted via the `aerodocs-data` named volume.
+- **Bare-metal:** The database path is set via the `--db` flag (default: `aerodocs.db`).
 
 **Auto-migrations**: On every startup, the Hub checks for and applies any unapplied migration files. No manual schema management is needed after upgrades.
 
 **Backups**: SQLite's WAL mode makes it safe to copy the database file while the Hub is running. To take a consistent snapshot:
 
 ```bash
-# Method 1: sqlite3 backup (preferred - uses SQLite's online backup API)
-sqlite3 /var/lib/aerodocs/aerodocs.db ".backup /var/lib/aerodocs/backup-$(date +%Y%m%d).db"
+# Docker - use docker exec to run sqlite3 inside the container
+docker exec aerodocs sqlite3 /data/aerodocs.db ".backup /data/backup-$(date +%Y%m%d).db"
 
-# Method 2: Simple file copy (safe with WAL mode)
-cp /var/lib/aerodocs/aerodocs.db /var/lib/aerodocs/backup-$(date +%Y%m%d).db
+# Bare-metal
+sqlite3 /var/lib/aerodocs/aerodocs.db ".backup /var/lib/aerodocs/backup-$(date +%Y%m%d).db"
 ```
 
 Store backups off-host. The database contains all user accounts, server registrations, and audit logs.
@@ -319,6 +318,10 @@ Store backups off-host. The database contains all user accounts, server registra
 If an admin is locked out (lost their authenticator app), use the `admin reset-totp` command directly on the server hosting the Hub. This requires shell access to the machine - it cannot be triggered via the web UI.
 
 ```bash
+# If running via Docker
+docker exec aerodocs /app/aerodocs admin reset-totp --username <username> --db /data/aerodocs.db
+
+# If running as a bare-metal binary
 ./bin/aerodocs admin reset-totp --username <username> --db /var/lib/aerodocs/aerodocs.db
 ```
 
@@ -329,7 +332,7 @@ This will:
 
 The user must set up TOTP again on their next login. The operation is recorded in the audit log.
 
-**Stop the service first if you need to run this on a locked database:**
+**If the database is locked (bare-metal only):**
 
 ```bash
 systemctl stop aerodocs
@@ -343,6 +346,17 @@ In practice the Hub does not hold exclusive locks on the database (WAL mode), so
 
 ## Updating / Redeploying
 
+### Docker (recommended)
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+New migrations (if any) run automatically on startup.
+
+### Bare-metal
+
 1. Build the new binary from source (`make build`)
 2. Copy the binary to the server:
    ```bash
@@ -354,3 +368,107 @@ In practice the Hub does not hold exclusive locks on the database (WAL mode), so
    systemctl restart aerodocs
    ```
 4. New migrations (if any) run automatically on startup.
+
+---
+
+## Building from Source
+
+For contributors or those who prefer running a bare-metal binary.
+
+### Prerequisites
+
+- Go 1.26+
+- Node.js 25+
+- Make
+
+### Build
+
+```bash
+git clone https://github.com/wyiu/aerodocs.git
+cd aerodocs
+make build
+```
+
+The `make build` target runs three steps in sequence:
+
+1. `build-web` - Runs `npm run build` inside `web/`, producing `web/dist/`
+2. `embed-web` - Copies `web/dist/` to `hub/web/dist/` so it's picked up by `go:embed`
+3. `build-hub` - Compiles `hub/cmd/aerodocs/` into `bin/aerodocs`
+
+The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no separate web server, no external dependencies at runtime.
+
+### Running the binary
+
+```bash
+./bin/aerodocs [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--addr` | `:8080` | HTTP listen address and port |
+| `--grpc-addr` | `:9090` | gRPC listen address for agent connections |
+| `--db` | `aerodocs.db` | Path to the SQLite database file |
+| `--agent-bin-dir` | `` | Directory containing agent binaries served via `/install/{os}/{arch}` |
+| `--dev` | `false` | Enable development mode (permissive CORS, no embedded frontend served) |
+
+**Example:**
+
+```bash
+./bin/aerodocs \
+  --addr 127.0.0.1:8081 \
+  --grpc-addr 0.0.0.0:9090 \
+  --db /var/lib/aerodocs/aerodocs.db \
+  --agent-bin-dir /opt/aerodocs/agent-bins
+```
+
+Bind HTTP to `127.0.0.1` (loopback only) when running behind a reverse proxy. The gRPC port (`9090`) must be reachable by agents - bind to `0.0.0.0` or the server's public interface.
+
+On first run, migrations execute automatically and the database file is created. Navigate to your domain in a browser to complete initial setup.
+
+### Systemd service
+
+Create `/etc/systemd/system/aerodocs.service`:
+
+```ini
+[Unit]
+Description=AeroDocs Hub
+After=network.target
+
+[Service]
+Type=simple
+User=aerodocs
+Group=aerodocs
+WorkingDirectory=/opt/aerodocs
+ExecStart=/opt/aerodocs/bin/aerodocs \
+  --addr 127.0.0.1:8081 \
+  --grpc-addr 0.0.0.0:9090 \
+  --db /var/lib/aerodocs/aerodocs.db \
+  --agent-bin-dir /opt/aerodocs/agent-bins
+Restart=on-failure
+RestartSec=5s
+
+# Harden the service
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/aerodocs /opt/aerodocs/agent-bins
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+# Create the user and directories
+useradd --system --no-create-home --shell /usr/sbin/nologin aerodocs
+mkdir -p /opt/aerodocs/bin /var/lib/aerodocs
+cp bin/aerodocs /opt/aerodocs/bin/aerodocs
+chown -R aerodocs:aerodocs /opt/aerodocs /var/lib/aerodocs
+
+# Enable and start
+systemctl daemon-reload
+systemctl enable aerodocs
+systemctl start aerodocs
+systemctl status aerodocs
+```
