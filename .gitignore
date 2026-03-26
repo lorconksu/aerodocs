@@ -22,6 +22,9 @@ hub/web/dist/
 .claude/worktrees/
 .worktrees/
 
+# Database
+*.db
+
 # Coverage
 coverage-*.out
 web/coverage/

@@ -221,6 +221,14 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := clientIP(r)
+	s.store.LogAudit(model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &user.ID,
+		Action:    "user.token_refreshed",
+		IPAddress: &ip,
+	})
+
 	respondJSON(w, http.StatusOK, model.TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -426,6 +434,14 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusUnauthorized, "invalid admin TOTP code")
 		return
 	}
+
+	// Verify target user exists
+	targetUser, err := s.store.GetUserByID(req.UserID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	_ = targetUser // used for existence check
 
 	// Disable target user's TOTP
 	if err := s.store.UpdateUserTOTP(req.UserID, nil, false); err != nil {
