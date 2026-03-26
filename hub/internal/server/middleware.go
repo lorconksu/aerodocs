@@ -136,13 +136,19 @@ func (rl *rateLimiter) allow(ip string) bool {
 			valid = append(valid, t)
 		}
 	}
-	rl.attempts[ip] = valid
+
+	// Clean up empty entries to prevent memory leak
+	if len(valid) == 0 {
+		delete(rl.attempts, ip)
+	} else {
+		rl.attempts[ip] = valid
+	}
 
 	if len(valid) >= rl.limit {
 		return false
 	}
 
-	rl.attempts[ip] = append(rl.attempts[ip], now)
+	rl.attempts[ip] = append(valid, now)
 	return true
 }
 
