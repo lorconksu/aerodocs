@@ -71,7 +71,7 @@ Viewers need to be granted path access by an admin before they can see any files
 
 ### Files are greyed out
 
-Binary files or permission-restricted paths are visible in the directory listing but cannot be read. This is by design — the file tree shows an "honest" view of the directory structure rather than hiding files that exist but aren't readable.
+Binary files or permission-restricted paths are visible in the directory listing but cannot be read. This is by design -the file tree shows an "honest" view of the directory structure rather than hiding files that exist but aren't readable.
 
 ### File content won't load
 
@@ -144,11 +144,11 @@ Only users with the **admin** role can create new accounts. Check your role in S
 
 ### Can't change my own role
 
-This is by design. You cannot change your own role — another admin must do it for you. This prevents accidental self-demotion.
+This is by design. You cannot change your own role -another admin must do it for you. This prevents accidental self-demotion.
 
 ### Can't delete my own account
 
-This is by design. You cannot delete your own account — another admin must do it for you. This prevents the last admin from accidentally removing all admin access.
+This is by design. You cannot delete your own account -another admin must do it for you. This prevents the last admin from accidentally removing all admin access.
 
 ---
 

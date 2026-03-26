@@ -5,7 +5,7 @@
 > - **Who:** Frontend developers, integration builders, and anyone automating AeroDocs
 > - **Why:** Complete reference for every HTTP endpoint with request/response schemas
 > - **Where:** All endpoints served by the Hub on the HTTP port (default :8081)
-> - **When:** After authentication — most endpoints require a valid JWT access token
+> - **When:** After authentication -most endpoints require a valid JWT access token
 > - **How:** JSON request/response bodies; Bearer token auth; SSE for streaming
 
 ---
@@ -88,16 +88,16 @@ The HTTP status code indicates the error category:
 
 | Status | Meaning |
 |---|---|
-| 400 | Bad Request — invalid input, missing required fields |
-| 401 | Unauthorized — invalid credentials or expired token |
-| 403 | Forbidden — insufficient permissions |
-| 404 | Not Found — resource does not exist |
-| 409 | Conflict — resource already exists (e.g., duplicate user) |
-| 413 | Request Entity Too Large — file exceeds size limit |
-| 429 | Too Many Requests — rate limit exceeded |
+| 400 | Bad Request -invalid input, missing required fields |
+| 401 | Unauthorized -invalid credentials or expired token |
+| 403 | Forbidden -insufficient permissions |
+| 404 | Not Found -resource does not exist |
+| 409 | Conflict -resource already exists (e.g., duplicate user) |
+| 413 | Request Entity Too Large -file exceeds size limit |
+| 429 | Too Many Requests -rate limit exceeded |
 | 500 | Internal Server Error |
-| 502 | Bad Gateway — agent communication failure |
-| 504 | Gateway Timeout — agent did not respond in time |
+| 502 | Bad Gateway -agent communication failure |
+| 504 | Gateway Timeout -agent did not respond in time |
 
 Source: `hub/internal/server/respond.go` -- `respondError(w, status, message)` produces `{"error": message}`.
 
@@ -172,9 +172,9 @@ Register the first admin user. Only works when no users exist (`initialized: fal
 ```
 
 **Error Cases:**
-- `403` — Registration disabled (users already exist)
-- `400` — Invalid username or password policy violation
-- `409` — User already exists
+- `403` -Registration disabled (users already exist)
+- `400` -Invalid username or password policy violation
+- `409` -User already exists
 
 **cURL:**
 
@@ -222,7 +222,7 @@ Authenticate with username and password.
 ```
 
 **Error Cases:**
-- `401` — Invalid credentials
+- `401` -Invalid credentials
 
 **cURL:**
 
@@ -272,7 +272,7 @@ Complete login by providing a TOTP code (second factor).
 ```
 
 **Error Cases:**
-- `401` — Invalid or expired TOTP token, invalid TOTP code, user not found
+- `401` -Invalid or expired TOTP token, invalid TOTP code, user not found
 
 **cURL:**
 
@@ -311,7 +311,7 @@ Exchange a refresh token for a new access/refresh token pair.
 ```
 
 **Error Cases:**
-- `401` — Invalid or expired refresh token
+- `401` -Invalid or expired refresh token
 
 **cURL:**
 
@@ -344,8 +344,8 @@ Generate a new TOTP secret and QR URL. The secret is stored but not yet enabled.
 ```
 
 **Error Cases:**
-- `401` — Invalid or expired setup token
-- `404` — User not found
+- `401` -Invalid or expired setup token
+- `404` -User not found
 
 **cURL:**
 
@@ -393,8 +393,8 @@ Verify and enable TOTP by providing a valid code. Returns full auth tokens on su
 ```
 
 **Error Cases:**
-- `401` — Invalid TOTP code
-- `400` — TOTP not set up (call `/api/auth/totp/setup` first)
+- `401` -Invalid TOTP code
+- `400` -TOTP not set up (call `/api/auth/totp/setup` first)
 
 **cURL:**
 
@@ -432,7 +432,7 @@ Get the current authenticated user's profile.
 ```
 
 **Error Cases:**
-- `404` — User not found
+- `404` -User not found
 
 **cURL:**
 
@@ -470,9 +470,9 @@ Change the authenticated user's password.
 ```
 
 **Error Cases:**
-- `401` — Invalid current password
-- `400` — New password does not meet policy requirements
-- `404` — User not found
+- `401` -Invalid current password
+- `400` -New password does not meet policy requirements
+- `404` -User not found
 
 **cURL:**
 
@@ -515,7 +515,7 @@ Send an empty string to remove the avatar.
 ```
 
 **Error Cases:**
-- `400` — Avatar image too large (max 500KB)
+- `400` -Avatar image too large (max 500KB)
 
 **cURL:**
 
@@ -555,9 +555,9 @@ Admin-only: disable TOTP for another user. Requires the admin's own TOTP code fo
 ```
 
 **Error Cases:**
-- `401` — Invalid admin TOTP code
-- `404` — Admin user not found
-- `403` — Not an admin
+- `401` -Invalid admin TOTP code
+- `404` -Admin user not found
+- `403` -Not an admin
 
 **cURL:**
 
@@ -651,8 +651,8 @@ Create a new user. A temporary password is auto-generated.
 ```
 
 **Error Cases:**
-- `400` — Invalid username or role
-- `409` — User already exists
+- `400` -Invalid username or role
+- `409` -User already exists
 
 **cURL:**
 
@@ -674,7 +674,7 @@ Update a user's role.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Target user UUID
+- `id` -Target user UUID
 
 **Request Body:**
 
@@ -702,8 +702,8 @@ Update a user's role.
 ```
 
 **Error Cases:**
-- `400` — Invalid role or attempting to change own role
-- `404` — User not found
+- `400` -Invalid role or attempting to change own role
+- `404` -User not found
 
 **cURL:**
 
@@ -725,7 +725,7 @@ Delete a user.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Target user UUID
+- `id` -Target user UUID
 
 **Response (200):**
 
@@ -736,8 +736,8 @@ Delete a user.
 ```
 
 **Error Cases:**
-- `400` — Cannot delete your own account
-- `404` — User not found
+- `400` -Cannot delete your own account
+- `404` -User not found
 
 **cURL:**
 
@@ -906,7 +906,7 @@ The `labels` field is optional and defaults to `"{}"`.
 Note: `registration_token` is the raw token. The Hub stores only a SHA-256 hash. The token expires after 1 hour.
 
 **Error Cases:**
-- `400` — Server name is required
+- `400` -Server name is required
 
 **cURL:**
 
@@ -928,7 +928,7 @@ Get a single server by ID. Viewers must have path permissions on the server.
 | Auth | Access token (Bearer) |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Response (200):**
 
@@ -949,8 +949,8 @@ Get a single server by ID. Viewers must have path permissions on the server.
 ```
 
 **Error Cases:**
-- `403` — Access denied (viewer without permissions)
-- `404` — Server not found
+- `403` -Access denied (viewer without permissions)
+- `404` -Server not found
 
 **cURL:**
 
@@ -970,7 +970,7 @@ Update a server's name and labels.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Request Body:**
 
@@ -984,8 +984,8 @@ Update a server's name and labels.
 **Response (200):** Returns the updated server object (same shape as GET /api/servers/{id}).
 
 **Error Cases:**
-- `400` — Server name is required
-- `404` — Server not found
+- `400` -Server name is required
+- `404` -Server not found
 
 **cURL:**
 
@@ -1007,7 +1007,7 @@ Delete a server from the database (does not uninstall the agent).
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Response (200):**
 
@@ -1018,7 +1018,7 @@ Delete a server from the database (does not uninstall the agent).
 ```
 
 **Error Cases:**
-- `404` — Server not found
+- `404` -Server not found
 
 **cURL:**
 
@@ -1055,8 +1055,8 @@ Delete multiple servers at once.
 ```
 
 **Error Cases:**
-- `400` — IDs list cannot be empty
-- `500` — Failed to delete servers
+- `400` -IDs list cannot be empty
+- `500` -Failed to delete servers
 
 **cURL:**
 
@@ -1082,7 +1082,7 @@ List all path permissions for a server.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Response (200):**
 
@@ -1119,7 +1119,7 @@ Grant a user access to a filesystem path on a server.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Request Body:**
 
@@ -1143,8 +1143,8 @@ Grant a user access to a filesystem path on a server.
 ```
 
 **Error Cases:**
-- `400` — `user_id` and `path` are required
-- `409` — Permission already exists or invalid reference
+- `400` -`user_id` and `path` are required
+- `409` -Permission already exists or invalid reference
 
 **cURL:**
 
@@ -1166,13 +1166,13 @@ Revoke a path permission.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
-- `pathId` — Permission UUID
+- `id` -Server UUID
+- `pathId` -Permission UUID
 
 **Response:** `204 No Content`
 
 **Error Cases:**
-- `404` — Permission not found (or does not belong to this server)
+- `404` -Permission not found (or does not belong to this server)
 
 **cURL:**
 
@@ -1192,7 +1192,7 @@ Get the current user's allowed paths for a server. Admins always receive `["/"]`
 | Auth | Access token (Bearer) |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Response (200):**
 
@@ -1232,7 +1232,7 @@ Browse files on a remote server.
 | Auth | Access token (Bearer), permission-checked |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Query Parameters:**
 
@@ -1263,10 +1263,10 @@ Browse files on a remote server.
 ```
 
 **Error Cases:**
-- `400` — Invalid path (not absolute, contains `..`)
-- `403` — Access denied (viewer without matching permission)
-- `404` — Path not found on agent
-- `502` — Agent communication failure
+- `400` -Invalid path (not absolute, contains `..`)
+- `403` -Access denied (viewer without matching permission)
+- `404` -Path not found on agent
+- `502` -Agent communication failure
 
 **cURL:**
 
@@ -1286,7 +1286,7 @@ Read the contents of a file from a remote server. Returns base64-encoded data.
 | Auth | Access token (Bearer), permission-checked |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Query Parameters:**
 
@@ -1309,11 +1309,11 @@ Read the contents of a file from a remote server. Returns base64-encoded data.
 ```
 
 **Error Cases:**
-- `400` — Path is required, path must be absolute, path traversal not allowed
-- `403` — Access denied
-- `404` — File not found on agent
-- `413` — File too large for viewing (> 10MB)
-- `502` — Agent communication failure
+- `400` -Path is required, path must be absolute, path traversal not allowed
+- `403` -Access denied
+- `404` -File not found on agent
+- `413` -File too large for viewing (> 10MB)
+- `502` -Agent communication failure
 
 **cURL:**
 
@@ -1333,14 +1333,14 @@ Tail a log file in real-time via Server-Sent Events (SSE). Each event contains b
 | Auth | Access token (Bearer), permission-checked |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Query Parameters:**
 
 | Parameter | Type | Description |
 |---|---|---|
 | `path` | string | Absolute file path to tail (**required**) |
-| `grep` | string | Optional filter string — only lines matching this are streamed |
+| `grep` | string | Optional filter string -only lines matching this are streamed |
 
 **Response:** `200` with `Content-Type: text/event-stream`
 
@@ -1353,9 +1353,9 @@ data: <base64-encoded-chunk>\n\n
 The connection stays open until the client disconnects. The Hub sends a stop command to the agent on disconnect.
 
 **Error Cases:**
-- `400` — Path is required
-- `403` — Access denied
-- `502` — Failed to send request to agent
+- `400` -Path is required
+- `403` -Access denied
+- `502` -Failed to send request to agent
 
 **cURL:**
 
@@ -1376,10 +1376,10 @@ Upload a file to a server's dropzone (`/tmp/aerodocs-dropzone/` on the agent).
 | Content-Type | `multipart/form-data` |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Form Fields:**
-- `file` — The file to upload (max 100MB)
+- `file` -The file to upload (max 100MB)
 
 **Response (200):**
 
@@ -1391,10 +1391,10 @@ Upload a file to a server's dropzone (`/tmp/aerodocs-dropzone/` on the agent).
 ```
 
 **Error Cases:**
-- `400` — No file provided, filename is required
-- `413` — File too large (max 100MB)
-- `502` — Agent communication failure
-- `504` — Upload timeout (30s)
+- `400` -No file provided, filename is required
+- `413` -File too large (max 100MB)
+- `502` -Agent communication failure
+- `504` -Upload timeout (30s)
 
 **cURL:**
 
@@ -1415,7 +1415,7 @@ List files in a server's dropzone directory (`/tmp/aerodocs-dropzone/`).
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Response (200):**
 
@@ -1454,7 +1454,7 @@ Delete a file from a server's dropzone.
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Query Parameters:**
 
@@ -1465,8 +1465,8 @@ Delete a file from a server's dropzone.
 **Response:** `204 No Content`
 
 **Error Cases:**
-- `400` — Filename is required
-- `500` — Delete failed on agent
+- `400` -Filename is required
+- `500` -Delete failed on agent
 
 **cURL:**
 
@@ -1508,13 +1508,13 @@ Download the agent binary for a specific platform.
 | Content-Type (response) | `application/octet-stream` |
 
 **Path Parameters:**
-- `os` — Operating system (only `linux` is supported)
-- `arch` — Architecture (`amd64` or `arm64`)
+- `os` -Operating system (only `linux` is supported)
+- `arch` -Architecture (`amd64` or `arm64`)
 
 **Response:** Binary file download with `Content-Disposition: attachment; filename=aerodocs-agent-linux-amd64`
 
 **Error Cases:**
-- `404` — Unsupported platform or binary not found
+- `404` -Unsupported platform or binary not found
 
 **cURL:**
 
@@ -1535,7 +1535,7 @@ Unregister a server: sends an unregister command to the agent (if connected), th
 | Auth | Access token (Bearer), admin only |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 The Hub attempts to notify the connected agent to clean up. If the agent does not respond within 10 seconds, the server is still deleted from the database.
 
@@ -1548,7 +1548,7 @@ The Hub attempts to notify the connected agent to clean up. If the agent does no
 ```
 
 **Error Cases:**
-- `500` — Failed to delete server from database
+- `500` -Failed to delete server from database
 
 **cURL:**
 
@@ -1568,14 +1568,14 @@ Public endpoint called by the agent during reinstallation. The server UUID in th
 | Auth | None |
 
 **Path Parameters:**
-- `id` — Server UUID
+- `id` -Server UUID
 
 **Response:** `204 No Content`
 
 If the server has already been deleted, also returns `204 No Content`.
 
 **Error Cases:**
-- `500` — Failed to delete server from database
+- `500` -Failed to delete server from database
 
 **cURL:**
 

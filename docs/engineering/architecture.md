@@ -1,7 +1,7 @@
 # AeroDocs Architecture
 
 > **TL;DR**
-> - **What:** Hub-and-Spoke architecture — one central Go server (Hub) + lightweight agents on each managed server
+> - **What:** Hub-and-Spoke architecture -one central Go server (Hub) + lightweight agents on each managed server
 > - **Who:** DevOps teams, sysadmins, home lab operators managing Linux server fleets
 > - **Why:** Provides structured, auditable remote access without direct SSH; single binary, no external dependencies
 > - **Where:** Hub runs on any Linux server; agents deployed on each managed machine; frontend embedded in Hub binary
@@ -10,15 +10,15 @@
 
 ## Hub-and-Spoke Model
 
-AeroDocs is built on a Hub-and-Spoke architecture. There is one central Hub server that all users interact with, and a lightweight Agent binary deployed on each managed server. Users never communicate directly with agents — everything flows through the Hub.
+AeroDocs is built on a Hub-and-Spoke architecture. There is one central Hub server that all users interact with, and a lightweight Agent binary deployed on each managed server. Users never communicate directly with agents -everything flows through the Hub.
 
 ![AeroDocs Architecture](../screenshots/aerodocs-architecture.png)
 
-**Hub** — The single source of truth. It serves the React SPA, enforces authentication and authorization, persists all state in SQLite, and proxies operations to agents via gRPC.
+**Hub** -The single source of truth. It serves the React SPA, enforces authentication and authorization, persists all state in SQLite, and proxies operations to agents via gRPC.
 
-**Agent** — A minimal binary installed on each remote server. It exposes a gRPC interface and executes only what the Hub instructs. Agents have no web interface, no user accounts, and no direct user access.
+**Agent** -A minimal binary installed on each remote server. It exposes a gRPC interface and executes only what the Hub instructs. Agents have no web interface, no user accounts, and no direct user access.
 
-**Frontend** — A React SPA compiled by Vite and embedded into the Hub binary via `go:embed`. The production deployment is a single self-contained binary.
+**Frontend** -A React SPA compiled by Vite and embedded into the Hub binary via `go:embed`. The production deployment is a single self-contained binary.
 
 ---
 
@@ -90,7 +90,7 @@ hub/
 
 ## Agent Architecture
 
-Agents connect to the Hub via a **persistent bidirectional gRPC stream** — the agent dials out, not the Hub. This means agents work behind NAT and firewalls without requiring inbound port forwarding.
+Agents connect to the Hub via a **persistent bidirectional gRPC stream** -the agent dials out, not the Hub. This means agents work behind NAT and firewalls without requiring inbound port forwarding.
 
 ### Proto definition
 
@@ -144,7 +144,7 @@ The Hub runs a heartbeat monitor that:
 
 ### Agent reconnect behavior
 
-The agent reconnects with **exponential backoff** — starting at 1 second and capping at 60 seconds. On reconnect, it re-sends a `Register` message so the Hub can update sysinfo and reset the connection state.
+The agent reconnects with **exponential backoff** -starting at 1 second and capping at 60 seconds. On reconnect, it re-sends a `Register` message so the Hub can update sysinfo and reset the connection state.
 
 ---
 
@@ -175,8 +175,8 @@ agent/
 | `heartbeat` | Sends a `Heartbeat` message to the hub on a 15-second ticker |
 | `sysinfo` | Collects CPU usage, memory usage, disk usage, and system uptime; populates the `Register` message |
 | `filebrowser` | Handles `FileListRequest` (directory listing) and `FileReadRequest` (file content, base64-encoded) |
-| `logtailer` | Handles `LogStreamRequest` — polls the target file for new lines and streams `LogStreamChunk` messages; supports optional grep filtering |
-| `dropzone` | Handles `FileUploadRequest` — receives chunked file transfers and writes them to a local staging directory |
+| `logtailer` | Handles `LogStreamRequest` -polls the target file for new lines and streams `LogStreamChunk` messages; supports optional grep filtering |
+| `dropzone` | Handles `FileUploadRequest` -receives chunked file transfers and writes them to a local staging directory |
 
 ### Agent configuration
 
@@ -191,14 +191,14 @@ Two new packages under `hub/internal/` support the agent gRPC layer:
 ```
 hub/internal/
 ├── grpcserver/    # gRPC server, Connect handler, PendingRequests map, LogSessions map
-└── connmgr/       # Connection manager — tracks active agent streams, SendMu for concurrent write safety
+└── connmgr/       # Connection manager -tracks active agent streams, SendMu for concurrent write safety
 ```
 
 ### Package responsibilities
 
 | Package | Responsibility |
 |---------|---------------|
-| `grpcserver` | Implements `AgentService.Connect` — reads incoming `AgentMessage` frames, resolves pending requests, manages log sessions, and dispatches heartbeats. Owns the `PendingRequests map[string]chan proto.Message` and `LogSessions map[string]context.CancelFunc`. |
+| `grpcserver` | Implements `AgentService.Connect` -reads incoming `AgentMessage` frames, resolves pending requests, manages log sessions, and dispatches heartbeats. Owns the `PendingRequests map[string]chan proto.Message` and `LogSessions map[string]context.CancelFunc`. |
 | `connmgr` | Stores the active gRPC send stream for each connected server. Wraps sends with a `sync.Mutex` (`SendMu`) to prevent concurrent write races on the stream. Provides `SendToServer(serverID, msg)` used by HTTP handlers to forward requests to agents. |
 
 ---
@@ -218,7 +218,7 @@ sequenceDiagram
     alt User has TOTP enabled
         Browser->>Hub: POST /api/auth/login/totp (totp_token + TOTP code)
         Hub-->>Browser: access_token (15m) + refresh_token (7d)
-    else First login — TOTP not yet configured
+    else First login -TOTP not yet configured
         Browser->>Hub: POST /api/auth/totp/setup (setup_token)
         Hub-->>Browser: TOTP secret + QR URL
         Browser->>Hub: POST /api/auth/totp/enable (setup_token + TOTP code)
@@ -240,7 +240,7 @@ sequenceDiagram
 | `totp` | 60 seconds | `POST /api/auth/login/totp` only | Short-lived bridge between password auth and TOTP verification |
 | `setup` | 10 minutes | `POST /api/auth/totp/setup` and `POST /api/auth/totp/enable` only | One-time TOTP enrollment flow |
 
-The middleware enforces token type — passing a refresh token to a protected endpoint returns 401, even if the signature is valid.
+The middleware enforces token type -passing a refresh token to a protected endpoint returns 401, even if the signature is valid.
 
 **Mandatory 2FA**: Every user must complete TOTP setup before receiving an access token. There is no opt-out path.
 
@@ -290,7 +290,7 @@ Notable audit actions related to server lifecycle:
 | `server.registered` | Agent completes initial registration |
 | `server.connected` | Agent establishes a live gRPC stream |
 | `server.disconnected` | Agent's gRPC stream drops |
-| `server.unregistered` | Admin (or agent re-install) unregisters a server — cleanup command sent to agent, then record deleted from DB |
+| `server.unregistered` | Admin (or agent re-install) unregisters a server -cleanup command sent to agent, then record deleted from DB |
 
 ### `_config`
 Key-value store for internal Hub configuration (e.g. the JWT signing key).

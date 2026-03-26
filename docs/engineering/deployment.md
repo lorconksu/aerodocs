@@ -29,9 +29,9 @@ make build
 
 The `make build` target runs three steps in sequence:
 
-1. `build-web` — Runs `npm run build` inside `web/`, producing `web/dist/`
-2. `embed-web` — Copies `web/dist/` to `hub/web/dist/` so it's picked up by `go:embed`
-3. `build-hub` — Compiles `hub/cmd/aerodocs/` into `bin/aerodocs`
+1. `build-web` -Runs `npm run build` inside `web/`, producing `web/dist/`
+2. `embed-web` -Copies `web/dist/` to `hub/web/dist/` so it's picked up by `go:embed`
+3. `build-hub` -Compiles `hub/cmd/aerodocs/` into `bin/aerodocs`
 
 The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no separate web server, no external dependencies.
 
@@ -61,7 +61,7 @@ The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no s
   --agent-bin-dir /opt/aerodocs/agent-bins
 ```
 
-Bind HTTP to `127.0.0.1` (loopback only) when running behind a reverse proxy. The gRPC port (`9090`) must be reachable by agents — bind to `0.0.0.0` or the server's public interface.
+Bind HTTP to `127.0.0.1` (loopback only) when running behind a reverse proxy. The gRPC port (`9090`) must be reachable by agents -bind to `0.0.0.0` or the server's public interface.
 
 On first run, migrations execute automatically and the database file is created. Navigate to your domain in a browser to complete initial setup.
 
@@ -172,7 +172,7 @@ providers:
 
 ## Agent Deployment
 
-Agents are lightweight Go binaries deployed on each managed server. They dial out to the Hub's gRPC port — no inbound firewall rules are needed on the agent host.
+Agents are lightweight Go binaries deployed on each managed server. They dial out to the Hub's gRPC port -no inbound firewall rules are needed on the agent host.
 
 ### One-command install (recommended)
 
@@ -186,11 +186,11 @@ curl -sSL https://aerodocs.example.com/install.sh | sudo bash -s -- \
 
 The script will:
 1. Detect the OS and CPU architecture
-2. **Auto-detect an existing installation** — if `aerodocs-agent` is already installed and has a valid `agent.conf`, the script calls `aerodocs-agent --self-unregister` to remove the old server entry from the Hub before proceeding
+2. **Auto-detect an existing installation** -if `aerodocs-agent` is already installed and has a valid `agent.conf`, the script calls `aerodocs-agent --self-unregister` to remove the old server entry from the Hub before proceeding
 3. Download the correct agent binary from `/install/{os}/{arch}`
 4. Write the configuration to `/etc/aerodocs/agent.conf`
 5. Install and enable a systemd service for the agent
-6. **Verify registration** — after starting the agent service, the script checks that the agent successfully registered with the Hub before reporting success
+6. **Verify registration** -after starting the agent service, the script checks that the agent successfully registered with the Hub before reporting success
 
 #### Piped vs. manual execution
 
@@ -271,14 +271,14 @@ The agent infers the connection security mode from the hub address:
 
 ### Reconnect behavior
 
-The agent reconnects with **exponential backoff** — starting at 1 second and capping at 60 seconds. On each reconnect it re-sends a `Register` message so the Hub updates sysinfo and resets connection state.
+The agent reconnects with **exponential backoff** -starting at 1 second and capping at 60 seconds. On each reconnect it re-sends a `Register` message so the Hub updates sysinfo and resets connection state.
 
 ### Network requirements
 
 | Direction | Protocol | Port | Notes |
 |-----------|----------|------|-------|
 | Agent → Hub | gRPC (HTTP/2) | 9090 (or 443 via Traefik) | Must be reachable from agent host |
-| Hub → Agent | None | — | Agents always dial out; Hub never initiates |
+| Hub → Agent | None | -| Agents always dial out; Hub never initiates |
 
 ---
 
@@ -303,7 +303,7 @@ AeroDocs uses SQLite with WAL mode. The database is a single file (default: `aer
 **Backups**: SQLite's WAL mode makes it safe to copy the database file while the Hub is running. To take a consistent snapshot:
 
 ```bash
-# Method 1: sqlite3 backup (preferred — uses SQLite's online backup API)
+# Method 1: sqlite3 backup (preferred -uses SQLite's online backup API)
 sqlite3 /var/lib/aerodocs/aerodocs.db ".backup /var/lib/aerodocs/backup-$(date +%Y%m%d).db"
 
 # Method 2: Simple file copy (safe with WAL mode)
@@ -316,7 +316,7 @@ Store backups off-host. The database contains all user accounts, server registra
 
 ## CLI Break-Glass: Emergency TOTP Reset
 
-If an admin is locked out (lost their authenticator app), use the `admin reset-totp` command directly on the server hosting the Hub. This requires shell access to the machine — it cannot be triggered via the web UI.
+If an admin is locked out (lost their authenticator app), use the `admin reset-totp` command directly on the server hosting the Hub. This requires shell access to the machine -it cannot be triggered via the web UI.
 
 ```bash
 ./bin/aerodocs admin reset-totp --username <username> --db /var/lib/aerodocs/aerodocs.db
