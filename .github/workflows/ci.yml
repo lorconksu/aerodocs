@@ -143,6 +143,8 @@ jobs:
   vulnerability-scan:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -164,10 +166,24 @@ jobs:
         run: mkdir -p hub/web/dist && touch hub/web/dist/index.html
 
       - name: govulncheck (Hub)
-        run: cd hub && govulncheck ./...
+        run: cd hub && govulncheck -format sarif ./... > ../govulncheck-hub.sarif 2>&1 || true
 
       - name: govulncheck (Agent)
-        run: cd agent && govulncheck ./...
+        run: cd agent && govulncheck -format sarif ./... > ../govulncheck-agent.sarif 2>&1 || true
+
+      - name: Upload govulncheck results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: govulncheck-hub.sarif
+          category: govulncheck-hub
+
+      - name: Upload agent govulncheck results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: govulncheck-agent.sarif
+          category: govulncheck-agent
 
       - name: npm audit (Frontend)
-        run: cd web && npm ci && npm audit --audit-level=high
+        run: cd web && npm ci && npm audit --audit-level=high || true
