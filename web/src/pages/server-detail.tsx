@@ -161,7 +161,7 @@ const markdownComponents: Components = {
       return (
         <code
           className="hljs"
-          dangerouslySetInnerHTML={{ __html: result.value }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHljsHtml(result.value) }}
         />
       )
     } catch {
