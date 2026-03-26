@@ -476,3 +476,19 @@ The following threats are explicitly out of scope for this security model:
 - **Denial of service** beyond the login rate limiter (no general request rate limiting)
 - **Browser-side attacks** (XSS, CSRF) -- the SPA is served from the same origin as the API, and no cookies are used for auth (token-based only)
 - **Database encryption at rest** -- relies on OS-level disk encryption if required
+
+---
+
+## Known Limitations
+
+### JWT Tokens in localStorage
+
+AeroDocs stores JWT access and refresh tokens in the browser's `localStorage`. This means any JavaScript running on the page (including code injected via an XSS attack) can read and exfiltrate these tokens.
+
+**Mitigations in place:**
+- **Content Security Policy** - CSP restricts script sources to `'self'`, blocking inline scripts and external script injection
+- **Short access token lifetime** - Access tokens expire in 15 minutes, limiting the window of exploitation
+- **No user-controlled HTML rendering** - `react-markdown` does not render raw HTML (no `rehype-raw` plugin), and highlight.js output is sanitized
+- **X-Frame-Options: DENY** - Prevents clickjacking attacks that could be used to steal tokens
+
+**Planned improvement (v1.1):** Migrate to httpOnly cookies for token storage, which makes tokens completely inaccessible to JavaScript. This requires implementing CSRF protection (SameSite cookies + CSRF tokens) and updating the auth flow.
