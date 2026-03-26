@@ -38,7 +38,7 @@ The agent-hub gRPC contract is defined in `proto/aerodocs/v1/agent.proto`. After
 ```bash
 # Install protoc (Protocol Buffers compiler)
 # On Ubuntu/Debian:
-apt install -y protobuf-compiler
+apt install - y protobuf-compiler
 
 # Install the Go plugins
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -57,9 +57,9 @@ This runs `protoc` with the `--go_out` and `--go-grpc_out` flags, writing genera
 
 ## Running in Development
 
-The development environment runs two processes -open two terminal windows.
+The development environment runs two processes - open two terminal windows.
 
-**Terminal 1 -Hub (HTTP on :8080, gRPC on :9090):**
+**Terminal 1 - Hub (HTTP on :8080, gRPC on :9090):**
 
 ```bash
 make dev-hub
@@ -67,7 +67,7 @@ make dev-hub
 
 This runs `go run ./cmd/aerodocs/ --dev --addr :8080 --grpc-addr :9090` from the `hub/` directory. The `--dev` flag enables permissive CORS so the Vite dev server can make cross-origin API requests, and disables serving the embedded frontend (Vite handles that instead). Both the HTTP API and gRPC agent listener start together.
 
-**Terminal 2 -Vite dev server (UI on :5173):**
+**Terminal 2 - Vite dev server (UI on :5173):**
 
 ```bash
 make dev-web
@@ -89,7 +89,7 @@ server: {
 },
 ```
 
-Any request the browser makes to `/api/*` is forwarded by Vite to the Go Hub on port 8080. This means the browser always talks to `localhost:5173` (no CORS issues from the browser's perspective), and Vite silently proxies the API calls. In production there is no proxy -the Hub serves both the SPA and the API on the same port.
+Any request the browser makes to `/api/*` is forwarded by Vite to the Go Hub on port 8080. This means the browser always talks to `localhost:5173` (no CORS issues from the browser's perspective), and Vite silently proxies the API calls. In production there is no proxy - the Hub serves both the SPA and the API on the same port.
 
 ---
 
@@ -99,7 +99,7 @@ Any request the browser makes to `/api/*` is forwarded by Vite to the Go Hub on 
 make build
 ```
 
-Output: `bin/aerodocs` -a single self-contained binary.
+Output: `bin/aerodocs` - a single self-contained binary.
 
 ---
 
@@ -111,9 +111,9 @@ make test
 
 This runs `go test ./...` from the `hub/` directory. The test suite covers:
 
-- `auth/` -JWT generation, validation, token type enforcement, bcrypt, TOTP
-- `store/` -All store methods against a real in-memory SQLite database
-- `server/` -HTTP handler tests using `httptest`
+- `auth/` - JWT generation, validation, token type enforcement, bcrypt, TOTP
+- `store/` - All store methods against a real in-memory SQLite database
+- `server/` - HTTP handler tests using `httptest`
 
 There are no frontend tests at this time.
 
@@ -147,7 +147,7 @@ Place these in the Hub's `--agent-bin-dir` so they are served via `/install/{os}
 
 To exercise the full Hub + Agent stack locally:
 
-**Terminal 1 -Start the Hub:**
+**Terminal 1 - Start the Hub:**
 
 ```bash
 ./bin/aerodocs \
@@ -162,7 +162,7 @@ To exercise the full Hub + Agent stack locally:
 1. Create a server record (Admin → Servers → Add Server).
 2. Copy the registration token shown on the server detail page.
 
-**Terminal 2 -Run the agent:**
+**Terminal 2 - Run the agent:**
 
 ```bash
 ./bin/aerodocs-agent-linux-amd64 \
@@ -170,7 +170,7 @@ To exercise the full Hub + Agent stack locally:
   --token <REGISTRATION_TOKEN>
 ```
 
-The agent connects over insecure gRPC (no TLS -detected automatically because the hub address is an IP/localhost). The server status in the UI will change to `online` within a few seconds.
+The agent connects over insecure gRPC (no TLS - detected automatically because the hub address is an IP/localhost). The server status in the UI will change to `online` within a few seconds.
 
 ---
 
@@ -271,7 +271,7 @@ Migrations run automatically on the next startup. They are applied in filename o
 
 ### 2. Add a model
 
-Add request/response structs to `hub/internal/model/`. Keep this package free of business logic -plain structs only.
+Add request/response structs to `hub/internal/model/`. Keep this package free of business logic - plain structs only.
 
 ```go
 // hub/internal/model/my_resource.go
@@ -345,7 +345,7 @@ Create a new page in `web/src/pages/` and add the route in `web/src/App.tsx`. Us
 
 - Strict TypeScript throughout (`strict: true` in tsconfig).
 - TanStack Query manages all server state. Do not use `useEffect` + `useState` for data fetching.
-- Components live in `src/components/`, pages in `src/pages/`. Pages are thin -extract reusable UI to components.
+- Components live in `src/components/`, pages in `src/pages/`. Pages are thin - extract reusable UI to components.
 - Use the `@/` path alias for all imports within `src/`.
 
 ### Commits

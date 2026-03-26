@@ -8,7 +8,7 @@ The Settings page is accessible from the sidebar. It has two tabs: **Profile** (
 
 ![Settings Profile](../screenshots/08-settings-profile.png)
 
-The Profile tab is available to every user -both admins and viewers.
+The Profile tab is available to every user - both admins and viewers.
 
 ### Changing Your Avatar
 
@@ -41,15 +41,15 @@ The Users tab lists all accounts registered in AeroDocs. This tab is only visibl
 
 AeroDocs generates a temporary password and shows it to you once. Copy it and share it securely with the new user. They will be required to change their password and set up TOTP on their first login.
 
-New users cannot choose their own password during account creation -they must use the temporary password you provide.
+New users cannot choose their own password during account creation - they must use the temporary password you provide.
 
 ### Changing a User's Role
 
-In the user list, click the role badge next to a user's name (it shows "admin" or "viewer"). A dropdown appears letting you switch between roles. The change takes effect immediately -the user's current session will reflect the new role on their next API request.
+In the user list, click the role badge next to a user's name (it shows "admin" or "viewer"). A dropdown appears letting you switch between roles. The change takes effect immediately - the user's current session will reflect the new role on their next API request.
 
-**Admin** -Full access. Can add and delete servers, manage users, view audit logs, and access all settings.
+**Admin** - Full access. Can add and delete servers, manage users, view audit logs, and access all settings.
 
-**Viewer** -Read-only access. Can view the fleet dashboard and server details but cannot make changes. (Specific per-server and per-folder permissions can be configured separately.)
+**Viewer** - Read-only access. Can view the fleet dashboard and server details but cannot make changes. (Specific per-server and per-folder permissions can be configured separately.)
 
 > **Note:** You cannot change your own role. Another admin must do it for you.
 

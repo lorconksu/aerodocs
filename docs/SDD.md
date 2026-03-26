@@ -1,4 +1,4 @@
-# System Design Document -AeroDocs
+# System Design Document - AeroDocs
 
 **Version:** 2.0
 **Status:** Active
@@ -49,16 +49,16 @@ graph TD
 Built on Go's standard `net/http` with `ServeMux`. No third-party router framework. Routes are registered explicitly with method and path prefix (Go 1.22 pattern syntax). A CORS middleware wraps the entire mux.
 
 Listeners:
-- HTTP on `:8081` (default) -serves REST API and embedded SPA.
-- gRPC on `:9090` (default) -serves `AgentService`.
+- HTTP on `:8081` (default) - serves REST API and embedded SPA.
+- gRPC on `:9090` (default) - serves `AgentService`.
 
 #### gRPC Server (`hub/internal/grpcserver`)
 
 Implements `AgentService.Connect`, the single bidirectional streaming RPC. Key sub-components:
 
-- **Handler** (`handler.go`) -processes incoming `AgentMessage` frames (heartbeats, registration, file responses, log chunks, upload acks, unregister acks). Routes outbound `HubMessage` frames to the correct agent, including `UnregisterRequest` when the admin-initiated unregister endpoint is called.
-- **PendingRequests** (`pending.go`) -request-response correlation map. When an HTTP handler needs a synchronous response from an agent (e.g., file read), it registers a pending entry with a UUID request ID and blocks on a channel. The gRPC handler fulfills the pending entry when the matching response arrives.
-- **LogSessions** (`logsessions.go`) -manages active log tailing sessions. Maps request ID to a channel of log chunks. HTTP SSE handler reads from this channel; gRPC handler writes to it.
+- **Handler** (`handler.go`) - processes incoming `AgentMessage` frames (heartbeats, registration, file responses, log chunks, upload acks, unregister acks). Routes outbound `HubMessage` frames to the correct agent, including `UnregisterRequest` when the admin-initiated unregister endpoint is called.
+- **PendingRequests** (`pending.go`) - request-response correlation map. When an HTTP handler needs a synchronous response from an agent (e.g., file read), it registers a pending entry with a UUID request ID and blocks on a channel. The gRPC handler fulfills the pending entry when the matching response arrives.
+- **LogSessions** (`logsessions.go`) - manages active log tailing sessions. Maps request ID to a channel of log chunks. HTTP SSE handler reads from this channel; gRPC handler writes to it.
 
 #### SQLite Database
 
@@ -75,7 +75,7 @@ Four token types enforced by the `authMiddleware`:
 | `setup` | TOTP enrollment flow | 10 minutes |
 | `totp` | Intermediate after password check, before TOTP check | 5 minutes |
 
-All tokens are signed with HMAC-SHA256. The `TokenType` claim is checked by middleware -an `access` token cannot be used where a `setup` token is required, and vice versa.
+All tokens are signed with HMAC-SHA256. The `TokenType` claim is checked by middleware - an `access` token cannot be used where a `setup` token is required, and vice versa.
 
 #### Connection Manager (`hub/internal/connmgr`)
 
@@ -107,9 +107,9 @@ Sends a `Heartbeat` message every 10 seconds with a `SystemInfo` payload: CPU ut
 
 #### File Browser (`agent/internal/filebrowser`)
 
-`ListDir(path)` -reads a directory and returns a `FileListResponse`. Each `FileNode` includes name, path, size, `is_dir`, and `readable` flag. Directories are sorted before files, both groups sorted lexicographically.
+`ListDir(path)` - reads a directory and returns a `FileListResponse`. Each `FileNode` includes name, path, size, `is_dir`, and `readable` flag. Directories are sorted before files, both groups sorted lexicographically.
 
-`ReadFile(path, offset, limit)` -reads up to `limit` bytes starting at `offset`. Hard cap of 1 MB per request (`MaxReadSize = 1048576`). Returns `FileReadResponse` with the data bytes, total file size, and detected MIME type.
+`ReadFile(path, offset, limit)` - reads up to `limit` bytes starting at `offset`. Hard cap of 1 MB per request (`MaxReadSize = 1048576`). Returns `FileReadResponse` with the data bytes, total file size, and detected MIME type.
 
 Path validation is applied before any file system access:
 1. Rejects paths containing `..` before cleaning.
@@ -118,13 +118,13 @@ Path validation is applied before any file system access:
 
 #### Log Tailer (`agent/internal/logtailer`)
 
-`StartTail(path, grep, offset, sendCh, requestID, stop)` -opens the file, seeks to `offset` (or to end-of-file if `offset <= 0`), and polls every 500 ms for new data. Each poll reads all available bytes from the current position and scans line-by-line. If `grep` is non-empty, only lines containing the grep string (case-insensitive) are included. Matching data is sent as `LogStreamChunk` messages on `sendCh`. The session stops when `stop` is closed.
+`StartTail(path, grep, offset, sendCh, requestID, stop)` - opens the file, seeks to `offset` (or to end-of-file if `offset <= 0`), and polls every 500 ms for new data. Each poll reads all available bytes from the current position and scans line-by-line. If `grep` is non-empty, only lines containing the grep string (case-insensitive) are included. Matching data is sent as `LogStreamChunk` messages on `sendCh`. The session stops when `stop` is closed.
 
 Rotation detection: if a read returns 0 bytes and a stat shows the file size is smaller than the current offset, the tailer re-opens the file from position 0.
 
 #### Dropzone (`agent/internal/dropzone`)
 
-`HandleChunk(requestID, filename, data, done)` -writes incoming chunks to `/tmp/aerodocs-dropzone/` (default). On the first chunk for a given request ID, it sanitizes the filename (strips path components, replaces special characters) and opens a new file. Subsequent chunks append to the open file handle. When `done=true`, the file is closed and the upload acknowledged. An in-progress map keyed by request ID tracks open file handles under a mutex.
+`HandleChunk(requestID, filename, data, done)` - writes incoming chunks to `/tmp/aerodocs-dropzone/` (default). On the first chunk for a given request ID, it sanitizes the filename (strips path components, replaces special characters) and opens a new file. Subsequent chunks append to the open file handle. When `done=true`, the file is closed and the upload acknowledged. An in-progress map keyed by request ID tracks open file handles under a mutex.
 
 #### Config Persistence
 
@@ -344,8 +344,8 @@ erDiagram
 
 ### Key Constraints and Notes
 
-- `permissions.UNIQUE(user_id, server_id, path)` -prevents duplicate path grants.
-- `audit_logs` has no delete cascade and no update path -entries are truly immutable.
+- `permissions.UNIQUE(user_id, server_id, path)` - prevents duplicate path grants.
+- `audit_logs` has no delete cascade and no update path - entries are truly immutable.
 - `_config` stores the Hub's initialization state (e.g., `initialized=true` after first admin account is created).
 - All `id` fields are UUIDs generated in application code.
 - All timestamps are stored as ISO 8601 text in UTC.
@@ -384,7 +384,7 @@ This prevents a compromised or buggy Hub from directing the Agent to read files 
 ### 5.4 Dropzone Security
 
 - Dropzone upload is restricted to Admin role users only (enforced by `adminOnly` middleware on the Hub).
-- Files are always written to `/tmp/aerodocs-dropzone/` -the Agent never writes to arbitrary paths.
+- Files are always written to `/tmp/aerodocs-dropzone/` - the Agent never writes to arbitrary paths.
 - Filenames are sanitized on the Agent: path separators are stripped and only safe characters are allowed.
 - File transfer requires the user to have completed TOTP 2FA (enforced by the `access` token type, which is only issued after TOTP verification).
 

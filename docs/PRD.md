@@ -1,4 +1,4 @@
-# Product Requirements Document -AeroDocs
+# Product Requirements Document - AeroDocs
 
 **Version:** 2.0
 **Status:** Active
@@ -9,7 +9,7 @@
 
 AeroDocs is a self-hosted infrastructure observability and documentation platform built around a **Hub-and-Spoke** architecture.
 
-A central **Hub** server hosts the web UI, REST API, and database. Lightweight **Agent** binaries deployed on remote servers maintain persistent gRPC connections back to the Hub. All user interactions -browsing files, tailing logs, uploading files -flow exclusively through the Hub, which enforces authentication, authorization, and audit logging before proxying commands to the appropriate agent.
+A central **Hub** server hosts the web UI, REST API, and database. Lightweight **Agent** binaries deployed on remote servers maintain persistent gRPC connections back to the Hub. All user interactions - browsing files, tailing logs, uploading files - flow exclusively through the Hub, which enforces authentication, authorization, and audit logging before proxying commands to the appropriate agent.
 
 **Target users:** DevOps teams, sysadmins, and platform engineers who manage fleets of Linux servers and need structured, auditable access to those machines without opening direct SSH sessions to every host.
 
@@ -19,7 +19,7 @@ A central **Hub** server hosts the web UI, REST API, and database. Lightweight *
 
 ### 2.1 Direct SSH is risky and unmanageable at scale
 
-SSH gives engineers full shell access to remote machines. There is no built-in concept of read-only access, no per-path restrictions, and no automatic audit trail. A single mistyped command can cause an outage. Sharing credentials or SSH keys across a team compounds the risk -when something goes wrong, it is often impossible to determine who did what and when.
+SSH gives engineers full shell access to remote machines. There is no built-in concept of read-only access, no per-path restrictions, and no automatic audit trail. A single mistyped command can cause an outage. Sharing credentials or SSH keys across a team compounds the risk - when something goes wrong, it is often impossible to determine who did what and when.
 
 ### 2.2 Teams need centralized access to files and logs
 
@@ -52,7 +52,7 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 ### 4.1 Authentication
 
 - Username and password login with bcrypt password hashing.
-- Mandatory TOTP (Time-based One-Time Password) two-factor authentication for every user -the system cannot be used without 2FA enrolled.
+- Mandatory TOTP (Time-based One-Time Password) two-factor authentication for every user - the system cannot be used without 2FA enrolled.
 - JWT token system with four distinct token types: access, refresh, setup (for TOTP enrollment flow), and totp (intermediate token between password-check and TOTP-check).
 - Rate limiting on authentication endpoints (5 attempts per IP per minute).
 - Session management via access/refresh token pair; refresh tokens exchange for new access tokens without re-login.
@@ -105,7 +105,7 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 - Admin-only feature. Viewers cannot upload files.
 - Drag-and-drop or click-to-browse file selection in the browser.
 - Chunked transfer: the browser sends multipart form data to the Hub, which streams it as `FileUploadRequest` chunks over gRPC to the Agent.
-- The Agent writes incoming chunks to `/tmp/aerodocs-dropzone/` (configurable). Files are not written to arbitrary paths -the staging directory is the only destination.
+- The Agent writes incoming chunks to `/tmp/aerodocs-dropzone/` (configurable). Files are not written to arbitrary paths - the staging directory is the only destination.
 - Filename sanitization on the Agent to prevent path traversal via filenames.
 - Dropzone listing endpoint returns the current contents of the staging directory.
 - Admin can delete individual files from the staging directory via the UI.
@@ -115,7 +115,7 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 - Every significant action is recorded as an immutable entry with: user ID, action type, target, detail, IP address, and timestamp.
 - 24 defined event types across user, server, file, path, log, and upload categories.
 - Admin-only access. Filterable by date range, user, and action type.
-- Audit entries are never deleted or modified -no soft-delete, no admin override.
+- Audit entries are never deleted or modified - no soft-delete, no admin override.
 
 ### 4.8 Settings
 
@@ -145,10 +145,10 @@ Read-only access scoped to the specific servers and paths an Admin has explicitl
 
 The following capabilities are explicitly excluded from the current product:
 
-- **Real-time metrics dashboards** -AeroDocs reports heartbeat metrics (CPU, memory, disk) but does not store historical time-series data or render graphs.
-- **Alerting and notifications** -No threshold-based alerts, PagerDuty integration, or email/Slack notifications.
-- **Multi-tenancy** -A single AeroDocs instance serves a single organization. There is no tenant isolation or per-organization namespacing.
-- **Agent auto-update** -Agents must be manually upgraded by re-running the install command.
-- **Windows agent** -Only linux/amd64 and linux/arm64 agent builds are supported.
-- **Log ingestion / search** -AeroDocs tails live logs but does not ingest, index, or search historical log data (that is an Elasticsearch/Loki use case).
-- **Terminal emulation** -AeroDocs provides read access to files and logs but does not offer a web-based terminal or command execution capability.
+- **Real-time metrics dashboards** - AeroDocs reports heartbeat metrics (CPU, memory, disk) but does not store historical time-series data or render graphs.
+- **Alerting and notifications** - No threshold-based alerts, PagerDuty integration, or email/Slack notifications.
+- **Multi-tenancy** - A single AeroDocs instance serves a single organization. There is no tenant isolation or per-organization namespacing.
+- **Agent auto-update** - Agents must be manually upgraded by re-running the install command.
+- **Windows agent** - Only linux/amd64 and linux/arm64 agent builds are supported.
+- **Log ingestion / search** - AeroDocs tails live logs but does not ingest, index, or search historical log data (that is an Elasticsearch/Loki use case).
+- **Terminal emulation** - AeroDocs provides read access to files and logs but does not offer a web-based terminal or command execution capability.
