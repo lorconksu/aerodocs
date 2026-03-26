@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/wyiu/aerodocs/hub/internal/auth"
@@ -61,6 +62,14 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.CreateUser(user); err != nil {
 		// Unique constraint violation = another request won the race
+		respondError(w, http.StatusConflict, "setup already completed")
+		return
+	}
+
+	// Recheck: if another registration won the race with a different username, roll back
+	count, _ = s.store.UserCount()
+	if count > 1 {
+		s.store.DeleteUser(user.ID)
 		respondError(w, http.StatusConflict, "setup already completed")
 		return
 	}
@@ -238,6 +247,11 @@ func (s *Server) handleUpdateAvatar(w http.ResponseWriter, r *http.Request) {
 	// Validate the avatar is a reasonable data URL (max ~500KB base64)
 	if len(req.Avatar) > 700000 {
 		respondError(w, http.StatusBadRequest, "avatar image too large (max 500KB)")
+		return
+	}
+
+	if req.Avatar != "" && !strings.HasPrefix(req.Avatar, "data:image/") {
+		respondError(w, http.StatusBadRequest, "avatar must be a data:image/ URL")
 		return
 	}
 
