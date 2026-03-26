@@ -2,11 +2,23 @@
   <img src="web/public/aerodoc-vertical.png" alt="AeroDocs" width="160" />
 </p>
 
-A self-hosted infrastructure observability and documentation platform. Monitor server fleets, tail logs in real-time, browse remote file systems, and securely transfer files — all from a single web interface.
+A self-hosted infrastructure observability platform. Monitor server fleets, tail logs in real-time, browse remote file systems, and securely transfer files — all from a single web interface.
 
-## Why AeroDocs?
+## What is AeroDocs?
 
-Engineers shouldn't need direct SSH access to every machine just to read logs or check documentation. AeroDocs provides a secure, auditable web interface that replaces ad-hoc terminal sessions with a structured command center — reducing risk, saving time, and keeping a clear audit trail of who accessed what.
+AeroDocs is a web-based control panel for managing small server fleets. It gives you structured, auditable access to your machines without handing out SSH keys or jumping between terminal sessions. Browse files, tail logs, transfer files, and monitor server health — all from one place.
+
+It runs as a single binary with no external dependencies. The Hub server embeds the entire React frontend and uses SQLite for storage, so there's nothing to install, no runtime to manage, and no database to provision. Deploy it once and point your agents at it.
+
+AeroDocs is built for home lab operators and small teams who want real visibility into their infrastructure without the overhead of enterprise monitoring stacks. Every action is logged, every user requires 2FA, and access is scoped per-server and per-path.
+
+## Why I Built This
+
+Managing a home lab with multiple servers became unwieldy with raw SSH. Jumping between terminals, remembering which machine had which log, and manually transferring files between hosts was slow and error-prone — and there was no record of who touched what.
+
+Existing tools didn't fit. Cockpit is tied to systemd and feels heavy. Portainer only covers containers. Most monitoring platforms want you to run a database, a time-series store, and a dozen exporters. None of them offered "browse files + tail logs + transfer files" in a single, lightweight tool.
+
+So I built one. AeroDocs is a single Go binary that embeds its own frontend and database. No Docker required, no external services, no complex configuration. It solves a real problem I hit every week: getting structured access to a fleet of machines without the friction of SSH or the weight of enterprise tooling.
 
 ## Screenshots
 
@@ -14,13 +26,40 @@ Engineers shouldn't need direct SSH access to every machine just to read logs or
 |---|---|
 | ![Fleet Dashboard](docs/screenshots/05-fleet-dashboard.png) | ![Add Server Modal](docs/screenshots/06-add-server-modal.png) |
 
+| Server File Tree | File Dropzone |
+|---|---|
+| ![Server File Tree](docs/screenshots/10-server-detail-filetree.png) | ![File Dropzone](docs/screenshots/11-server-detail-dropzone.png) |
+
 | Audit Logs | Settings |
 |---|---|
 | ![Audit Logs](docs/screenshots/07-audit-logs.png) | ![Settings Profile](docs/screenshots/08-settings-profile.png) |
 
+| Login | TOTP Setup |
+|---|---|
+| ![Login Page](docs/screenshots/03-login-page.png) | ![TOTP Setup](docs/screenshots/02-totp-setup.png) |
+
+## Features
+
+### Fleet Management
+- **Dashboard** — At-a-glance health overview of all connected servers with live status, search, and filtering
+- **Server Onboarding** — Single `curl` command to install and register a new agent; auto-detects and replaces existing installations
+- **Bulk Operations** — Unregister servers individually or in batch; remote cleanup of agent before removing the server record
+
+### Remote Access
+- **File Tree** — Browse remote file systems with full visibility (binaries and forbidden paths shown but greyed out, never hidden); syntax highlighting for 16 languages; Ctrl+F in-file search
+- **Live Log Tailing** — Real-time log streaming over SSE with server-side grep/filter, pause/resume, and terminal-like UI
+- **Markdown Rendering** — Documentation files render as formatted text with Mermaid diagram support
+- **Quarantined Dropzone** — Admin-only drag-and-drop file uploads via chunked transfer to a staging directory on the target server
+
+### Security
+- **Mandatory 2FA** — TOTP-based two-factor authentication required for all users, no exceptions
+- **Role-Based Access** — Admin and Viewer roles with per-server, per-path permissions enforced at both Hub and Agent layers
+- **Immutable Audit Log** — Every action permanently recorded with 23 event types — who did what, when, and from where
+- **Break-Glass Recovery** — Emergency TOTP reset via direct command-line access on the Hub server
+
 ## Architecture
 
-AeroDocs uses a **Hub-and-Spoke** model:
+AeroDocs uses a **Hub-and-Spoke** model. The Hub is the central server that hosts the web UI, REST API, and SQLite database. Agents are lightweight binaries deployed on each remote server, maintaining persistent gRPC streams back to the Hub.
 
 ```mermaid
 graph LR
@@ -34,23 +73,33 @@ graph LR
     Agent1 -.->|"via Traefik (optional)"| Traefik
 ```
 
-- **Hub** — Central Go server. Serves the web UI, exposes REST APIs, manages the SQLite database, and enforces all authentication and permissions. Every request flows through the Hub. Runs two listeners: HTTP on `:8081` and gRPC on `:9090`.
-- **Agent** — Lightweight Go binary installed on each remote server. Maintains a persistent bidirectional gRPC stream to the Hub, executing file, log, and upload commands on demand. Agents never communicate with each other, and users never interact with agents directly.
-- **Frontend** — React SPA embedded directly into the Hub binary via `go:embed`. Single-binary deployment with zero external dependencies.
-- **Traefik** — Reverse proxy that handles TLS termination and routes both HTTP and gRPC traffic to the Hub.
+- **Hub** — Central Go server. Serves the web UI, exposes REST APIs, manages SQLite, and enforces all authentication and permissions. Runs HTTP on `:8081` and gRPC on `:9090`.
+- **Agent** — Lightweight Go binary on each remote server. Maintains a persistent bidirectional gRPC stream to the Hub, executing file, log, and upload commands on demand.
+- **Frontend** — React SPA embedded into the Hub binary via `go:embed`. Single-binary deployment with zero external dependencies.
 
-## Features
+For the full architecture breakdown, see [Architecture](docs/engineering/architecture.md).
 
-- **Fleet Dashboard** — At-a-glance health overview of all connected servers with live status, search, filter, and bulk unregister (single or batch); Unregister remotely cleans up the agent before removing the server record
-- **Server Onboarding** — Single `curl` command to install and register a new agent; auto-detects and replaces existing installations; Agent connects back to Hub via gRPC bidirectional stream with exponential backoff reconnection
-- **"Honest" File Tree** — Browse remote file systems with full visibility — binaries and forbidden paths are shown but greyed out, never hidden; syntax highlighting for 16 languages via highlight.js; Ctrl+F in-file search with match highlighting and prev/next navigation
-- **Markdown Rendering** — Documentation files (`.md`) render as formatted text with Mermaid diagram support; log and binary files display as raw monospaced output
-- **Live Log Tailing** — Real-time log streaming over SSE with server-side grep/filter, pause/resume, and terminal-like UI
-- **Quarantined Dropzone** — Admin-only drag-and-drop file uploads via chunked transfer to `/tmp/aerodocs-dropzone/` staging directory on the target server
-- **Mandatory 2FA** — TOTP-based two-factor authentication required for all users
-- **Role-Based Access** — Admin and Viewer roles with per-server, per-path permissions enforced at both Hub and Agent layers
-- **Immutable Audit Log** — Every action permanently recorded with 23 event types — who did what, when, and from where
-- **CLI Break-Glass** — Emergency TOTP reset via direct command-line access on the Hub server
+## Quick Start
+
+```bash
+# Clone and build everything (frontend + hub + agent)
+git clone https://github.com/wyiu/aerodocs.git
+cd aerodocs
+make build
+
+# Run the Hub
+./bin/aerodocs --addr :8081 --grpc-addr :9090 --db aerodocs.db
+```
+
+On first run, navigate to the web UI to create the initial admin account and set up 2FA. Then run the one-liner shown in the UI on each server you want to manage.
+
+For detailed development setup and commands, see the [Development Guide](docs/engineering/development.md).
+
+## Documentation
+
+- [Engineering Docs](docs/engineering/) — Architecture, deployment, and development guides
+- [User Wiki](docs/wiki/) — End-user documentation and walkthroughs
+- [API Reference](docs/engineering/architecture.md) — Hub REST API and gRPC contract
 
 ## Tech Stack
 
@@ -79,121 +128,6 @@ graph LR
 
 ### Deployment
 Single binary. The React frontend is compiled by Vite and embedded into the Go binary at build time via `go:embed`. No Node.js runtime, no separate web server, no external database — just one file.
-
-## Project Structure
-
-```
-aerodocs/
-├── hub/                    # Go backend (Hub server)
-│   ├── cmd/                # Entry points (server, CLI admin commands)
-│   └── internal/
-│       ├── server/         # HTTP handlers, middleware, router
-│       ├── grpcserver/     # gRPC server, handler, pending requests, log sessions
-│       ├── connmgr/        # Agent connection manager
-│       ├── auth/           # JWT, TOTP, bcrypt
-│       ├── store/          # SQLite data access layer
-│       ├── model/          # Domain types and constants
-│       └── migrate/        # SQL migrations (auto-run on startup)
-├── agent/                  # Go agent (deployed on remote servers)
-│   ├── cmd/                # Agent entry point
-│   └── internal/
-│       ├── client/         # gRPC client, reconnection loop, message dispatch
-│       ├── filebrowser/    # Directory listing, file reading, path validation
-│       ├── logtailer/      # Poll-based log tailing with grep filter
-│       ├── dropzone/       # Chunked file upload to staging directory
-│       ├── heartbeat/      # System metrics collection
-│       ├── sysinfo/        # OS/CPU/memory/disk info
-│       └── auth/           # Agent token handling
-├── web/                    # React frontend (Vite SPA)
-│   └── src/                # Components, pages, hooks, styles
-├── proto/                  # Protocol Buffer definitions
-│   └── aerodocs/v1/        # agent.proto (AgentService gRPC contract)
-├── scripts/                # Deployment scripts (deploy.sh)
-├── docs/                   # Screenshots, engineering docs, user wiki
-└── Makefile                # Build orchestration
-```
-
-## Development
-
-### Prerequisites
-
-- Go 1.26+
-- Node.js 25+
-- Make
-
-### Getting Started
-
-```bash
-# Clone the repository
-git clone https://github.com/wyiu/aerodocs.git
-cd aerodocs
-
-# Start the Go backend (HTTP on :8080)
-make dev-hub
-
-# In a separate terminal, start the Vite dev server (UI on :5173)
-make dev-web
-```
-
-The Vite dev server proxies `/api` requests to the Go backend automatically.
-
-### Generate Protobuf Code
-
-```bash
-make proto
-```
-
-Requires `protoc` and the Go gRPC plugins. Run this after modifying `proto/aerodocs/v1/agent.proto`.
-
-### Build for Production
-
-```bash
-make build
-```
-
-This generates protobuf code, compiles the frontend, embeds it into the Go binary, builds the agent for linux/amd64 and linux/arm64, and outputs binaries to `bin/`.
-
-### Run Production Binary
-
-```bash
-./bin/aerodocs --addr :8081 --grpc-addr :9090 --db aerodocs.db
-```
-
-On first run, navigate to the web UI to create the initial admin account and set up 2FA.
-
-### Deploy
-
-```bash
-./scripts/deploy.sh
-```
-
-### Run Tests
-
-```bash
-# All tests
-make test
-
-# Hub tests only
-make test-hub
-
-# Agent tests only
-make test-agent
-```
-
-## Security
-
-- All passwords hashed with bcrypt (cost factor 12)
-- Mandatory TOTP two-factor authentication for every user
-- JWT tokens with strict type enforcement (access, refresh, setup, totp)
-- Rate limiting on authentication endpoints (5 attempts per IP per minute)
-- Immutable audit log of all actions
-- Path sanitization to prevent directory traversal attacks
-- CLI break-glass for emergency admin recovery
-
-## Documentation
-
-- [Engineering Docs](docs/engineering/) — Architecture, deployment, and development guides
-- [User Wiki](docs/wiki/) — End-user documentation
 
 ## License
 
