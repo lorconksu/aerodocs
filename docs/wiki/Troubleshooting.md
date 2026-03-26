@@ -71,7 +71,7 @@ Viewers need to be granted path access by an admin before they can see any files
 
 ### Files are greyed out
 
-Binary files or permission-restricted paths are visible in the directory listing but cannot be read. This is by design -the file tree shows an "honest" view of the directory structure rather than hiding files that exist but aren't readable.
+Binary files or permission-restricted paths are visible in the directory listing but cannot be read. This is by design - the file tree shows an "honest" view of the directory structure rather than hiding files that exist but aren't readable.
 
 ### File content won't load
 
@@ -117,7 +117,7 @@ The Dropzone tab is only visible to admin users. Viewers cannot upload files. If
 
 ### Install script fails
 
-- Check that `curl` can reach the Hub URL from the target server: `curl -I https://your-hub-url`
+- Check that `curl` can reach the Hub URL from the target server: `curl - I https://your-hub-url`
 - Verify the registration token hasn't expired (tokens are single-use and time-limited).
 - Ensure you are running the install command as root or with `sudo`.
 - Check DNS resolution on the target server.
@@ -126,11 +126,11 @@ The Dropzone tab is only visible to admin users. Viewers cannot upload files. If
 
 - Check that the firewall allows outbound connections to the Hub's gRPC port (9090 by default, or 443 if behind Traefik).
 - Verify the Hub gRPC address in the agent configuration file (`/etc/aerodocs/agent.conf`).
-- Check agent logs: `journalctl -u aerodocs-agent -f`
+- Check agent logs: `journalctl - u aerodocs-agent - f`
 
 ### Agent keeps reconnecting
 
-- The Hub may be restarting or under heavy load. Check Hub service logs: `journalctl -u aerodocs -f`
+- The Hub may be restarting or under heavy load. Check Hub service logs: `journalctl - u aerodocs - f`
 - Network instability between the agent and Hub can cause repeated disconnects.
 - Check if the Hub is running out of memory or file descriptors.
 
@@ -144,11 +144,11 @@ Only users with the **admin** role can create new accounts. Check your role in S
 
 ### Can't change my own role
 
-This is by design. You cannot change your own role -another admin must do it for you. This prevents accidental self-demotion.
+This is by design. You cannot change your own role - another admin must do it for you. This prevents accidental self-demotion.
 
 ### Can't delete my own account
 
-This is by design. You cannot delete your own account -another admin must do it for you. This prevents the last admin from accidentally removing all admin access.
+This is by design. You cannot delete your own account - another admin must do it for you. This prevents the last admin from accidentally removing all admin access.
 
 ---
 
@@ -156,6 +156,6 @@ This is by design. You cannot delete your own account -another admin must do it 
 
 If none of the above solves your issue:
 
-1. Check the Hub logs: `journalctl -u aerodocs -f`
-2. Check the agent logs on the affected server: `journalctl -u aerodocs-agent -f`
+1. Check the Hub logs: `journalctl - u aerodocs - f`
+2. Check the agent logs on the affected server: `journalctl - u aerodocs-agent - f`
 3. File an issue on GitHub with the relevant log output and a description of what you expected to happen.

@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks you through setting up AeroDocs for the first time. This only needs to be done once -by the first admin.
+This guide walks you through setting up AeroDocs for the first time. This only needs to be done once - by the first admin.
 
 > **What You'll Need**
 >
@@ -26,9 +26,9 @@ If no accounts have been created yet, you will see the setup page instead of the
 
 Fill in the setup form:
 
-- **Username** -Choose a username. It must be 3-32 characters, letters and numbers only (no spaces).
-- **Email** -Enter your email address.
-- **Password** -Your password must be at least 8 characters long and contain at least one number and one special character.
+- **Username** - Choose a username. It must be 3-32 characters, letters and numbers only (no spaces).
+- **Email** - Enter your email address.
+- **Password** - Your password must be at least 8 characters long and contain at least one number and one special character.
 
 Click **Create Admin Account** to continue.
 
@@ -36,7 +36,7 @@ Click **Create Admin Account** to continue.
 
 ## Step 3: Set Up Two-Factor Authentication
 
-After creating your account, you will be taken directly to the TOTP (two-factor authentication) setup screen. This step is mandatory -you cannot skip it.
+After creating your account, you will be taken directly to the TOTP (two-factor authentication) setup screen. This step is mandatory - you cannot skip it.
 
 ![TOTP Setup](../screenshots/02-totp-setup.png)
 
@@ -66,5 +66,5 @@ After verifying your TOTP code, you will be taken to the Fleet Dashboard.
 From here you can start adding servers, creating user accounts, and exploring the rest of AeroDocs.
 
 **Next steps:**
-- [[Fleet Dashboard]] -Add your first server
-- [[Settings]] -Create accounts for your team
+- [[Fleet Dashboard]] - Add your first server
+- [[Settings]] - Create accounts for your team
