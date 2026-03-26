@@ -95,6 +95,7 @@ function formatFileSize(bytes: number): string {
 // Initialize mermaid with dark theme
 mermaid.initialize({
   startOnLoad: false,
+  securityLevel: 'strict',
   theme: 'dark',
   themeVariables: {
     primaryColor: '#3b82f6',
@@ -116,7 +117,13 @@ function MermaidDiagram({ chart }: Readonly<{ chart: string }>) {
     const id = `mermaid-${crypto.randomUUID()}`
     mermaid
       .render(id, chart)
-      .then((result) => setSvg(result.svg))
+      .then((result) => {
+        // Sanitize SVG output to prevent XSS from malicious mermaid blocks
+        const sanitizedSvg = result.svg
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '')
+        setSvg(sanitizedSvg)
+      })
       .catch((err) => setError(String(err)))
   }, [chart])
 
