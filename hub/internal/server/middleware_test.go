@@ -336,6 +336,56 @@ func TestClientIP_RemoteAddr(t *testing.T) {
 	}
 }
 
+func TestSecurityHeaders(t *testing.T) {
+	dummy := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := securityHeaders(dummy)
+
+	t.Run("common headers on API request", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/servers", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		checks := map[string]string{
+			"X-Frame-Options":       "DENY",
+			"X-Content-Type-Options": "nosniff",
+			"Referrer-Policy":        "strict-origin-when-cross-origin",
+			"Permissions-Policy":     "camera=(), microphone=(), geolocation=()",
+		}
+		for header, want := range checks {
+			if got := rec.Header().Get(header); got != want {
+				t.Errorf("%s = %q, want %q", header, got, want)
+			}
+		}
+
+		if csp := rec.Header().Get("Content-Security-Policy"); csp != "" {
+			t.Errorf("CSP should not be set on /api/ paths, got %q", csp)
+		}
+	})
+
+	t.Run("CSP on root path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if csp := rec.Header().Get("Content-Security-Policy"); csp == "" {
+			t.Error("expected Content-Security-Policy on root path, got empty")
+		}
+	})
+
+	t.Run("CSP on non-API path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/dashboard", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if csp := rec.Header().Get("Content-Security-Policy"); csp == "" {
+			t.Error("expected Content-Security-Policy on non-API path, got empty")
+		}
+	})
+}
+
 func TestContextHelpers(t *testing.T) {
 	ctx := httptest.NewRequest("GET", "/", nil).Context()
 
