@@ -139,23 +139,16 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Viewers must have permission
+	// Viewers must have permission on this specific server
 	role := UserRoleFromContext(r.Context())
 	if role != "admin" {
 		userID := UserIDFromContext(r.Context())
-		servers, _, err := s.store.ListServersForUser(userID, model.ServerFilter{Limit: 1})
+		paths, err := s.store.GetUserPathsForServer(userID, id)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to check permissions")
 			return
 		}
-		found := false
-		for _, permitted := range servers {
-			if permitted.ID == id {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if len(paths) == 0 {
 			respondError(w, http.StatusForbidden, "access denied")
 			return
 		}
