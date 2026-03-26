@@ -23,6 +23,20 @@ func ValidateTOTPCode(secret, code string) bool {
 	return totp.Validate(code, secret)
 }
 
+// ValidateTOTPWithReplay checks the code is valid AND has not been used before.
+func ValidateTOTPWithReplay(cache *TOTPUsedCodes, userID, secret, code string) bool {
+	if cache != nil && cache.WasUsed(userID, code) {
+		return false
+	}
+	if !totp.Validate(code, secret) {
+		return false
+	}
+	if cache != nil {
+		cache.MarkUsed(userID, code)
+	}
+	return true
+}
+
 // GenerateValidCode produces a valid TOTP code for the given secret.
 // Used in tests to simulate authenticator app input.
 func GenerateValidCode(secret string) (string, error) {
