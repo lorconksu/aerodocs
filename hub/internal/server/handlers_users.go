@@ -14,7 +14,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list users")
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"users": users})
+	respondJSON(w, http.StatusOK, model.UserListResponse{Users: users})
 }
 
 func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +58,7 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		Action: model.AuditUserRoleUpdated, Target: &targetID, IPAddress: &ip,
 	})
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{"user": user})
+	respondJSON(w, http.StatusOK, model.UserResponse{User: user})
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {

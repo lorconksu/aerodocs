@@ -85,9 +85,9 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 			IPAddress: &ip,
 		})
 
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"filename": filename,
-			"size":     totalSize,
+		respondJSON(w, http.StatusOK, model.UploadFileResponse{
+			Filename: filename,
+			Size:     totalSize,
 		})
 	case <-time.After(uploadTimeout):
 		respondError(w, http.StatusGatewayTimeout, "upload timeout")
@@ -227,8 +227,8 @@ func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
 	}
 	if resp.Error != "" {
 		// Dropzone dir may not exist yet — return empty list
-		respondJSON(w, http.StatusOK, map[string]interface{}{"files": []interface{}{}})
+		respondJSON(w, http.StatusOK, model.FileListResult{Files: []*pb.FileNode{}})
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"files": resp.Files})
+	respondJSON(w, http.StatusOK, model.FileListResult{Files: resp.Files})
 }

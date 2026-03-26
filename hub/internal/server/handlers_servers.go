@@ -44,11 +44,11 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"servers": servers,
-		"total":   total,
-		"limit":   filter.Limit,
-		"offset":  filter.Offset,
+	respondJSON(w, http.StatusOK, model.ServerListResponse{
+		Servers: servers,
+		Total:   total,
+		Limit:   filter.Limit,
+		Offset:  filter.Offset,
 	})
 }
 
@@ -233,9 +233,9 @@ func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request
 		Action: model.AuditServerBatchDeleted, Detail: &detail, IPAddress: &ip,
 	})
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":  "deleted",
-		"deleted": len(req.IDs),
+	respondJSON(w, http.StatusOK, model.BatchDeleteResponse{
+		Status:  "deleted",
+		Deleted: len(req.IDs),
 	})
 }
 
