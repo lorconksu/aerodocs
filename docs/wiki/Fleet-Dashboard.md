@@ -4,6 +4,8 @@ The Fleet Dashboard is the main screen of AeroDocs. It shows all the servers tha
 
 ![Fleet Dashboard](../screenshots/05-fleet-dashboard.png)
 
+> **Admin vs Viewer:** All users can view the Fleet Dashboard, search/filter servers, and click into server details. Only admins can add, edit, or unregister servers.
+
 ---
 
 ## Overview
@@ -83,7 +85,9 @@ Click the checkbox on any server card to select it. A toolbar will appear at the
 
 ## Unregistering Servers
 
-Unregistering a server removes it from AeroDocs and cleans up the agent on the remote machine in one step.
+Only admins can unregister servers.
+
+> **Warning:** Unregistering a server is permanent. The server record is deleted from the Hub database and cannot be recovered. If the agent is online, it will be automatically uninstalled from the remote machine. To re-add the server later, you must go through the full add-and-install process again.
 
 **Single server:** Click the three-dot menu on a server card and choose **Unregister**. You will be asked to confirm.
 
