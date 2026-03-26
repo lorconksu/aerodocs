@@ -159,7 +159,7 @@ func TestValidatePath_AllCases(t *testing.T) {
 	}
 }
 
-// TestListDir_Symlink verifies symlinks are handled (resolved if valid, error if broken).
+// TestListDir_Symlink verifies symlinks that escape outside the requested directory are rejected.
 func TestListDir_Symlink(t *testing.T) {
 	dir := t.TempDir()
 	targetDir := t.TempDir()
@@ -167,7 +167,7 @@ func TestListDir_Symlink(t *testing.T) {
 	// Create a file in targetDir
 	os.WriteFile(filepath.Join(targetDir, "file.txt"), []byte("linked"), 0644)
 
-	// Create a symlink in dir pointing to targetDir
+	// Create a symlink in dir pointing to targetDir (outside dir)
 	linkPath := filepath.Join(dir, "linkdir")
 	if err := os.Symlink(targetDir, linkPath); err != nil {
 		t.Skipf("cannot create symlink: %v", err)
@@ -177,11 +177,9 @@ func TestListDir_Symlink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list symlinked dir: %v", err)
 	}
-	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
-	}
-	if len(resp.Files) != 1 {
-		t.Fatalf("expected 1 file through symlink, got %d", len(resp.Files))
+	// Symlink escapes outside the requested directory, should be rejected
+	if resp.Error == "" {
+		t.Fatal("expected symlink escape to be rejected")
 	}
 }
 
@@ -206,7 +204,8 @@ func TestListDir_UnreadableDir(t *testing.T) {
 	}
 }
 
-// TestReadFile_SymlinkToFile verifies reading through a symlink works.
+// TestReadFile_SymlinkToFile verifies reading through a symlink that resolves
+// to a different path is rejected (defense-in-depth).
 func TestReadFile_SymlinkToFile(t *testing.T) {
 	dir := t.TempDir()
 	realFile := filepath.Join(dir, "real.txt")
@@ -221,10 +220,8 @@ func TestReadFile_SymlinkToFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read through symlink: %v", err)
 	}
-	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
-	}
-	if string(resp.Data) != "symlinked content" {
-		t.Fatalf("expected 'symlinked content', got '%s'", string(resp.Data))
+	// Symlink resolves to a different path, should be rejected
+	if resp.Error == "" {
+		t.Fatal("expected symlink to different path to be rejected")
 	}
 }
