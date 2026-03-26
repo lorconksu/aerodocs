@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -73,8 +74,11 @@ func (s *Server) handleSelfUnregister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify request comes from the registered agent IP
-	reqIP := clientIP(r)
+	// Use RemoteAddr directly - never trust X-Forwarded-For for security checks
+	reqIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if reqIP == "" {
+		reqIP = r.RemoteAddr
+	}
 	if srv.IPAddress == nil || *srv.IPAddress != reqIP {
 		respondError(w, http.StatusForbidden, "unauthorized")
 		return
