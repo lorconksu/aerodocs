@@ -43,7 +43,7 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 
 	// Register log session
 	requestID := uuid.NewString()
-	ch := s.logSessions.Register(requestID)
+	ch := s.logSessions.Register(serverID, requestID)
 
 	// Send LogStreamRequest to agent
 	err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
@@ -56,7 +56,7 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	if err != nil {
-		s.logSessions.Remove(requestID)
+		s.logSessions.Remove(serverID, requestID)
 		respondError(w, http.StatusBadGateway, "failed to send request to agent")
 		return
 	}
@@ -87,7 +87,7 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 
 	// Cleanup on exit
 	defer func() {
-		s.logSessions.Remove(requestID)
+		s.logSessions.Remove(serverID, requestID)
 		// Send stop to agent
 		_ = s.connMgr.SendToAgent(serverID, &pb.HubMessage{
 			Payload: &pb.HubMessage_LogStreamStop{
