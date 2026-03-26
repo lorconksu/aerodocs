@@ -2,7 +2,7 @@
 
 ## What Are Audit Logs?
 
-Every action taken in AeroDocs is recorded in the audit log. Think of it as an activity history — a permanent record of who did what and when.
+Every action taken in AeroDocs is recorded in the audit log. Think of it as an activity history -a permanent record of who did what and when.
 
 Audit log entries cannot be edited or deleted, even by admins. This makes the log trustworthy: if something changed, there will be a record of it.
 
@@ -18,12 +18,12 @@ Navigate to **Audit Logs** in the sidebar.
 
 Each entry shows:
 
-- **When** — the date and time of the action
-- **Who** — the username of the person who performed the action (or "System" for automated actions)
-- **Action** — what was done (see action types below)
-- **Target** — the resource that was affected (e.g. a username or server name)
-- **Details** — any additional context
-- **IP Address** — the IP address the request came from
+- **When** -the date and time of the action
+- **Who** -the username of the person who performed the action (or "System" for automated actions)
+- **Action** -what was done (see action types below)
+- **Target** -the resource that was affected (e.g. a username or server name)
+- **Details** -any additional context
+- **IP Address** -the IP address the request came from
 
 ---
 
@@ -31,9 +31,9 @@ Each entry shows:
 
 Use the filters at the top of the page to narrow down the log:
 
-- **Date range** — Show entries between a start and end date/time
-- **User** — Filter to actions by a specific user
-- **Action type** — Filter to a specific category of action
+- **Date range** -Show entries between a start and end date/time
+- **User** -Filter to actions by a specific user
+- **Action type** -Filter to a specific category of action
 
 You can combine filters. Click **Clear** to reset them.
 
@@ -43,11 +43,11 @@ You can combine filters. Click **Clear** to reset them.
 
 Here is a worked example showing how you can trace a server onboarding through the audit log. When an admin adds a server called "web-prod-01" and the agent is installed, you will see these entries in chronological order:
 
-1. **`server.created`** — The admin created the server record in the Hub. The target field shows the server name ("web-prod-01") and the details include any labels that were set.
-2. **`server.registered`** — The agent ran the install command on the target machine and completed registration with the Hub. The details show the hostname, IP address, and OS detected by the agent.
-3. **`server.connected`** — The agent established a live gRPC connection to the Hub. From this point, the server shows as "Online" on the Fleet Dashboard.
+1. **`server.created`** -The admin created the server record in the Hub. The target field shows the server name ("web-prod-01") and the details include any labels that were set.
+2. **`server.registered`** -The agent ran the install command on the target machine and completed registration with the Hub. The details show the hostname, IP address, and OS detected by the agent.
+3. **`server.connected`** -The agent established a live gRPC connection to the Hub. From this point, the server shows as "Online" on the Fleet Dashboard.
 
-By filtering the audit log to `server.*` actions and a specific date range, you can reconstruct the full lifecycle of any server in your fleet — from creation through registration, connection, disconnection, and eventual unregistration.
+By filtering the audit log to `server.*` actions and a specific date range, you can reconstruct the full lifecycle of any server in your fleet -from creation through registration, connection, disconnection, and eventual unregistration.
 
 ---
 
@@ -81,7 +81,7 @@ Actions follow a `resource.action` naming pattern.
 | `server.registered` | An agent ran the install command and registered with the Hub |
 | `server.connected` | An agent established a live gRPC connection to the Hub |
 | `server.disconnected` | An agent's gRPC connection to the Hub dropped |
-| `server.unregistered` | An admin unregistered a server — cleanup sent to the agent (if online), then record deleted from the Hub database |
+| `server.unregistered` | An admin unregistered a server -cleanup sent to the agent (if online), then record deleted from the Hub database |
 
 ### File actions
 
