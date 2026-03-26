@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authenticator } from 'otplib'
-import { saveState } from './helpers'
+import { saveState, markTOTPCodeUsed } from './helpers'
 
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:18081'
 
@@ -35,6 +35,9 @@ test.describe('First-time setup flow', () => {
     for (let i = 0; i < 6; i++) {
       await inputs.nth(i).fill(code[i])
     }
+
+    // Mark the code as used so subsequent tests wait for a fresh one
+    markTOTPCodeUsed(code)
 
     // After submitting all digits the app auto-submits; wait for redirect to dashboard
     await expect(page).toHaveURL(new RegExp(`^${BASE_URL}/?$`), { timeout: 15000 })
