@@ -123,6 +123,57 @@ func TestValidatePath(t *testing.T) {
 	}
 }
 
+func TestListDir_SymlinkEscape(t *testing.T) {
+	// Create a temp directory with a symlink pointing outside it
+	dir := t.TempDir()
+	outsideDir := t.TempDir()
+	os.WriteFile(filepath.Join(outsideDir, "secret.txt"), []byte("sensitive"), 0644)
+
+	// Create a symlink inside dir that points to outsideDir
+	linkPath := filepath.Join(dir, "escape")
+	if err := os.Symlink(outsideDir, linkPath); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+
+	// Listing through the symlink should be rejected
+	resp, err := ListDir(linkPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected symlink escape to be rejected, but it was allowed")
+	}
+	if resp.Error != "path resolves outside requested directory" {
+		t.Fatalf("unexpected error message: %s", resp.Error)
+	}
+}
+
+func TestReadFile_SymlinkEscape(t *testing.T) {
+	// Create a temp directory with a symlink pointing to a file outside it
+	dir := t.TempDir()
+	outsideDir := t.TempDir()
+	secretPath := filepath.Join(outsideDir, "secret.txt")
+	os.WriteFile(secretPath, []byte("sensitive"), 0644)
+
+	// Create a symlink inside dir that points to the secret file
+	linkPath := filepath.Join(dir, "escape.txt")
+	if err := os.Symlink(secretPath, linkPath); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+
+	// Reading through the symlink should be rejected
+	resp, err := ReadFile(linkPath, 0, 1048576)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected symlink escape to be rejected, but it was allowed")
+	}
+	if resp.Error != "path resolves outside requested directory" {
+		t.Fatalf("unexpected error message: %s", resp.Error)
+	}
+}
+
 func TestDetectMIME(t *testing.T) {
 	tests := map[string]string{
 		"file.txt":    "text/plain",

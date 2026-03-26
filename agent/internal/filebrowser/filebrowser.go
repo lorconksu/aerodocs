@@ -34,6 +34,11 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 	if err != nil {
 		return &pb.FileListResponse{Error: fmt.Sprintf("cannot resolve path: %v", err)}, nil
 	}
+	// Ensure symlinks don't escape above the requested directory
+	cleanPath := filepath.Clean(path)
+	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath) {
+		return &pb.FileListResponse{Error: "path resolves outside requested directory"}, nil
+	}
 
 	entries, err := os.ReadDir(resolved)
 	if err != nil {
@@ -90,6 +95,11 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return &pb.FileReadResponse{Error: fmt.Sprintf("cannot resolve path: %v", err)}, nil
+	}
+	// Ensure symlinks don't escape above the requested directory
+	cleanPath := filepath.Clean(path)
+	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath) {
+		return &pb.FileReadResponse{Error: "path resolves outside requested directory"}, nil
 	}
 
 	info, err := os.Stat(resolved)
