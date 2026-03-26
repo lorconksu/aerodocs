@@ -72,18 +72,21 @@ For the full architecture breakdown, see [Architecture](docs/engineering/archite
 ## Quick Start
 
 ```bash
-# Clone and build everything (frontend + hub + agent)
-git clone https://github.com/wyiu/aerodocs.git
-cd aerodocs
-make build
+# Download the compose file
+curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
 
-# Run the Hub
-./bin/aerodocs --addr :8081 --grpc-addr :9090 --db aerodocs.db
+# Start AeroDocs
+docker compose up -d
 ```
 
-On first run, navigate to the web UI to create the initial admin account and set up 2FA. Then run the one-liner shown in the UI on each server you want to manage.
+The Hub starts on port 8081 (HTTP) and 9090 (gRPC). Open `http://localhost:8081` to create the initial admin account and set up 2FA.
 
-For detailed development setup and commands, see the [Development Guide](docs/engineering/development.md).
+To pin a specific version instead of `latest`:
+```yaml
+image: lorconksu/aerodocs:1.0.0
+```
+
+For building from source and development setup, see the [Development Guide](docs/engineering/development.md).
 
 ## Documentation
 
@@ -117,7 +120,7 @@ For detailed development setup and commands, see the [Development Guide](docs/en
 | Diagram Rendering | mermaid |
 
 ### Deployment
-Single binary. The React frontend is compiled by Vite and embedded into the Go binary at build time via `go:embed`. No Node.js runtime, no separate web server, no external database - just one file.
+Docker image or single binary. The React frontend is compiled by Vite and embedded into the Go binary at build time via `go:embed`. Deploy with `docker compose up -d` or run the binary directly - no Node.js runtime, no separate web server, no external database.
 
 ## License
 
