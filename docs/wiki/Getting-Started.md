@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks you through setting up AeroDocs for the first time. This only needs to be done once - by the first admin.
+This guide walks you through the initial setup of AeroDocs for the first time. This only needs to be done once - by the first admin. Your administrator should have already deployed the AeroDocs Hub (typically via Docker) before you begin.
 
 > **What You'll Need**
 >
