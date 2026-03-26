@@ -213,25 +213,39 @@ func TestHandleTOTPDisable_WrongAdminCode(t *testing.T) {
 	}
 }
 
-// TestHandleTOTPDisable_Success verifies successfully disabling TOTP.
+// TestHandleTOTPDisable_Success verifies successfully disabling another user's TOTP.
 func TestHandleTOTPDisable_Success(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 
 	adminUser, _ := s.store.GetUserByUsername("admin")
 
-	// Clear replay cache so the code (already used during enable) can be reused in this test
+	// Create a second user to disable TOTP on (admin cannot self-disable)
+	targetUser := &model.User{
+		ID:           "target-user-id",
+		Username:     "targetuser",
+		Email:        "target@example.com",
+		PasswordHash: "$2a$12$fakehashfakehashfakehashfakehashfakehashfakehashfake",
+		Role:         "viewer",
+	}
+	if err := s.store.CreateUser(targetUser); err != nil {
+		t.Fatalf("create target user: %v", err)
+	}
+	secret := "JBSWY3DPEHPK3PXP"
+	s.store.UpdateUserTOTP(targetUser.ID, &secret, true)
+
+	// Clear replay cache
 	s.totpCache.Clear()
 
-	// Generate a valid TOTP code for the admin
+	// Generate a valid TOTP code for the admin (proving admin identity)
 	adminCode, err := auth.GenerateValidCode(*adminUser.TOTPSecret)
 	if err != nil {
 		t.Fatalf("generate TOTP code: %v", err)
 	}
 
-	// Disable TOTP for the admin user themselves
+	// Disable TOTP for the target user (not self)
 	disableBody, _ := json.Marshal(model.TOTPDisableRequest{
-		UserID:        adminUser.ID,
+		UserID:        targetUser.ID,
 		AdminTOTPCode: adminCode,
 	})
 	disableReq := httptest.NewRequest("POST", "/api/auth/totp/disable", bytes.NewReader(disableBody))
