@@ -66,10 +66,17 @@ func (s *Server) handleSelfUnregister(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 
 	// Verify the server actually exists
-	_, err := s.store.GetServerByID(serverID)
+	srv, err := s.store.GetServerByID(serverID)
 	if err != nil {
 		// Already gone — that's fine
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Verify request comes from the registered agent IP
+	reqIP := clientIP(r)
+	if srv.IPAddress == nil || *srv.IPAddress != reqIP {
+		respondError(w, http.StatusForbidden, "unauthorized")
 		return
 	}
 

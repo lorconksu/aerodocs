@@ -240,6 +240,14 @@ func (s *Store) UpdateServerLastSeen(id string, systemInfo *model.SystemInfo) er
 	return nil
 }
 
+func (s *Store) SetServerIP(id, ip string) error {
+	_, err := s.db.Exec(
+		"UPDATE servers SET ip_address = ?, updated_at = datetime('now') WHERE id = ?",
+		ip, id,
+	)
+	return err
+}
+
 func (s *Store) GetOnlineServersNotIn(activeIDs []string) ([]model.Server, error) {
 	query := `SELECT id, name, hostname, ip_address, os, status, registration_token, token_expires_at,
 	                 agent_version, labels, last_seen_at, created_at, updated_at
