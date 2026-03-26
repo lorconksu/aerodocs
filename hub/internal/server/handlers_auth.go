@@ -262,6 +262,10 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, errUserNotFound)
 		return
 	}
+	if user.TOTPEnabled {
+		respondError(w, http.StatusConflict, "TOTP is already enabled")
+		return
+	}
 
 	key, err := auth.GenerateTOTPSecret(user.Username, "AeroDocs")
 	if err != nil {
@@ -391,8 +395,13 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify admin's own TOTP code
 	adminID := UserIDFromContext(r.Context())
+	if req.UserID == adminID {
+		respondError(w, http.StatusBadRequest, "cannot disable your own 2FA")
+		return
+	}
+
+	// Verify admin's own TOTP code
 	admin, err := s.store.GetUserByID(adminID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "admin user not found")
