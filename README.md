@@ -61,17 +61,7 @@ So I built one. AeroDocs is a single Go binary that embeds its own frontend and 
 
 AeroDocs uses a **Hub-and-Spoke** model. The Hub is the central server that hosts the web UI, REST API, and SQLite database. Agents are lightweight binaries deployed on each remote server, maintaining persistent gRPC streams back to the Hub.
 
-```mermaid
-graph LR
-    Browser["Browser (React SPA)"] -->|HTTP REST + SSE| Traefik["Traefik (Reverse Proxy)"]
-    Traefik -->|HTTP :8081| Hub["AeroDocs Hub (Go)"]
-    Traefik -->|gRPC :9090| Hub
-    Hub --- DB[(SQLite)]
-    Hub -->|gRPC bidirectional stream| Agent1["Agent (Server 1)"]
-    Hub -->|gRPC bidirectional stream| Agent2["Agent (Server 2)"]
-    Hub -->|gRPC bidirectional stream| Agent3["Agent (Server N)"]
-    Agent1 -.->|"via Traefik (optional)"| Traefik
-```
+![AeroDocs Architecture](docs/screenshots/aerodocs-architecture.png)
 
 - **Hub** — Central Go server. Serves the web UI, exposes REST APIs, manages SQLite, and enforces all authentication and permissions. Runs HTTP on `:8081` and gRPC on `:9090`.
 - **Agent** — Lightweight Go binary on each remote server. Maintains a persistent bidirectional gRPC stream to the Hub, executing file, log, and upload commands on demand.

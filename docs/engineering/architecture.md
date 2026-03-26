@@ -12,21 +12,7 @@
 
 AeroDocs is built on a Hub-and-Spoke architecture. There is one central Hub server that all users interact with, and a lightweight Agent binary deployed on each managed server. Users never communicate directly with agents — everything flows through the Hub.
 
-```mermaid
-graph TD
-    Browser["Browser (React SPA)"]
-    Hub["AeroDocs Hub\n(Go binary)"]
-    DB[(SQLite)]
-    A1["Agent\nServer 1"]
-    A2["Agent\nServer 2"]
-    AN["Agent\nServer N"]
-
-    Browser -->|"HTTPS REST + WebSocket"| Hub
-    Hub --- DB
-    Hub -->|"gRPC (mTLS)"| A1
-    Hub -->|"gRPC (mTLS)"| A2
-    Hub -->|"gRPC (mTLS)"| AN
-```
+![AeroDocs Architecture](../screenshots/aerodocs-architecture.png)
 
 **Hub** — The single source of truth. It serves the React SPA, enforces authentication and authorization, persists all state in SQLite, and proxies operations to agents via gRPC.
 
