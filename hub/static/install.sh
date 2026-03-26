@@ -132,6 +132,15 @@ fi
 echo "==> Creating config directory..."
 mkdir -p /etc/aerodocs
 
+# --- Write credentials to a restricted file (not visible in ps output) ---
+echo "==> Writing agent credentials..."
+cat > /etc/aerodocs/agent.env <<'ENVEOF'
+AERODOCS_HUB=__HUB_ADDR__
+AERODOCS_TOKEN=__REG_TOKEN__
+ENVEOF
+sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g" /etc/aerodocs/agent.env
+chmod 600 /etc/aerodocs/agent.env
+
 # --- Install systemd service ---
 echo "==> Installing systemd service..."
 cat > /etc/systemd/system/aerodocs-agent.service <<'EOF'
@@ -142,14 +151,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/aerodocs-agent --hub __HUB_ADDR__ --token __REG_TOKEN__
+EnvironmentFile=/etc/aerodocs/agent.env
+ExecStart=/usr/local/bin/aerodocs-agent --hub ${AERODOCS_HUB} --token ${AERODOCS_TOKEN}
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
-sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g" /etc/systemd/system/aerodocs-agent.service
 
 systemctl daemon-reload
 systemctl enable --now aerodocs-agent
