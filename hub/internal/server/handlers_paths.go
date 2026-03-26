@@ -17,7 +17,7 @@ func (s *Server) handleListPaths(w http.ResponseWriter, r *http.Request) {
 	if perms == nil {
 		perms = []model.Permission{}
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"paths": perms})
+	respondJSON(w, http.StatusOK, model.PermissionListResponse{Paths: perms})
 }
 
 func (s *Server) handleCreatePath(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +102,7 @@ func (s *Server) handleGetUserPaths(w http.ResponseWriter, r *http.Request) {
 
 	if role == "admin" {
 		// Admins see all paths (they have unrestricted access)
-		respondJSON(w, http.StatusOK, map[string]interface{}{"paths": []string{"/"}})
+		respondJSON(w, http.StatusOK, model.UserPathsResponse{Paths: []string{"/"}})
 		return
 	}
 
@@ -114,5 +114,5 @@ func (s *Server) handleGetUserPaths(w http.ResponseWriter, r *http.Request) {
 	if paths == nil {
 		paths = []string{}
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"paths": paths})
+	respondJSON(w, http.StatusOK, model.UserPathsResponse{Paths: paths})
 }

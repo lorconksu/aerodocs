@@ -31,10 +31,10 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"entries": entries,
-		"total":   total,
-		"limit":   filter.Limit,
-		"offset":  filter.Offset,
+	respondJSON(w, http.StatusOK, model.AuditListResponse{
+		Entries: entries,
+		Total:   total,
+		Limit:   filter.Limit,
+		Offset:  filter.Offset,
 	})
 }

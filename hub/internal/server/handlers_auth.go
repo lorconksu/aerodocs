@@ -77,9 +77,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"setup_token": setupToken,
-		"user":        user,
+	respondJSON(w, http.StatusOK, model.SetupResponse{
+		SetupToken: setupToken,
+		User:       user,
 	})
 }
 
