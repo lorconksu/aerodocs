@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { authenticator } from 'otplib'
-import { loadState } from './helpers'
+import { loadState, waitForFreshTOTPCode, markTOTPCodeUsed } from './helpers'
 
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:18081'
 
@@ -20,13 +19,14 @@ test.describe('Login flow', () => {
     // Should redirect to TOTP page
     await expect(page).toHaveURL(/\/login\/totp$/, { timeout: 10000 })
 
-    // Generate a valid TOTP code and fill the digit inputs
-    const code = authenticator.generate(totpSecret)
+    // Wait for a fresh TOTP code (avoids replay rejection from setup flow)
+    const code = await waitForFreshTOTPCode(totpSecret)
     const inputs = page.locator('input[inputmode="numeric"]')
     await expect(inputs).toHaveCount(6)
     for (let i = 0; i < 6; i++) {
       await inputs.nth(i).fill(code[i])
     }
+    markTOTPCodeUsed(code)
 
     // Should redirect to dashboard after successful TOTP verification
     await expect(page).toHaveURL(new RegExp(`^${BASE_URL}/?$`), { timeout: 15000 })
