@@ -1,9 +1,12 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
 // TestHandleInstallScript_NotFound verifies the install script endpoint handles missing file.
@@ -57,6 +60,66 @@ func TestHandleGetServer_ViewerNotPermitted(t *testing.T) {
 	// Viewer has no permissions for this server
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for viewer without permission, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestGetServer_ViewerMultipleServersAccessSecond verifies that a viewer with
+// permissions on multiple servers can access any of them (not just the first).
+// This is a regression test for the Limit:1 bug where only the first permitted
+// server was accessible.
+func TestGetServer_ViewerMultipleServersAccessSecond(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+
+	// Create 3 servers
+	s1ID := createTestServer(t, s, adminToken, "multi-srv-1")
+	s2ID := createTestServer(t, s, adminToken, "multi-srv-2")
+	s3ID := createTestServer(t, s, adminToken, "multi-srv-3")
+
+	viewerToken := createViewerAndGetToken(t, s, adminToken)
+
+	// Get viewer user ID
+	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(meRec, meReq)
+	var viewerUser model.User
+	json.NewDecoder(meRec.Body).Decode(&viewerUser)
+
+	// Grant permissions on all 3 servers
+	s.store.CreatePermission(viewerUser.ID, s1ID, "/var/log")
+	s.store.CreatePermission(viewerUser.ID, s2ID, "/var/log")
+	s.store.CreatePermission(viewerUser.ID, s3ID, "/var/log")
+
+	// Access the SECOND server — this failed with the Limit:1 bug
+	req2 := httptest.NewRequest("GET", "/api/servers/"+s2ID, nil)
+	req2.Header.Set("Authorization", "Bearer "+viewerToken)
+	rec2 := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second permitted server, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	// Access the THIRD server — also should work
+	req3 := httptest.NewRequest("GET", "/api/servers/"+s3ID, nil)
+	req3.Header.Set("Authorization", "Bearer "+viewerToken)
+	rec3 := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec3, req3)
+
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("expected 200 for third permitted server, got %d: %s", rec3.Code, rec3.Body.String())
+	}
+
+	// Verify access is still denied for a server WITHOUT permission
+	unpermittedID := createTestServer(t, s, adminToken, "no-perm-srv")
+	reqDenied := httptest.NewRequest("GET", "/api/servers/"+unpermittedID, nil)
+	reqDenied.Header.Set("Authorization", "Bearer "+viewerToken)
+	recDenied := httptest.NewRecorder()
+	s.routes().ServeHTTP(recDenied, reqDenied)
+
+	if recDenied.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for unpermitted server, got %d: %s", recDenied.Code, recDenied.Body.String())
 	}
 }
 
