@@ -99,7 +99,7 @@ For detailed development setup and commands, see the [Development Guide](docs/en
 
 - [Engineering Docs](docs/engineering/) — Architecture, deployment, and development guides
 - [User Wiki](docs/wiki/) — End-user documentation and walkthroughs
-- [API Reference](docs/engineering/architecture.md) — Hub REST API and gRPC contract
+- [API Reference](docs/engineering/api-reference.md) — Complete REST API endpoint documentation
 
 ## Tech Stack
 
