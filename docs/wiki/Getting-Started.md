@@ -2,6 +2,12 @@
 
 This guide walks you through setting up AeroDocs for the first time. This only needs to be done once — by the first admin.
 
+> **What You'll Need**
+>
+> - A modern web browser (Chrome, Firefox, Edge, or Safari)
+> - The AeroDocs URL provided by whoever deployed the Hub
+> - A phone with an authenticator app (Google Authenticator, Authy, 1Password, etc.)
+
 ---
 
 ## Step 1: Open AeroDocs in Your Browser
@@ -12,19 +18,19 @@ If no accounts have been created yet, you will see the setup page instead of the
 
 ![Setup Page](../screenshots/01-setup-page.png)
 
+> **Note:** This setup page is only available once. After the first admin account is created, it is permanently disabled. Additional accounts must be created by an admin through the Settings page.
+
 ---
 
 ## Step 2: Create Your Admin Account
 
 Fill in the setup form:
 
-- **Username** — Choose a username. It must be 3–32 characters, letters and numbers only (no spaces).
+- **Username** — Choose a username. It must be 3-32 characters, letters and numbers only (no spaces).
 - **Email** — Enter your email address.
 - **Password** — Your password must be at least 8 characters long and contain at least one number and one special character.
 
 Click **Create Admin Account** to continue.
-
-This is the one and only time the setup page is available. Once the first account is created, it is disabled — additional accounts must be created by an admin through the Settings page.
 
 ---
 
@@ -47,7 +53,7 @@ After creating your account, you will be taken directly to the TOTP (two-factor 
 
 Below the QR code there is a manual entry key (a long string of letters and numbers). In your authenticator app, choose "Enter a setup key" or "Manual entry" and type this key in. The account name can be anything you like (e.g. "AeroDocs").
 
-**Save your backup code:** The setup page shows a manual key. Write it down or store it in a password manager. If you lose access to your authenticator app, you will need an admin to reset your 2FA using the server command line.
+> **Tip:** Save your manual key. Write it down or store it in a password manager. If you lose access to your authenticator app, you will need an admin to reset your 2FA using the server command line.
 
 ---
 

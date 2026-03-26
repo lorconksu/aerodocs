@@ -39,6 +39,18 @@ You can combine filters. Click **Clear** to reset them.
 
 ---
 
+## Reading the Audit Log
+
+Here is a worked example showing how you can trace a server onboarding through the audit log. When an admin adds a server called "web-prod-01" and the agent is installed, you will see these entries in chronological order:
+
+1. **`server.created`** — The admin created the server record in the Hub. The target field shows the server name ("web-prod-01") and the details include any labels that were set.
+2. **`server.registered`** — The agent ran the install command on the target machine and completed registration with the Hub. The details show the hostname, IP address, and OS detected by the agent.
+3. **`server.connected`** — The agent established a live gRPC connection to the Hub. From this point, the server shows as "Online" on the Fleet Dashboard.
+
+By filtering the audit log to `server.*` actions and a specific date range, you can reconstruct the full lifecycle of any server in your fleet — from creation through registration, connection, disconnection, and eventual unregistration.
+
+---
+
 ## Understanding Action Types
 
 Actions follow a `resource.action` naming pattern.

@@ -1,5 +1,11 @@
 # Logging In
 
+> **Quick Reference**
+>
+> Username + Password &rarr; TOTP Code &rarr; Dashboard
+
+---
+
 ## Step 1: Enter Your Username and Password
 
 Navigate to the AeroDocs URL and you will see the login page.
@@ -53,3 +59,5 @@ This resets your TOTP and sets a temporary password, which is printed to the ter
 ### I am locked out and there is no other admin
 
 Contact whoever manages the AeroDocs server. They will need to run the CLI break-glass command (see above) to restore access.
+
+For more login-related solutions, see [[Troubleshooting]].
