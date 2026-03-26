@@ -17,8 +17,8 @@ func (s *Server) handleUnregisterServer(w http.ResponseWriter, r *http.Request) 
 		conn := s.connMgr.GetConn(serverID)
 		if conn != nil {
 			requestID := uuid.NewString()
-			ch := s.pending.Register(requestID)
-			defer s.pending.Remove(requestID)
+			ch := s.pending.Register(serverID, requestID)
+			defer s.pending.Remove(serverID, requestID)
 
 			err := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
 				Payload: &pb.HubMessage_UnregisterRequest{

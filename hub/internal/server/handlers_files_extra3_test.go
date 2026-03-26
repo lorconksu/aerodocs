@@ -25,7 +25,7 @@ func (m *mockGRPCStreamReadError) Send(msg *pb.HubMessage) error {
 					RequestId: p.FileReadRequest.RequestId,
 					Error:     "file not found",
 				}
-				m.pending.Deliver(p.FileReadRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileReadRequest.RequestId, resp)
 			}()
 		}
 	}
@@ -65,6 +65,7 @@ func testServerWithReadErrorAgent(t *testing.T) (s *Server, adminToken, serverID
 
 	stream := &mockGRPCStreamReadError{}
 	stream.pending = pending
+	stream.serverID = serverID
 	cm.Register(serverID, stream)
 	t.Cleanup(func() { cm.Unregister(serverID) })
 
