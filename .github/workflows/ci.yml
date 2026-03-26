@@ -143,9 +143,6 @@ jobs:
   vulnerability-scan:
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -167,24 +164,22 @@ jobs:
         run: mkdir -p hub/web/dist && touch hub/web/dist/index.html
 
       - name: govulncheck (Hub)
-        run: cd hub && govulncheck -format sarif ./... > ../govulncheck-hub.sarif 2>&1 || true
+        run: |
+          echo "### govulncheck - Hub" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cd hub && govulncheck ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: govulncheck (Agent)
-        run: cd agent && govulncheck -format sarif ./... > ../govulncheck-agent.sarif 2>&1 || true
-
-      - name: Upload govulncheck results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: govulncheck-hub.sarif
-          category: govulncheck-hub
-
-      - name: Upload agent govulncheck results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: govulncheck-agent.sarif
-          category: govulncheck-agent
+        run: |
+          echo "### govulncheck - Agent" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cd agent && govulncheck ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: npm audit (Frontend)
-        run: cd web && npm ci && npm audit --audit-level=high || true
+        run: |
+          echo "### npm audit - Frontend" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cd web && npm ci --ignore-scripts && npm audit --audit-level=high 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
