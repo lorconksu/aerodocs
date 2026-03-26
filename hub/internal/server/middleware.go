@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -147,12 +148,14 @@ func (rl *rateLimiter) allow(ip string) bool {
 
 func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			ip = strings.Split(fwd, ",")[0]
+		// Always use RemoteAddr for rate limiting - never trust X-Forwarded-For
+		// When behind Traefik, RemoteAddr is set to the real client IP
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = r.RemoteAddr // fallback if no port
 		}
 
-		if !rl.allow(strings.TrimSpace(ip)) {
+		if !rl.allow(ip) {
 			w.Header().Set("Retry-After", "60")
 			respondError(w, http.StatusTooManyRequests, "too many login attempts")
 			return

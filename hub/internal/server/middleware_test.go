@@ -96,18 +96,18 @@ func TestRateLimiter_Middleware_Blocked(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// Use X-Forwarded-For so both requests have same IP string
+	// First request using RemoteAddr with port
 	req1 := httptest.NewRequest("POST", "/login", nil)
-	req1.Header.Set("X-Forwarded-For", "10.0.0.1")
+	req1.RemoteAddr = "10.0.0.1:12345"
 	rec1 := httptest.NewRecorder()
 	handler.ServeHTTP(rec1, req1)
 	if rec1.Code != http.StatusOK {
 		t.Fatalf("first request: expected 200, got %d", rec1.Code)
 	}
 
-	// Second request same IP should be blocked
+	// Second request same IP, different port - should still be blocked
 	req2 := httptest.NewRequest("POST", "/login", nil)
-	req2.Header.Set("X-Forwarded-For", "10.0.0.1")
+	req2.RemoteAddr = "10.0.0.1:12346"
 	rec2 := httptest.NewRecorder()
 	handler.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
@@ -115,27 +115,63 @@ func TestRateLimiter_Middleware_Blocked(t *testing.T) {
 	}
 }
 
-func TestRateLimiter_Middleware_XForwardedFor(t *testing.T) {
+// TestRateLimiter_Middleware_XFFSpoofIgnored verifies that spoofed
+// X-Forwarded-For headers do NOT bypass rate limiting.
+func TestRateLimiter_Middleware_XFFSpoofIgnored(t *testing.T) {
 	rl := newRateLimiter(1, time.Minute)
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
+	// First request exhausts the limit for RemoteAddr 10.0.0.1
 	req1 := httptest.NewRequest("POST", "/login", nil)
-	req1.Header.Set("X-Forwarded-For", "192.168.1.1, 10.0.0.1")
+	req1.RemoteAddr = "10.0.0.1:40000"
 	rec1 := httptest.NewRecorder()
 	handler.ServeHTTP(rec1, req1)
 	if rec1.Code != http.StatusOK {
 		t.Fatalf("first request: expected 200, got %d", rec1.Code)
 	}
 
+	// Second request: same RemoteAddr but spoofed X-Forwarded-For
+	// Should still be blocked because we ignore XFF
 	req2 := httptest.NewRequest("POST", "/login", nil)
-	req2.Header.Set("X-Forwarded-For", "192.168.1.1")
+	req2.RemoteAddr = "10.0.0.1:40001"
+	req2.Header.Set("X-Forwarded-For", "99.99.99.99")
 	rec2 := httptest.NewRecorder()
 	handler.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 for same forwarded IP, got %d", rec2.Code)
+		t.Fatalf("spoofed XFF should not bypass rate limit: expected 429, got %d", rec2.Code)
+	}
+}
+
+// TestRateLimiter_Middleware_PortStripped verifies that the same IP
+// with different ports is correctly rate-limited as one client.
+func TestRateLimiter_Middleware_PortStripped(t *testing.T) {
+	rl := newRateLimiter(2, time.Minute)
+
+	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Two requests from the same IP but different ports
+	for i, addr := range []string{"192.168.1.1:50000", "192.168.1.1:50001"} {
+		req := httptest.NewRequest("POST", "/login", nil)
+		req.RemoteAddr = addr
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	// Third request from same IP, different port - should be blocked
+	req3 := httptest.NewRequest("POST", "/login", nil)
+	req3.RemoteAddr = "192.168.1.1:50002"
+	rec3 := httptest.NewRecorder()
+	handler.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusTooManyRequests {
+		t.Fatalf("third request with different port: expected 429, got %d", rec3.Code)
 	}
 }
 
