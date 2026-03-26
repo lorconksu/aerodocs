@@ -127,11 +127,11 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 		return h.handleStreamHeartbeat(serverID, stream)
 	case *pb.AgentMessage_FileListResponse:
 		if h.pending != nil {
-			h.pending.Deliver(p.FileListResponse.RequestId, p.FileListResponse)
+			h.pending.Deliver(serverID, p.FileListResponse.RequestId, p.FileListResponse)
 		}
 	case *pb.AgentMessage_FileReadResponse:
 		if h.pending != nil {
-			h.pending.Deliver(p.FileReadResponse.RequestId, p.FileReadResponse)
+			h.pending.Deliver(serverID, p.FileReadResponse.RequestId, p.FileReadResponse)
 		}
 	case *pb.AgentMessage_LogStreamChunk:
 		if h.logSessions != nil {
@@ -139,15 +139,15 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 		}
 	case *pb.AgentMessage_FileUploadAck:
 		if h.pending != nil {
-			h.pending.Deliver(p.FileUploadAck.RequestId, p.FileUploadAck)
+			h.pending.Deliver(serverID, p.FileUploadAck.RequestId, p.FileUploadAck)
 		}
 	case *pb.AgentMessage_FileDeleteResponse:
 		if h.pending != nil {
-			h.pending.Deliver(p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
+			h.pending.Deliver(serverID, p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
 		}
 	case *pb.AgentMessage_UnregisterAck:
 		if h.pending != nil {
-			h.pending.Deliver(p.UnregisterAck.RequestId, p.UnregisterAck)
+			h.pending.Deliver(serverID, p.UnregisterAck.RequestId, p.UnregisterAck)
 		}
 	default:
 		log.Printf("unhandled message type from %s: %T", serverID, p)

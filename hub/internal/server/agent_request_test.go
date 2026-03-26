@@ -16,9 +16,10 @@ import (
 
 // mockGRPCStream implements pb.AgentService_ConnectServer for testing.
 type mockGRPCStream struct {
-	ctx     context.Context
-	sent    []*pb.HubMessage
-	pending *grpcserver.PendingRequests
+	ctx      context.Context
+	sent     []*pb.HubMessage
+	pending  *grpcserver.PendingRequests
+	serverID string
 }
 
 func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
@@ -29,29 +30,29 @@ func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
 		case *pb.HubMessage_FileListRequest:
 			go func() {
 				resp := &pb.FileListResponse{RequestId: p.FileListRequest.RequestId}
-				m.pending.Deliver(p.FileListRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileListRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileReadRequest:
 			go func() {
 				resp := &pb.FileReadResponse{RequestId: p.FileReadRequest.RequestId}
-				m.pending.Deliver(p.FileReadRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileReadRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileDeleteRequest:
 			go func() {
 				resp := &pb.FileDeleteResponse{RequestId: p.FileDeleteRequest.RequestId, Success: true}
-				m.pending.Deliver(p.FileDeleteRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileDeleteRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_UnregisterRequest:
 			go func() {
 				resp := &pb.UnregisterAck{RequestId: p.UnregisterRequest.RequestId}
-				m.pending.Deliver(p.UnregisterRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.UnregisterRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileUploadRequest:
 			// Only deliver ack on the final "done" chunk
 			if p.FileUploadRequest.Done {
 				go func() {
 					resp := &pb.FileUploadAck{RequestId: p.FileUploadRequest.RequestId, Success: true}
-					m.pending.Deliver(p.FileUploadRequest.RequestId, resp)
+					m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
 				}()
 			}
 		}
@@ -107,7 +108,7 @@ func testServerWithAgent(t *testing.T) (s *Server, adminToken, serverID string) 
 	serverID = createTestServer(t, s, adminToken, "agent-test-srv")
 
 	// Register a mock stream that auto-delivers responses
-	stream := &mockGRPCStream{pending: pending}
+	stream := &mockGRPCStream{pending: pending, serverID: serverID}
 	cm.Register(serverID, stream)
 	t.Cleanup(func() { cm.Unregister(serverID) })
 

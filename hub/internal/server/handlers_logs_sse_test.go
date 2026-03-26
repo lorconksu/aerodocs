@@ -26,28 +26,28 @@ func (m *mockGRPCStreamWithLog) Send(msg *pb.HubMessage) error {
 		case *pb.HubMessage_FileListRequest:
 			go func() {
 				resp := &pb.FileListResponse{RequestId: p.FileListRequest.RequestId}
-				m.pending.Deliver(p.FileListRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileListRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileReadRequest:
 			go func() {
 				resp := &pb.FileReadResponse{RequestId: p.FileReadRequest.RequestId}
-				m.pending.Deliver(p.FileReadRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileReadRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileDeleteRequest:
 			go func() {
 				resp := &pb.FileDeleteResponse{RequestId: p.FileDeleteRequest.RequestId, Success: true}
-				m.pending.Deliver(p.FileDeleteRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileDeleteRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_UnregisterRequest:
 			go func() {
 				resp := &pb.UnregisterAck{RequestId: p.UnregisterRequest.RequestId}
-				m.pending.Deliver(p.UnregisterRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.UnregisterRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileUploadRequest:
 			if p.FileUploadRequest.Done {
 				go func() {
 					resp := &pb.FileUploadAck{RequestId: p.FileUploadRequest.RequestId, Success: true}
-					m.pending.Deliver(p.FileUploadRequest.RequestId, resp)
+					m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
 				}()
 			}
 		case *pb.HubMessage_LogStreamRequest:
@@ -99,7 +99,7 @@ func testServerWithAgentAndLog(t *testing.T) (s *Server, adminToken, serverID st
 	serverID = createTestServer(t, s, adminToken, "logtail-test-srv")
 
 	stream := &mockGRPCStreamWithLog{
-		mockGRPCStream: mockGRPCStream{pending: pending},
+		mockGRPCStream: mockGRPCStream{pending: pending, serverID: serverID},
 		logSessions:    logSessions,
 	}
 	cm.Register(serverID, stream)

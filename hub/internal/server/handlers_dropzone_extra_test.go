@@ -29,7 +29,7 @@ func (m *mockGRPCStreamDropzoneError) Send(msg *pb.HubMessage) error {
 					RequestId: p.FileListRequest.RequestId,
 					Error:     "no such file or directory",
 				}
-				m.pending.Deliver(p.FileListRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileListRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileDeleteRequest:
 			go func() {
@@ -38,7 +38,7 @@ func (m *mockGRPCStreamDropzoneError) Send(msg *pb.HubMessage) error {
 					Success:   false,
 					Error:     "file not found",
 				}
-				m.pending.Deliver(p.FileDeleteRequest.RequestId, resp)
+				m.pending.Deliver(m.serverID, p.FileDeleteRequest.RequestId, resp)
 			}()
 		case *pb.HubMessage_FileUploadRequest:
 			if p.FileUploadRequest.Done {
@@ -48,7 +48,7 @@ func (m *mockGRPCStreamDropzoneError) Send(msg *pb.HubMessage) error {
 						Success:   false,
 						Error:     "disk full",
 					}
-					m.pending.Deliver(p.FileUploadRequest.RequestId, resp)
+					m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
 				}()
 			}
 		}
@@ -89,6 +89,7 @@ func testServerWithErrorAgent(t *testing.T) (s *Server, adminToken, serverID str
 
 	stream := &mockGRPCStreamDropzoneError{}
 	stream.pending = pending
+	stream.serverID = serverID
 	cm.Register(serverID, stream)
 	t.Cleanup(func() { cm.Unregister(serverID) })
 
