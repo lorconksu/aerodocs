@@ -5,6 +5,8 @@ import "sync"
 // LogSessions tracks active log tailing sessions.
 // Unlike PendingRequests (one-shot), log sessions deliver multiple
 // chunks over time until explicitly removed.
+// Keys are scoped per server (serverID:requestID) to prevent a
+// compromised agent from injecting data into another server's log stream.
 type LogSessions struct {
 	mu       sync.Mutex
 	channels map[string]chan []byte
@@ -17,18 +19,19 @@ func NewLogSessions() *LogSessions {
 }
 
 // Register creates a buffered channel for a log session.
-func (ls *LogSessions) Register(requestID string) chan []byte {
+func (ls *LogSessions) Register(serverID, requestID string) chan []byte {
 	ch := make(chan []byte, 64)
 	ls.mu.Lock()
-	ls.channels[requestID] = ch
+	ls.channels[makeKey(serverID, requestID)] = ch
 	ls.mu.Unlock()
 	return ch
 }
 
 // Deliver sends data to the channel for the given session.
-func (ls *LogSessions) Deliver(requestID string, data []byte) bool {
+func (ls *LogSessions) Deliver(serverID, requestID string, data []byte) bool {
+	key := makeKey(serverID, requestID)
 	ls.mu.Lock()
-	ch, ok := ls.channels[requestID]
+	ch, ok := ls.channels[key]
 	ls.mu.Unlock()
 	if !ok {
 		return false
@@ -43,11 +46,12 @@ func (ls *LogSessions) Deliver(requestID string, data []byte) bool {
 }
 
 // Remove closes and deletes a log session.
-func (ls *LogSessions) Remove(requestID string) {
+func (ls *LogSessions) Remove(serverID, requestID string) {
+	key := makeKey(serverID, requestID)
 	ls.mu.Lock()
-	if ch, ok := ls.channels[requestID]; ok {
+	if ch, ok := ls.channels[key]; ok {
 		close(ch)
-		delete(ls.channels, requestID)
+		delete(ls.channels, key)
 	}
 	ls.mu.Unlock()
 }

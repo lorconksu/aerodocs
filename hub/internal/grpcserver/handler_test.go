@@ -301,7 +301,7 @@ func TestRouteAgentMessage_LogStreamChunk(t *testing.T) {
 
 	stream := &mockStream{}
 	reqID := "req-log-1"
-	ch := h.logSessions.Register(reqID)
+	ch := h.logSessions.Register("s1", reqID)
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_LogStreamChunk{

@@ -55,10 +55,10 @@ func (m *mockGRPCStreamWithLog) Send(msg *pb.HubMessage) error {
 			if m.logSessions != nil {
 				go func() {
 					time.Sleep(10 * time.Millisecond)
-					m.logSessions.Deliver(p.LogStreamRequest.RequestId, []byte("2026-01-01 hello world\n"))
+					m.logSessions.Deliver(m.serverID, p.LogStreamRequest.RequestId, []byte("2026-01-01 hello world\n"))
 					// After delivering one chunk, remove the session to close the channel
 					time.Sleep(10 * time.Millisecond)
-					m.logSessions.Remove(p.LogStreamRequest.RequestId)
+					m.logSessions.Remove(m.serverID, p.LogStreamRequest.RequestId)
 				}()
 			}
 		}

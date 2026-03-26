@@ -135,7 +135,7 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 		}
 	case *pb.AgentMessage_LogStreamChunk:
 		if h.logSessions != nil {
-			h.logSessions.Deliver(p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
+			h.logSessions.Deliver(serverID, p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
 		}
 	case *pb.AgentMessage_FileUploadAck:
 		if h.pending != nil {
