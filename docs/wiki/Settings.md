@@ -4,9 +4,11 @@ The Settings page is accessible from the sidebar. It has two tabs: **Profile** (
 
 ---
 
-## Profile Tab
+## Profile Tab (All Users)
 
 ![Settings Profile](../screenshots/08-settings-profile.png)
+
+The Profile tab is available to every user — both admins and viewers.
 
 ### Changing Your Avatar
 
@@ -49,7 +51,7 @@ In the user list, click the role badge next to a user's name (it shows "admin" o
 
 **Viewer** — Read-only access. Can view the fleet dashboard and server details but cannot make changes. (Specific per-server and per-folder permissions can be configured separately.)
 
-You cannot change your own role.
+> **Note:** You cannot change your own role. Another admin must do it for you.
 
 ### Disabling a User's 2FA
 
@@ -70,4 +72,6 @@ The user's TOTP is cleared. The next time they log in, they will be taken throug
 3. Choose **Delete User**
 4. Confirm the deletion
 
-Deleting a user is permanent and cannot be undone. Their audit log entries are preserved (the entries remain, but the user_id reference becomes orphaned). You cannot delete your own account.
+Deleting a user is permanent and cannot be undone. Their audit log entries are preserved (the entries remain, but the user_id reference becomes orphaned).
+
+> **Note:** You cannot delete your own account. Another admin must do it for you.
