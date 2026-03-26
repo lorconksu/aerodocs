@@ -36,6 +36,11 @@ func (s *Server) handleCreatePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validateRequestPath(req.Path); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid path: "+err.Error())
+		return
+	}
+
 	perm, err := s.store.CreatePermission(req.UserID, serverID, req.Path)
 	if err != nil {
 		respondError(w, http.StatusConflict, "permission already exists or invalid reference")

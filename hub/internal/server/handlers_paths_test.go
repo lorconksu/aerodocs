@@ -263,6 +263,40 @@ func TestHandleListPaths_RequiresAdmin(t *testing.T) {
 	}
 }
 
+// TestHandleCreatePath_PathTraversal verifies that path traversal is rejected.
+func TestHandleCreatePath_PathTraversal(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+	serverID := createTestServer(t, s, adminToken, "srv-path-traversal")
+	viewerID, _ := createTestViewer(t, s, adminToken, "travviewer", "travviewer@test.com")
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"dot-dot traversal", "../../etc"},
+		{"absolute with dot-dot", "/var/log/../../etc/passwd"},
+		{"relative path", "var/log"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := mustJSON(t, map[string]string{
+				"user_id": viewerID,
+				"path":    tc.path,
+			})
+			req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/paths", body)
+			req.Header.Set("Authorization", "Bearer "+adminToken)
+			rec := httptest.NewRecorder()
+			s.routes().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400 for path %q, got %d: %s", tc.path, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 // TestHandleCreatePath_InvalidBody verifies that a malformed request body returns 400.
 func TestHandleCreatePath_InvalidBody(t *testing.T) {
 	s := testServer(t)
