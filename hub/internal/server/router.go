@@ -77,6 +77,6 @@ func (s *Server) routes() http.Handler {
 	// SPA catch-all — serves embedded frontend, falls back to index.html
 	mux.Handle("/", s.spaHandler())
 
-	// Apply CORS globally
-	return s.corsMiddleware(mux)
+	// Apply CORS globally, then security headers as outermost wrapper
+	return securityHeaders(s.corsMiddleware(mux))
 }

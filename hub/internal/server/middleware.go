@@ -165,6 +165,22 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 	})
 }
 
+// securityHeaders adds standard security headers to every response.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if r.URL.Path == "/" || !strings.HasPrefix(r.URL.Path, "/api/") {
+			// CSP for HTML pages only, not API responses
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // clientIP extracts the client IP from the request.
 func clientIP(r *http.Request) string {
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
