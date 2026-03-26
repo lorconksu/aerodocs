@@ -140,3 +140,44 @@ func TestTailFileNotFound(t *testing.T) {
 
 	// Should not panic, may send error chunk or nothing
 }
+
+func TestStartTail_InvalidPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"path traversal with ..", "/var/log/../../../etc/shadow"},
+		{"relative path", "relative/path/file.log"},
+		{"dot-dot only", ".."},
+		{"hidden traversal", "/var/log/..hidden/../etc/passwd"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sendCh := make(chan *pb.AgentMessage, 10)
+			stop := make(chan struct{})
+
+			go StartTail(tc.path, "", 0, sendCh, "req-invalid", stop)
+
+			// Wait for the validation to trigger
+			time.Sleep(200 * time.Millisecond)
+			close(stop)
+
+			if len(sendCh) == 0 {
+				t.Fatal("expected error message on sendCh for invalid path")
+			}
+
+			msg := <-sendCh
+			chunk := msg.GetLogStreamChunk()
+			if chunk == nil {
+				t.Fatal("expected LogStreamChunk payload")
+			}
+			if chunk.RequestId != "req-invalid" {
+				t.Fatalf("expected requestID 'req-invalid', got %q", chunk.RequestId)
+			}
+			if !strings.Contains(string(chunk.Data), "error: invalid path") {
+				t.Fatalf("expected 'error: invalid path' in data, got %q", string(chunk.Data))
+			}
+		})
+	}
+}

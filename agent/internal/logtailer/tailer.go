@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +18,19 @@ const pollInterval = 500 * time.Millisecond
 // Matching lines (if grep is non-empty) are sent as LogStreamChunk messages.
 // Stops when the stop channel is closed.
 func StartTail(path string, grep string, offset int64, sendCh chan<- *pb.AgentMessage, requestID string, stop <-chan struct{}) {
+	// Defense in depth: validate path even though hub should have checked
+	if strings.Contains(path, "..") || !filepath.IsAbs(path) {
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_LogStreamChunk{
+				LogStreamChunk: &pb.LogStreamChunk{
+					RequestId: requestID,
+					Data:      []byte("error: invalid path"),
+				},
+			},
+		}
+		return
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		log.Printf("logtailer: cannot open %s: %v", path, err)
