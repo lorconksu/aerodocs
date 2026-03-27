@@ -84,6 +84,7 @@ jobs:
           summary: true
 
       - name: Docker Scout quickview
+        continue-on-error: true  # quickview may fail on non-Debian bases (e.g. Wolfi)
         uses: docker/scout-action@v1
         with:
           command: quickview
