@@ -38,7 +38,7 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 	}
 	// Ensure symlinks don't escape above the requested directory
 	cleanPath := filepath.Clean(path)
-	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath) {
+	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {
 		return &pb.FileListResponse{Error: "path resolves outside requested directory"}, nil
 	}
 
@@ -102,7 +102,7 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 	}
 	// Ensure symlinks don't escape above the requested directory
 	cleanPath := filepath.Clean(path)
-	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath) {
+	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {
 		return &pb.FileReadResponse{Error: "path resolves outside requested directory"}, nil
 	}
 
