@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -104,6 +105,11 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		scheme = "http"
 	}
 	host := r.Host
+	// Sanitize host - only allow alphanumeric, dots, colons, hyphens
+	if !regexp.MustCompile(`^[a-zA-Z0-9._:\-]+$`).MatchString(host) {
+		respondError(w, http.StatusBadRequest, "invalid host header")
+		return
+	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, host)
 
 	// gRPC target: in production, use the hostname (Traefik proxies gRPC on 443).
@@ -217,6 +223,10 @@ func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request
 
 	if len(req.IDs) == 0 {
 		respondError(w, http.StatusBadRequest, "ids list cannot be empty")
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondError(w, http.StatusBadRequest, "maximum 100 servers per batch")
 		return
 	}
 

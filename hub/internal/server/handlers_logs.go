@@ -15,6 +15,10 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 	path := r.URL.Query().Get("path")
 	grep := r.URL.Query().Get("grep")
+	if len(grep) > 256 {
+		respondError(w, http.StatusBadRequest, "grep filter too long (max 256 characters)")
+		return
+	}
 
 	if path == "" {
 		respondError(w, http.StatusBadRequest, "path is required")
