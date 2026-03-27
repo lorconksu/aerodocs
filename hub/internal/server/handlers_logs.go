@@ -114,6 +114,10 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 			}
 			encoded := base64.StdEncoding.EncodeToString(data)
 			fmt.Fprintf(w, "data: %s\n\n", encoded)
+			// Check for overflow after each chunk delivery
+			if dropped := s.logSessions.DrainOverflow(serverID, requestID); dropped > 0 {
+				fmt.Fprintf(w, "event: overflow\ndata: {\"dropped\":%d}\n\n", dropped)
+			}
 			flusher.Flush()
 		}
 	}

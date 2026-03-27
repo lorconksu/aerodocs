@@ -1,8 +1,11 @@
 package filebrowser
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -223,5 +226,209 @@ func TestReadFile_SymlinkToFile(t *testing.T) {
 	// Symlink resolves to a different path, should be rejected
 	if resp.Error == "" {
 		t.Fatal("expected symlink to different path to be rejected")
+	}
+}
+
+// --- Task 1 tests: negative offset (tail) behavior ---
+
+// TestReadFile_NegativeOffset_SmallFile verifies that a negative offset on a file
+// smaller than limit returns the entire file content.
+func TestReadFile_NegativeOffset_SmallFile(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("small file content")
+	path := filepath.Join(dir, "small.txt")
+	os.WriteFile(path, content, 0644)
+
+	resp, err := ReadFile(path, -1, MaxReadSize)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if string(resp.Data) != "small file content" {
+		t.Fatalf("expected full content, got %q", string(resp.Data))
+	}
+	if resp.TotalSize != int64(len(content)) {
+		t.Fatalf("expected total_size %d, got %d", len(content), resp.TotalSize)
+	}
+}
+
+// TestReadFile_NegativeOffset_LargeFile verifies that a negative offset on a file
+// larger than limit returns the tail (last `limit` bytes) not the head.
+func TestReadFile_NegativeOffset_LargeFile(t *testing.T) {
+	dir := t.TempDir()
+	// Create a file with known head and tail content
+	// Total size = 200 bytes, limit = 50 bytes → should return last 50 bytes
+	head := bytes.Repeat([]byte("H"), 150)
+	tail := bytes.Repeat([]byte("T"), 50)
+	content := append(head, tail...)
+	path := filepath.Join(dir, "large.bin")
+	os.WriteFile(path, content, 0644)
+
+	resp, err := ReadFile(path, -1, 50)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if len(resp.Data) != 50 {
+		t.Fatalf("expected 50 bytes, got %d", len(resp.Data))
+	}
+	// All bytes should be 'T' (the tail), not 'H' (the head)
+	expected := bytes.Repeat([]byte("T"), 50)
+	if !bytes.Equal(resp.Data, expected) {
+		t.Fatalf("expected tail content (all T's), got data starting with %q", string(resp.Data[:10]))
+	}
+	if resp.TotalSize != 200 {
+		t.Fatalf("expected total_size 200, got %d", resp.TotalSize)
+	}
+}
+
+// TestReadFile_NegativeOffset_ExactLimit verifies that a file exactly equal to limit
+// returns all content when offset is negative.
+func TestReadFile_NegativeOffset_ExactLimit(t *testing.T) {
+	dir := t.TempDir()
+	content := bytes.Repeat([]byte("X"), 100)
+	path := filepath.Join(dir, "exact.bin")
+	os.WriteFile(path, content, 0644)
+
+	resp, err := ReadFile(path, -1, 100)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if len(resp.Data) != 100 {
+		t.Fatalf("expected 100 bytes, got %d", len(resp.Data))
+	}
+}
+
+// TestReadFile_PositiveOffset_StillWorks verifies that positive offsets still work correctly.
+func TestReadFile_PositiveOffset_StillWorks(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("0123456789")
+	path := filepath.Join(dir, "offset.txt")
+	os.WriteFile(path, content, 0644)
+
+	resp, err := ReadFile(path, 5, 100)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if string(resp.Data) != "56789" {
+		t.Fatalf("expected '56789', got %q", string(resp.Data))
+	}
+}
+
+// --- Task 2 tests: ListDir special files and large directories ---
+
+// TestListDir_SkipsFIFO verifies that FIFO (named pipe) entries are skipped.
+func TestListDir_SkipsFIFO(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root (can open any file)")
+	}
+
+	dir := t.TempDir()
+	// Create a regular file
+	os.WriteFile(filepath.Join(dir, "regular.txt"), []byte("hello"), 0644)
+
+	// Create a FIFO (named pipe)
+	fifoPath := filepath.Join(dir, "myfifo")
+	if err := syscall.Mkfifo(fifoPath, 0644); err != nil {
+		t.Skipf("cannot create FIFO: %v", err)
+	}
+
+	resp, err := ListDir(dir)
+	if err != nil {
+		t.Fatalf("list dir: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+
+	// Should only have the regular file, not the FIFO
+	if len(resp.Files) != 1 {
+		names := make([]string, len(resp.Files))
+		for i, f := range resp.Files {
+			names[i] = f.Name
+		}
+		t.Fatalf("expected 1 entry (regular.txt only), got %d: %v", len(resp.Files), names)
+	}
+	if resp.Files[0].Name != "regular.txt" {
+		t.Fatalf("expected regular.txt, got %s", resp.Files[0].Name)
+	}
+}
+
+// TestListDir_DirsFirstOrdering verifies directories come before files in listing.
+func TestListDir_DirsFirstOrdering(t *testing.T) {
+	dir := t.TempDir()
+	// Create files named to sort before dirs alphabetically
+	os.WriteFile(filepath.Join(dir, "aaa_file.txt"), []byte("f"), 0644)
+	os.MkdirAll(filepath.Join(dir, "zzz_dir"), 0755)
+	os.MkdirAll(filepath.Join(dir, "aaa_dir"), 0755)
+	os.WriteFile(filepath.Join(dir, "zzz_file.txt"), []byte("f"), 0644)
+
+	resp, err := ListDir(dir)
+	if err != nil {
+		t.Fatalf("list dir: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if len(resp.Files) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(resp.Files))
+	}
+	// First two should be dirs (sorted), then two files (sorted)
+	if !resp.Files[0].IsDir || resp.Files[0].Name != "aaa_dir" {
+		t.Fatalf("expected first entry to be dir 'aaa_dir', got %s (isDir=%v)", resp.Files[0].Name, resp.Files[0].IsDir)
+	}
+	if !resp.Files[1].IsDir || resp.Files[1].Name != "zzz_dir" {
+		t.Fatalf("expected second entry to be dir 'zzz_dir', got %s (isDir=%v)", resp.Files[1].Name, resp.Files[1].IsDir)
+	}
+	if resp.Files[2].IsDir || resp.Files[2].Name != "aaa_file.txt" {
+		t.Fatalf("expected third entry to be file 'aaa_file.txt', got %s", resp.Files[2].Name)
+	}
+	if resp.Files[3].IsDir || resp.Files[3].Name != "zzz_file.txt" {
+		t.Fatalf("expected fourth entry to be file 'zzz_file.txt', got %s", resp.Files[3].Name)
+	}
+}
+
+// TestListDir_LargeDirectory verifies ListDir handles a directory with many entries.
+func TestListDir_LargeDirectory(t *testing.T) {
+	dir := t.TempDir()
+	const numFiles = 500
+	for i := 0; i < numFiles; i++ {
+		name := filepath.Join(dir, fmt.Sprintf("file_%04d.txt", i))
+		os.WriteFile(name, []byte("x"), 0644)
+	}
+
+	resp, err := ListDir(dir)
+	if err != nil {
+		t.Fatalf("list dir: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if len(resp.Files) != numFiles {
+		t.Fatalf("expected %d entries, got %d", numFiles, len(resp.Files))
+	}
+}
+
+// TestListDir_ReadableFlag verifies that readable files are marked as readable.
+func TestListDir_ReadableFlag(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "readable.txt"), []byte("r"), 0644)
+
+	resp, err := ListDir(dir)
+	if err != nil {
+		t.Fatalf("list dir: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(resp.Files))
+	}
+	if !resp.Files[0].Readable {
+		t.Fatal("expected readable file to have Readable=true")
 	}
 }

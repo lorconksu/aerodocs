@@ -19,6 +19,7 @@ type Server struct {
 	connMgr     *connmgr.ConnManager
 	pending     *PendingRequests
 	logSessions *LogSessions
+	hbCoalescer *HeartbeatCoalescer
 	addr        string
 }
 
@@ -37,11 +38,13 @@ func New(cfg Config) *Server {
 	if cfg.LogSessions == nil {
 		cfg.LogSessions = NewLogSessions()
 	}
+	hbCoalescer := NewHeartbeatCoalescer(cfg.Store, 30*time.Second)
 	s := &Server{
 		store:       cfg.Store,
 		connMgr:     cfg.ConnMgr,
 		pending:     cfg.Pending,
 		logSessions: cfg.LogSessions,
+		hbCoalescer: hbCoalescer,
 		addr:        cfg.Addr,
 	}
 	s.grpcServer = grpc.NewServer()
@@ -50,6 +53,7 @@ func New(cfg Config) *Server {
 		connMgr:     cfg.ConnMgr,
 		pending:     s.pending,
 		logSessions: s.logSessions,
+		hbCoalescer: hbCoalescer,
 	}
 	pb.RegisterAgentServiceServer(s.grpcServer, handler)
 	return s
@@ -65,6 +69,9 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() {
+	if s.hbCoalescer != nil {
+		s.hbCoalescer.FlushAll()
+	}
 	s.grpcServer.GracefulStop()
 }
 

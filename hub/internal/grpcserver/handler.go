@@ -24,6 +24,7 @@ type Handler struct {
 	connMgr     *connmgr.ConnManager
 	pending     *PendingRequests
 	logSessions *LogSessions
+	hbCoalescer *HeartbeatCoalescer
 }
 
 func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
@@ -47,6 +48,9 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 
 	defer func() {
 		h.connMgr.Unregister(serverID)
+		if h.hbCoalescer != nil {
+			h.hbCoalescer.Flush(serverID)
+		}
 		_ = h.store.UpdateServerStatus(serverID, "offline")
 		h.store.LogAudit(model.AuditEntry{
 			Action: model.AuditServerDisconnected,
@@ -170,7 +174,11 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 // handleStreamHeartbeat processes an in-stream heartbeat, updates last-seen, and sends an ack.
 func (h *Handler) handleStreamHeartbeat(serverID string, stream pb.AgentService_ConnectServer) error {
 	h.connMgr.UpdateHeartbeat(serverID)
-	_ = h.store.UpdateServerLastSeen(serverID, nil)
+	if h.hbCoalescer != nil {
+		h.hbCoalescer.RecordHeartbeat(serverID)
+	} else {
+		_ = h.store.UpdateServerLastSeen(serverID, nil)
+	}
 	conn := h.connMgr.GetConn(serverID)
 	if conn == nil {
 		return nil
@@ -216,6 +224,11 @@ func (h *Handler) handleHeartbeat(serverID string) error {
 			return fmt.Errorf("failed to update status: %w", err)
 		}
 	}
-	_ = h.store.UpdateServerLastSeen(serverID, nil)
+	// Handshake heartbeat always writes immediately (bypass coalescing).
+	if h.hbCoalescer != nil {
+		h.hbCoalescer.ForceWrite(serverID)
+	} else {
+		_ = h.store.UpdateServerLastSeen(serverID, nil)
+	}
 	return nil
 }

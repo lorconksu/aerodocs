@@ -8,9 +8,19 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
+	"golang.org/x/sys/unix"
 )
+
+// readBufPool reuses 1MB byte slices to reduce allocations in ReadFile.
+var readBufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, MaxReadSize)
+		return &buf
+	},
+}
 
 const MaxReadSize = 1048576 // 1MB
 
@@ -55,6 +65,13 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 			continue
 		}
 
+		mode := info.Mode()
+		// Skip non-regular, non-directory files (FIFOs, devices, sockets, etc.)
+		// to avoid blocking on special files during readability checks.
+		if !mode.IsRegular() && !mode.IsDir() {
+			continue
+		}
+
 		node := &pb.FileNode{
 			Name:  e.Name(),
 			Path:  filepath.Join(path, e.Name()),
@@ -62,11 +79,12 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 			Size:  info.Size(),
 		}
 
-		// Check readability
-		f, err := os.Open(filepath.Join(resolved, e.Name()))
-		if err == nil {
+		// Check readability with unix.Access(R_OK) instead of os.Open.
+		// This is a single syscall vs open+close, and critically avoids
+		// blocking on FIFOs or device files that os.Open would hang on.
+		entryPath := filepath.Join(resolved, e.Name())
+		if unix.Access(entryPath, unix.R_OK) == nil {
 			node.Readable = true
-			f.Close()
 		}
 
 		if e.IsDir() {
@@ -115,6 +133,18 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 		return &pb.FileReadResponse{Error: "path is a directory"}, nil
 	}
 
+	totalSize := info.Size()
+
+	// A negative offset means "read the tail of the file".
+	// Compute the actual byte offset so we return the last `limit` bytes.
+	if offset < 0 {
+		if totalSize > limit {
+			offset = totalSize - limit
+		} else {
+			offset = 0
+		}
+	}
+
 	f, err := os.Open(resolved)
 	if err != nil {
 		log.Printf("ReadFile: cannot open file %q: %v", resolved, err)
@@ -129,16 +159,35 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 		}
 	}
 
-	data := make([]byte, limit)
+	// Use pooled buffer to reduce allocations for the common 1MB read case.
+	var data []byte
+	var poolBuf *[]byte
+	if limit == MaxReadSize {
+		poolBuf = readBufPool.Get().(*[]byte)
+		data = (*poolBuf)[:limit]
+	} else {
+		data = make([]byte, limit)
+	}
+
 	n, err := io.ReadFull(f, data)
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		if poolBuf != nil {
+			readBufPool.Put(poolBuf)
+		}
 		log.Printf("ReadFile: read failed for %q: %v", resolved, err)
 		return &pb.FileReadResponse{Error: "cannot read file"}, nil
 	}
 
+	// Copy the read bytes out of the pooled buffer so we can return it to the pool.
+	result := make([]byte, n)
+	copy(result, data[:n])
+	if poolBuf != nil {
+		readBufPool.Put(poolBuf)
+	}
+
 	return &pb.FileReadResponse{
-		Data:      data[:n],
-		TotalSize: info.Size(),
+		Data:      result,
+		TotalSize: totalSize,
 		MimeType:  detectMIME(filepath.Base(path)),
 	}, nil
 }
