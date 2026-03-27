@@ -50,6 +50,26 @@ func TestPendingRequests_Remove(t *testing.T) {
 	}
 }
 
+// TestPendingRequests_DeliverChannelFull verifies that Deliver returns false
+// when the channel buffer is already full (default branch in select).
+func TestPendingRequests_DeliverChannelFull(t *testing.T) {
+	p := NewPendingRequests()
+	p.Register("s1", "req-full")
+	defer p.Remove("s1", "req-full")
+
+	// First deliver fills the buffer (capacity 1)
+	ok := p.Deliver("s1", "req-full", &pb.FileListResponse{RequestId: "req-full"})
+	if !ok {
+		t.Fatal("first delivery should succeed")
+	}
+
+	// Second deliver should fail because the channel is full
+	ok = p.Deliver("s1", "req-full", &pb.FileListResponse{RequestId: "req-full"})
+	if ok {
+		t.Fatal("second delivery should fail (channel full)")
+	}
+}
+
 func TestPendingRequests_CrossServerIsolation(t *testing.T) {
 	p := NewPendingRequests()
 	p.Register("s1", "req-1")
