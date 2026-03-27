@@ -371,7 +371,7 @@ func TestSecurityHeaders(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
-		if csp := rec.Header().Get("Content-Security-Policy"); csp == "" {
+		if rec.Header().Get("Content-Security-Policy") == "" {
 			t.Error("expected Content-Security-Policy on root path, got empty")
 		}
 	})
@@ -381,7 +381,7 @@ func TestSecurityHeaders(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
-		if csp := rec.Header().Get("Content-Security-Policy"); csp == "" {
+		if rec.Header().Get("Content-Security-Policy") == "" {
 			t.Error("expected Content-Security-Policy on non-API path, got empty")
 		}
 	})

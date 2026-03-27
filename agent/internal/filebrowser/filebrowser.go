@@ -24,6 +24,8 @@ var readBufPool = sync.Pool{
 
 const MaxReadSize = 1048576 // 1MB
 
+const errCannotReadFile = "cannot read file"
+
 func validatePath(path string) error {
 	// Reject paths that contain ".." components before cleaning
 	if strings.Contains(path, "..") {
@@ -36,20 +38,53 @@ func validatePath(path string) error {
 	return nil
 }
 
+// resolveAndValidateSymlink resolves symlinks and ensures the target stays
+// within the requested path. Returns the resolved path or an error string.
+func resolveAndValidateSymlink(path string) (string, string) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		log.Printf("resolveAndValidateSymlink: cannot resolve path %q: %v", path, err)
+		return "", "cannot access path"
+	}
+	cleanPath := filepath.Clean(path)
+	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {
+		return "", "path resolves outside requested directory"
+	}
+	return resolved, ""
+}
+
+// buildFileNode creates a FileNode from a directory entry, returning nil
+// for entries that should be skipped (e.g. FIFOs, devices, stat errors).
+func buildFileNode(e os.DirEntry, basePath, resolvedPath string) *pb.FileNode {
+	info, err := e.Info()
+	if err != nil {
+		return nil
+	}
+	mode := info.Mode()
+	if !mode.IsRegular() && !mode.IsDir() {
+		return nil
+	}
+	node := &pb.FileNode{
+		Name:  e.Name(),
+		Path:  filepath.Join(basePath, e.Name()),
+		IsDir: e.IsDir(),
+		Size:  info.Size(),
+	}
+	entryPath := filepath.Join(resolvedPath, e.Name())
+	if unix.Access(entryPath, unix.R_OK) == nil {
+		node.Readable = true
+	}
+	return node
+}
+
 func ListDir(path string) (*pb.FileListResponse, error) {
 	if err := validatePath(path); err != nil {
 		return &pb.FileListResponse{Error: err.Error()}, nil
 	}
 
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		log.Printf("ListDir: cannot resolve path %q: %v", path, err)
-		return &pb.FileListResponse{Error: "cannot access path"}, nil
-	}
-	// Ensure symlinks don't escape above the requested directory
-	cleanPath := filepath.Clean(path)
-	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {
-		return &pb.FileListResponse{Error: "path resolves outside requested directory"}, nil
+	resolved, errMsg := resolveAndValidateSymlink(path)
+	if errMsg != "" {
+		return &pb.FileListResponse{Error: errMsg}, nil
 	}
 
 	entries, err := os.ReadDir(resolved)
@@ -60,33 +95,10 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 
 	var dirs, files []*pb.FileNode
 	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil {
+		node := buildFileNode(e, path, resolved)
+		if node == nil {
 			continue
 		}
-
-		mode := info.Mode()
-		// Skip non-regular, non-directory files (FIFOs, devices, sockets, etc.)
-		// to avoid blocking on special files during readability checks.
-		if !mode.IsRegular() && !mode.IsDir() {
-			continue
-		}
-
-		node := &pb.FileNode{
-			Name:  e.Name(),
-			Path:  filepath.Join(path, e.Name()),
-			IsDir: e.IsDir(),
-			Size:  info.Size(),
-		}
-
-		// Check readability with unix.Access(R_OK) instead of os.Open.
-		// This is a single syscall vs open+close, and critically avoids
-		// blocking on FIFOs or device files that os.Open would hang on.
-		entryPath := filepath.Join(resolved, e.Name())
-		if unix.Access(entryPath, unix.R_OK) == nil {
-			node.Readable = true
-		}
-
 		if e.IsDir() {
 			dirs = append(dirs, node)
 		} else {
@@ -101,65 +113,29 @@ func ListDir(path string) (*pb.FileListResponse, error) {
 	return &pb.FileListResponse{Files: allFiles}, nil
 }
 
-func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
-	if err := validatePath(path); err != nil {
-		return &pb.FileReadResponse{Error: err.Error()}, nil
+// clampLimit normalises the read limit to be within [1, MaxReadSize].
+func clampLimit(limit int64) int64 {
+	if limit <= 0 || limit > MaxReadSize {
+		return MaxReadSize
 	}
+	return limit
+}
 
-	if limit > MaxReadSize {
-		limit = MaxReadSize
+// computeTailOffset converts a negative offset (tail read) into an actual
+// byte position within the file.
+func computeTailOffset(offset, limit, totalSize int64) int64 {
+	if offset >= 0 {
+		return offset
 	}
-	if limit <= 0 {
-		limit = MaxReadSize
+	if totalSize > limit {
+		return totalSize - limit
 	}
+	return 0
+}
 
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		log.Printf("ReadFile: cannot resolve path %q: %v", path, err)
-		return &pb.FileReadResponse{Error: "cannot access path"}, nil
-	}
-	// Ensure symlinks don't escape above the requested directory
-	cleanPath := filepath.Clean(path)
-	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {
-		return &pb.FileReadResponse{Error: "path resolves outside requested directory"}, nil
-	}
-
-	info, err := os.Stat(resolved)
-	if err != nil {
-		log.Printf("ReadFile: cannot stat file %q: %v", resolved, err)
-		return &pb.FileReadResponse{Error: "cannot read file"}, nil
-	}
-	if info.IsDir() {
-		return &pb.FileReadResponse{Error: "path is a directory"}, nil
-	}
-
-	totalSize := info.Size()
-
-	// A negative offset means "read the tail of the file".
-	// Compute the actual byte offset so we return the last `limit` bytes.
-	if offset < 0 {
-		if totalSize > limit {
-			offset = totalSize - limit
-		} else {
-			offset = 0
-		}
-	}
-
-	f, err := os.Open(resolved)
-	if err != nil {
-		log.Printf("ReadFile: cannot open file %q: %v", resolved, err)
-		return &pb.FileReadResponse{Error: "cannot read file"}, nil
-	}
-	defer f.Close()
-
-	if offset > 0 {
-		if _, err := f.Seek(offset, io.SeekStart); err != nil {
-			log.Printf("ReadFile: seek failed for %q at offset %d: %v", resolved, offset, err)
-			return &pb.FileReadResponse{Error: "cannot read file"}, nil
-		}
-	}
-
-	// Use pooled buffer to reduce allocations for the common 1MB read case.
+// readFileData reads up to limit bytes from f (already seeked), using
+// a pooled buffer when possible. Returns the read bytes or an error string.
+func readFileData(f *os.File, limit int64, resolved string) ([]byte, string) {
 	var data []byte
 	var poolBuf *[]byte
 	if limit == MaxReadSize {
@@ -175,14 +151,58 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 			readBufPool.Put(poolBuf)
 		}
 		log.Printf("ReadFile: read failed for %q: %v", resolved, err)
-		return &pb.FileReadResponse{Error: "cannot read file"}, nil
+		return nil, errCannotReadFile
 	}
 
-	// Copy the read bytes out of the pooled buffer so we can return it to the pool.
 	result := make([]byte, n)
 	copy(result, data[:n])
 	if poolBuf != nil {
 		readBufPool.Put(poolBuf)
+	}
+	return result, ""
+}
+
+func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
+	if err := validatePath(path); err != nil {
+		return &pb.FileReadResponse{Error: err.Error()}, nil
+	}
+
+	limit = clampLimit(limit)
+
+	resolved, errMsg := resolveAndValidateSymlink(path)
+	if errMsg != "" {
+		return &pb.FileReadResponse{Error: errMsg}, nil
+	}
+
+	info, err := os.Stat(resolved)
+	if err != nil {
+		log.Printf("ReadFile: cannot stat file %q: %v", resolved, err)
+		return &pb.FileReadResponse{Error: errCannotReadFile}, nil
+	}
+	if info.IsDir() {
+		return &pb.FileReadResponse{Error: "path is a directory"}, nil
+	}
+
+	totalSize := info.Size()
+	offset = computeTailOffset(offset, limit, totalSize)
+
+	f, err := os.Open(resolved)
+	if err != nil {
+		log.Printf("ReadFile: cannot open file %q: %v", resolved, err)
+		return &pb.FileReadResponse{Error: errCannotReadFile}, nil
+	}
+	defer f.Close()
+
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			log.Printf("ReadFile: seek failed for %q at offset %d: %v", resolved, offset, err)
+			return &pb.FileReadResponse{Error: errCannotReadFile}, nil
+		}
+	}
+
+	result, readErr := readFileData(f, limit, resolved)
+	if readErr != "" {
+		return &pb.FileReadResponse{Error: readErr}, nil
 	}
 
 	return &pb.FileReadResponse{

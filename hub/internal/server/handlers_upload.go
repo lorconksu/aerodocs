@@ -134,6 +134,24 @@ func parseMultipartFileStream(r *http.Request) (io.Reader, string, *uploadStream
 	}
 }
 
+// sendChunkToAgent sends a single file chunk to the agent.
+func (s *Server) sendChunkToAgent(serverID, requestID, filename string, data []byte) *uploadStreamError {
+	sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+		Payload: &pb.HubMessage_FileUploadRequest{
+			FileUploadRequest: &pb.FileUploadRequest{
+				RequestId: requestID,
+				Filename:  filename,
+				Chunk:     data,
+				Done:      false,
+			},
+		},
+	})
+	if sendErr != nil {
+		return &uploadStreamError{http.StatusBadGateway, "failed to send to agent"}
+	}
+	return nil
+}
+
 // streamFileToAgent sends the file contents to the agent in chunks, followed by a final "done"
 // message. It enforces the maxUploadSize limit by counting bytes as they stream through.
 // It returns the total number of bytes sent, or an uploadStreamError on failure.
@@ -156,18 +174,8 @@ func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io
 				isFirst = false
 			}
 
-			sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-				Payload: &pb.HubMessage_FileUploadRequest{
-					FileUploadRequest: &pb.FileUploadRequest{
-						RequestId: requestID,
-						Filename:  fname,
-						Chunk:     buf[:n],
-						Done:      false,
-					},
-				},
-			})
-			if sendErr != nil {
-				return 0, &uploadStreamError{http.StatusBadGateway, "failed to send to agent"}
+			if chunkErr := s.sendChunkToAgent(serverID, requestID, fname, buf[:n]); chunkErr != nil {
+				return 0, chunkErr
 			}
 		}
 
