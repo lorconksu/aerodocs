@@ -101,6 +101,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.store.GetUserByUsername(req.Username)
 	if err != nil {
+		// Dummy bcrypt compare to prevent username enumeration via timing
+		auth.ComparePassword("$2a$12$000000000000000000000000000000000000000000000000000000", "dummy")
 		ip := clientIP(r)
 		s.store.LogAudit(model.AuditEntry{
 			ID: uuid.NewString(), Action: model.AuditUserLoginFailed, IPAddress: &ip,
