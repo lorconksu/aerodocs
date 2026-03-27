@@ -45,6 +45,89 @@ func (s *sequenceStream) Send(msg *pb.HubMessage) error {
 	return nil
 }
 
+// TestConnect_RegisterWithCoalescer verifies the Connect method with a heartbeat coalescer,
+// covering the hbCoalescer.Flush path on disconnect.
+func TestConnect_RegisterWithCoalescer(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+	h.hbCoalescer = NewHeartbeatCoalescer(st, 5*time.Minute)
+
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	expiresAt := "2099-12-31 23:59:59"
+	st.CreateServer(&model.Server{
+		ID: "s-coal", Name: "coalescer-test", Status: "pending", Labels: "{}",
+		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
+	})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Register{
+				Register: &pb.RegisterAgent{
+					Token:        "",
+					Hostname:     "host-coal",
+					IpAddress:    "10.0.0.1",
+					Os:           "Linux",
+					AgentVersion: "0.1.0",
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf("Connect should return nil on EOF, got: %v", err)
+	}
+}
+
+// TestConnect_HeartbeatWithCoalescer verifies Connect handles heartbeat handshake
+// with a heartbeat coalescer (covers ForceWrite path).
+func TestConnect_HeartbeatWithCoalescer(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+	h.hbCoalescer = NewHeartbeatCoalescer(st, 5*time.Minute)
+
+	st.CreateServer(&model.Server{ID: "s-coal2", Name: "coalescer-hb", Status: "online", Labels: "{}"})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Heartbeat{
+				Heartbeat: &pb.Heartbeat{ServerId: "s-coal2"},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf("Connect with heartbeat coalescer: %v", err)
+	}
+}
+
+// TestRouteAgentMessage_HeartbeatWithCoalescer verifies in-stream heartbeat
+// uses the coalescer RecordHeartbeat path.
+func TestRouteAgentMessage_HeartbeatWithCoalescer(t *testing.T) {
+	h, st := testHandler(t)
+	h.hbCoalescer = NewHeartbeatCoalescer(st, 5*time.Minute)
+	st.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "online", Labels: "{}"})
+
+	stream := &mockStream{}
+	h.connMgr.Register("s1", stream)
+
+	msg := &pb.AgentMessage{
+		Payload: &pb.AgentMessage_Heartbeat{
+			Heartbeat: &pb.Heartbeat{ServerId: "s1"},
+		},
+	}
+	err := h.routeAgentMessage("s1", stream, msg)
+	if err != nil {
+		t.Fatalf("route heartbeat with coalescer: %v", err)
+	}
+	if len(stream.sent) == 0 {
+		t.Fatal("expected heartbeat ack to be sent")
+	}
+}
+
 // TestConnect_Register verifies the Connect method handles registration correctly.
 func TestConnect_Register(t *testing.T) {
 	h, st := testHandler(t)
