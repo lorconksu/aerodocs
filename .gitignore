@@ -19,8 +19,9 @@ hub/web/dist/
 
 # OS
 .DS_Store
-.claude/worktrees/
+.claude/
 .worktrees/
+.playwright-mcp/
 
 # Database
 *.db
