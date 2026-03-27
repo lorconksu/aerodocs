@@ -100,9 +100,13 @@ func readNewData(f *os.File, path string, lastOffset int64, grepLower string, se
 		return lastOffset // No new data
 	}
 
-	// Seek to last position and read new data
+	// Seek to last position and read new data (cap at 1MB per poll)
 	f.Seek(lastOffset, io.SeekStart)
-	data := make([]byte, currentSize-lastOffset)
+	readSize := currentSize - lastOffset
+	if readSize > 1<<20 {
+		readSize = 1 << 20
+	}
+	data := make([]byte, readSize)
 	n, err := f.Read(data)
 	if err != nil && err != io.EOF {
 		return lastOffset

@@ -35,6 +35,10 @@ if [[ -n "$TOKEN" ]] && ! echo "$TOKEN" | grep -qE '^[a-zA-Z0-9-]+$'; then
     echo "ERROR: Invalid token format" >&2
     exit 1
 fi
+if [[ -n "$URL" ]] && ! echo "$URL" | grep -qE '^https?://[a-zA-Z0-9._:/-]+$'; then
+    echo "ERROR: Invalid URL format" >&2
+    exit 1
+fi
 
 if [[ -z "$TOKEN" ]] || [[ -z "$HUB" ]]; then
   echo "Usage: sudo bash install.sh --token <TOKEN> --hub <GRPC_ADDR>"
