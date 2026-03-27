@@ -167,19 +167,19 @@ jobs:
         run: |
           echo "### govulncheck - Hub" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cd hub && govulncheck ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          cd hub && govulncheck ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: govulncheck (Agent)
         run: |
           echo "### govulncheck - Agent" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cd agent && govulncheck ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          cd agent && govulncheck ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: npm audit (Frontend)
         run: |
           echo "### npm audit - Frontend" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cd web && npm ci --ignore-scripts && npm audit --audit-level=high 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          cd web && npm ci --ignore-scripts && npm audit --audit-level=high 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

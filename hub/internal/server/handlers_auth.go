@@ -258,9 +258,19 @@ func (s *Server) handleUpdateAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Avatar != "" && !strings.HasPrefix(req.Avatar, "data:image/") {
-		respondError(w, http.StatusBadRequest, "avatar must be a data:image/ URL")
-		return
+	if req.Avatar != "" {
+		validPrefixes := []string{"data:image/png", "data:image/jpeg", "data:image/gif", "data:image/webp"}
+		valid := false
+		for _, p := range validPrefixes {
+			if strings.HasPrefix(req.Avatar, p) {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			respondError(w, http.StatusBadRequest, "avatar must be a PNG, JPEG, GIF, or WebP image")
+			return
+		}
 	}
 
 	userID := UserIDFromContext(r.Context())

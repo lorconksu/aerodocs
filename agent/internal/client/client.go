@@ -198,8 +198,9 @@ func (c *Client) handleFileDeleteRequest(p *pb.HubMessage_FileDeleteRequest, sen
 		resp.Success = false
 		resp.Error = "deletion only allowed from dropzone directory"
 	} else if err := os.Remove(cleanPath); err != nil {
+		log.Printf("dropzone delete error: %v", err)
 		resp.Success = false
-		resp.Error = err.Error()
+		resp.Error = "file operation failed"
 	} else {
 		resp.Success = true
 	}

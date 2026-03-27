@@ -84,8 +84,8 @@ func readNewData(f *os.File, path string, lastOffset int64, grepLower string, se
 		if err != nil {
 			return lastOffset
 		}
-		// Read from beginning of new file.
-		data, err := io.ReadAll(newF)
+		// Read from beginning of new file, capped to 1MB to prevent memory exhaustion.
+		data, err := io.ReadAll(io.LimitReader(newF, 1<<20))
 		newF.Close()
 		if err != nil {
 			return lastOffset
