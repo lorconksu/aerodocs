@@ -78,6 +78,23 @@ func TestHandleTailLog_AdminWithNoAgent(t *testing.T) {
 	}
 }
 
+// TestHandleTailLog_WithGrepParam verifies the grep parameter is accepted and reaches the agent check.
+func TestHandleTailLog_WithGrepParam(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+	serverID := createTestServer(t, s, adminToken, "srv-tail-grep")
+
+	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog&grep=error", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	// No agent connected, so should get 502 — but the grep param was accepted (not 400)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestHandleTailLog_GrepTooLong verifies that a grep filter exceeding 256 characters returns 400.
 func TestHandleTailLog_GrepTooLong(t *testing.T) {
 	s := testServer(t)
