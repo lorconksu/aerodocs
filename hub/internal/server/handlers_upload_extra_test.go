@@ -2,10 +2,18 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/wyiu/aerodocs/hub/internal/connmgr"
+	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/store"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
+	"google.golang.org/grpc/metadata"
 )
 
 // TestHandleUploadFile_WithAgent verifies upload works with a connected agent.
@@ -450,5 +458,250 @@ func TestHandleChangePassword_WrongCurrentPassword(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- Mock agents with custom upload ack behavior ---
+
+// mockGRPCStreamFailedAck delivers a FileUploadAck with Success=false.
+type mockGRPCStreamFailedAck struct {
+	sent     []*pb.HubMessage
+	pending  *grpcserver.PendingRequests
+	serverID string
+}
+
+func (m *mockGRPCStreamFailedAck) Send(msg *pb.HubMessage) error {
+	m.sent = append(m.sent, msg)
+	if m.pending != nil {
+		if p, ok := msg.Payload.(*pb.HubMessage_FileUploadRequest); ok && p.FileUploadRequest.Done {
+			go func() {
+				resp := &pb.FileUploadAck{
+					RequestId: p.FileUploadRequest.RequestId,
+					Success:   false,
+					Error:     "disk full",
+				}
+				m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
+			}()
+		}
+	}
+	return nil
+}
+
+func (m *mockGRPCStreamFailedAck) Recv() (*pb.AgentMessage, error) { return nil, nil }
+func (m *mockGRPCStreamFailedAck) Context() context.Context        { return context.Background() }
+func (m *mockGRPCStreamFailedAck) SendMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamFailedAck) RecvMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamFailedAck) SetHeader(metadata.MD) error     { return nil }
+func (m *mockGRPCStreamFailedAck) SendHeader(metadata.MD) error    { return nil }
+func (m *mockGRPCStreamFailedAck) SetTrailer(metadata.MD)          {}
+
+// mockGRPCStreamWrongAckType delivers a wrong message type for upload ack.
+type mockGRPCStreamWrongAckType struct {
+	sent     []*pb.HubMessage
+	pending  *grpcserver.PendingRequests
+	serverID string
+}
+
+func (m *mockGRPCStreamWrongAckType) Send(msg *pb.HubMessage) error {
+	m.sent = append(m.sent, msg)
+	if m.pending != nil {
+		if p, ok := msg.Payload.(*pb.HubMessage_FileUploadRequest); ok && p.FileUploadRequest.Done {
+			go func() {
+				// Deliver a FileListResponse instead of FileUploadAck
+				resp := &pb.FileListResponse{RequestId: p.FileUploadRequest.RequestId}
+				m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
+			}()
+		}
+	}
+	return nil
+}
+
+func (m *mockGRPCStreamWrongAckType) Recv() (*pb.AgentMessage, error) { return nil, nil }
+func (m *mockGRPCStreamWrongAckType) Context() context.Context        { return context.Background() }
+func (m *mockGRPCStreamWrongAckType) SendMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamWrongAckType) RecvMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamWrongAckType) SetHeader(metadata.MD) error     { return nil }
+func (m *mockGRPCStreamWrongAckType) SendHeader(metadata.MD) error    { return nil }
+func (m *mockGRPCStreamWrongAckType) SetTrailer(metadata.MD)          {}
+
+// testServerWithCustomAgent creates a test server with a custom mock stream.
+func testServerWithCustomAgent(t *testing.T, streamFactory func(pending *grpcserver.PendingRequests, serverID string) pb.AgentService_ConnectServer) (s *Server, adminToken, serverID string) {
+	t.Helper()
+	st, err := store.New(":memory:")
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	jwtSecret, err := InitJWTSecret(st)
+	if err != nil {
+		t.Fatalf("init jwt secret: %v", err)
+	}
+
+	cm := connmgr.New()
+	pending := grpcserver.NewPendingRequests()
+	logSessions := grpcserver.NewLogSessions()
+
+	s = New(Config{
+		Addr:        ":0",
+		Store:       st,
+		JWTSecret:   jwtSecret,
+		IsDev:       true,
+		ConnMgr:     cm,
+		Pending:     pending,
+		LogSessions: logSessions,
+	})
+
+	adminToken = registerAndGetAdminToken(t, s)
+	serverID = createTestServer(t, s, adminToken, "custom-agent-srv")
+
+	stream := streamFactory(pending, serverID)
+	cm.Register(serverID, stream)
+	t.Cleanup(func() { cm.Unregister(serverID) })
+
+	return s, adminToken, serverID
+}
+
+// mockGRPCStreamFileListError delivers a FileListResponse with an error string.
+type mockGRPCStreamFileListError struct {
+	sent     []*pb.HubMessage
+	pending  *grpcserver.PendingRequests
+	serverID string
+}
+
+func (m *mockGRPCStreamFileListError) Send(msg *pb.HubMessage) error {
+	m.sent = append(m.sent, msg)
+	if m.pending != nil {
+		if p, ok := msg.Payload.(*pb.HubMessage_FileListRequest); ok {
+			go func() {
+				resp := &pb.FileListResponse{
+					RequestId: p.FileListRequest.RequestId,
+					Error:     "no such directory",
+				}
+				m.pending.Deliver(m.serverID, p.FileListRequest.RequestId, resp)
+			}()
+		}
+	}
+	return nil
+}
+
+func (m *mockGRPCStreamFileListError) Recv() (*pb.AgentMessage, error) { return nil, nil }
+func (m *mockGRPCStreamFileListError) Context() context.Context        { return context.Background() }
+func (m *mockGRPCStreamFileListError) SendMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamFileListError) RecvMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamFileListError) SetHeader(metadata.MD) error     { return nil }
+func (m *mockGRPCStreamFileListError) SendHeader(metadata.MD) error    { return nil }
+func (m *mockGRPCStreamFileListError) SetTrailer(metadata.MD)          {}
+
+// TestHandleListDropzone_ErrorFromAgent covers the resp.Error != "" branch in handleListDropzone.
+func TestHandleListDropzone_ErrorFromAgent(t *testing.T) {
+	s, adminToken, serverID := testServerWithCustomAgent(t, func(pending *grpcserver.PendingRequests, sid string) pb.AgentService_ConnectServer {
+		return &mockGRPCStreamFileListError{pending: pending, serverID: sid}
+	})
+
+	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/dropzone", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	// When the agent returns an error for dropzone list, the handler returns 200 with empty list
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Body should contain empty files array
+	if !strings.Contains(rec.Body.String(), "[]") {
+		t.Errorf("expected empty files list in body, got: %s", rec.Body.String())
+	}
+}
+
+// mockGRPCStreamDeleteFailed delivers a FileDeleteResponse with Success=false.
+type mockGRPCStreamDeleteFailed struct {
+	sent     []*pb.HubMessage
+	pending  *grpcserver.PendingRequests
+	serverID string
+}
+
+func (m *mockGRPCStreamDeleteFailed) Send(msg *pb.HubMessage) error {
+	m.sent = append(m.sent, msg)
+	if m.pending != nil {
+		if p, ok := msg.Payload.(*pb.HubMessage_FileDeleteRequest); ok {
+			go func() {
+				resp := &pb.FileDeleteResponse{
+					RequestId: p.FileDeleteRequest.RequestId,
+					Success:   false,
+					Error:     "file not found",
+				}
+				m.pending.Deliver(m.serverID, p.FileDeleteRequest.RequestId, resp)
+			}()
+		}
+	}
+	return nil
+}
+
+func (m *mockGRPCStreamDeleteFailed) Recv() (*pb.AgentMessage, error) { return nil, nil }
+func (m *mockGRPCStreamDeleteFailed) Context() context.Context        { return context.Background() }
+func (m *mockGRPCStreamDeleteFailed) SendMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamDeleteFailed) RecvMsg(interface{}) error        { return nil }
+func (m *mockGRPCStreamDeleteFailed) SetHeader(metadata.MD) error     { return nil }
+func (m *mockGRPCStreamDeleteFailed) SendHeader(metadata.MD) error    { return nil }
+func (m *mockGRPCStreamDeleteFailed) SetTrailer(metadata.MD)          {}
+
+// TestHandleDeleteDropzoneFile_AgentReportsFailure covers the resp.Success=false branch.
+func TestHandleDeleteDropzoneFile_AgentReportsFailure(t *testing.T) {
+	s, adminToken, serverID := testServerWithCustomAgent(t, func(pending *grpcserver.PendingRequests, sid string) pb.AgentService_ConnectServer {
+		return &mockGRPCStreamDeleteFailed{pending: pending, serverID: sid}
+	})
+
+	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/dropzone?filename=missing.txt", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for failed delete, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "file not found") {
+		t.Errorf("expected 'file not found' in error, got: %s", rec.Body.String())
+	}
+}
+
+// TestHandleUploadFile_AckFailure covers the ack.Success=false branch in handleUploadFile.
+func TestHandleUploadFile_AckFailure(t *testing.T) {
+	s, adminToken, serverID := testServerWithCustomAgent(t, func(pending *grpcserver.PendingRequests, sid string) pb.AgentService_ConnectServer {
+		return &mockGRPCStreamFailedAck{pending: pending, serverID: sid}
+	})
+
+	body, ct := buildMultipartBody(t, "file", "test.txt", []byte("hello"))
+
+	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for failed ack, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "disk full") {
+		t.Errorf("expected 'disk full' in error, got: %s", rec.Body.String())
+	}
+}
+
+// TestHandleUploadFile_WrongAckType covers the unexpected response type branch in handleUploadFile.
+func TestHandleUploadFile_WrongAckType(t *testing.T) {
+	s, adminToken, serverID := testServerWithCustomAgent(t, func(pending *grpcserver.PendingRequests, sid string) pb.AgentService_ConnectServer {
+		return &mockGRPCStreamWrongAckType{pending: pending, serverID: sid}
+	})
+
+	body, ct := buildMultipartBody(t, "file", "test.txt", []byte("hello"))
+
+	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for wrong ack type, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
