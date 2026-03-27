@@ -116,6 +116,26 @@ func TestHandleSelfUnregister_Success(t *testing.T) {
 	}
 }
 
+// TestHandleSelfUnregister_RemoteAddrNoPort verifies self-unregister works when
+// RemoteAddr has no port (fallback to raw RemoteAddr as IP).
+func TestHandleSelfUnregister_RemoteAddrNoPort(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+	serverID := createTestServer(t, s, adminToken, "self-unreg-noport")
+
+	agentIP := "10.0.0.5"
+	s.store.SetServerIP(serverID, agentIP)
+
+	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
+	req.RemoteAddr = agentIP // no port — triggers reqIP = r.RemoteAddr fallback
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestHandleSelfUnregister_WrongIP verifies that self-unregister is rejected when the
 // request comes from a different IP than the registered agent.
 func TestHandleSelfUnregister_WrongIP(t *testing.T) {
