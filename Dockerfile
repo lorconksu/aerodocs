@@ -33,6 +33,7 @@ RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" 
 FROM debian:trixie-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates tzdata && \
+    dpkg --purge --force-all tar libudev1 && \
     rm -rf /var/lib/apt/lists/* && \
     useradd -r -s /bin/false aerodocs && \
     mkdir -p /data && chown aerodocs:aerodocs /data
