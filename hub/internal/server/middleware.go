@@ -114,6 +114,8 @@ type rateLimiter struct {
 	window   time.Duration
 }
 
+const maxTrackedIPs = 10000
+
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	return &rateLimiter{
 		attempts: make(map[string][]time.Time),
@@ -146,6 +148,17 @@ func (rl *rateLimiter) allow(ip string) bool {
 
 	if len(valid) >= rl.limit {
 		return false
+	}
+
+	// Cap total tracked IPs to prevent memory exhaustion from IP rotation attacks
+	if len(rl.attempts) >= maxTrackedIPs {
+		// Evict oldest entries when at capacity
+		for k := range rl.attempts {
+			delete(rl.attempts, k)
+			if len(rl.attempts) < maxTrackedIPs {
+				break
+			}
+		}
 	}
 
 	rl.attempts[ip] = append(valid, now)
