@@ -420,6 +420,22 @@ func TestParseMultipartFileStream_FilenameExtracted(t *testing.T) {
 	}
 }
 
+func TestParseMultipartFileStream_MissingBoundary(t *testing.T) {
+	req := httptest.NewRequest("POST", "/upload", strings.NewReader("body"))
+	req.Header.Set("Content-Type", "multipart/form-data") // no boundary param
+
+	_, _, err := parseMultipartFileStream(req)
+	if err == nil {
+		t.Fatal("expected error for missing boundary")
+	}
+	if err.statusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", err.statusCode)
+	}
+	if !strings.Contains(err.message, "boundary") {
+		t.Errorf("expected boundary error, got: %s", err.message)
+	}
+}
+
 func TestParseMultipartFileStream_SkipsNonFileParts(t *testing.T) {
 	// Multipart body with a text field before the file field
 	var buf bytes.Buffer

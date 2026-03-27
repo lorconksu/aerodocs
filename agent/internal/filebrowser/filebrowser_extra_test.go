@@ -432,3 +432,78 @@ func TestListDir_ReadableFlag(t *testing.T) {
 		t.Fatal("expected readable file to have Readable=true")
 	}
 }
+
+// TestReadFile_NoReadPermission verifies that a file with no read permission
+// returns an error response (covers the os.Open error branch).
+func TestReadFile_NoReadPermission(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test as root")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noperm.txt")
+	os.WriteFile(path, []byte("secret"), 0644)
+	os.Chmod(path, 0000)
+	defer os.Chmod(path, 0644)
+
+	resp, err := ReadFile(path, 0, 100)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected error for unreadable file")
+	}
+}
+
+// TestReadFile_PooledBufferPath verifies the pooled buffer path (limit == MaxReadSize)
+// with a small file, exercising the ErrUnexpectedEOF + pool-return path.
+func TestReadFile_PooledBufferPath(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("pooled buffer test content")
+	path := filepath.Join(dir, "pooled.txt")
+	os.WriteFile(path, content, 0644)
+
+	// Request exactly MaxReadSize to use pooled buffer; file is smaller so
+	// io.ReadFull returns ErrUnexpectedEOF which exercises the pool return.
+	resp, err := ReadFile(path, 0, MaxReadSize)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if string(resp.Data) != string(content) {
+		t.Fatalf("expected %q, got %q", string(content), string(resp.Data))
+	}
+}
+
+// TestListDir_NonexistentPath verifies that a nonexistent absolute path
+// returns an error through the resolveAndValidateSymlink path.
+func TestListDir_NonexistentPath(t *testing.T) {
+	resp, err := ListDir("/nonexistent/dir/12345")
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected error for nonexistent path")
+	}
+}
+
+// TestReadFile_NegativeLimit verifies that a negative limit defaults to MaxReadSize.
+func TestReadFile_NegativeLimit(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("negative limit test")
+	path := filepath.Join(dir, "neglimit.txt")
+	os.WriteFile(path, content, 0644)
+
+	resp, err := ReadFile(path, 0, -5)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+	if string(resp.Data) != string(content) {
+		t.Fatalf("expected %q, got %q", string(content), string(resp.Data))
+	}
+}
