@@ -20,7 +20,7 @@
 
 ```bash
 # Download the compose file
-curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/yiucloud/aerodocs/main/docker-compose.yml
 
 # Start AeroDocs
 docker compose up -d
@@ -39,7 +39,7 @@ The default `docker-compose.yml`:
 ```yaml
 services:
   aerodocs:
-    image: lorconksu/aerodocs:latest
+    image: yiucloud/aerodocs:latest
     container_name: aerodocs
     ports:
       - "8081:8081"   # HTTP - web UI and REST API
@@ -56,7 +56,7 @@ volumes:
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| Image | `lorconksu/aerodocs:latest` | Pin to a specific tag (e.g. `lorconksu/aerodocs:1.0.0`) for reproducible deployments |
+| Image | `yiucloud/aerodocs:latest` | Pin to a specific tag (e.g. `yiucloud/aerodocs:1.0.0`) for reproducible deployments |
 | HTTP port | `8081` | Web UI and REST API |
 | gRPC port | `9090` | Agent connections - must be reachable by agents |
 | Data volume | `aerodocs-data` mounted at `/data` | Contains the SQLite database (`/data/aerodocs.db`) and all persistent state |
@@ -67,7 +67,7 @@ volumes:
 Replace `latest` with a specific version tag to avoid unexpected upgrades:
 
 ```yaml
-image: lorconksu/aerodocs:1.0.0
+image: yiucloud/aerodocs:1.0.0
 ```
 
 ---
@@ -81,7 +81,7 @@ If Traefik is also running in Docker, add labels to the AeroDocs service. Create
 ```yaml
 services:
   aerodocs:
-    image: lorconksu/aerodocs:latest
+    image: yiucloud/aerodocs:latest
     container_name: aerodocs
     volumes:
       - aerodocs-data:/data
