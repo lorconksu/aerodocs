@@ -47,6 +47,7 @@ import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import mermaid from 'mermaid'
+import DOMPurify from 'dompurify'
 import { apiFetch } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth'
 import { relativeTime } from '@/lib/time'
@@ -118,10 +119,11 @@ function MermaidDiagram({ chart }: Readonly<{ chart: string }>) {
     mermaid
       .render(id, chart)
       .then((result) => {
-        // Sanitize SVG output to prevent XSS from malicious mermaid blocks
-        const sanitizedSvg = result.svg
-          .replace(/<script[\s\S]*?<\/script>/gi, '')
-          .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '')
+        // Sanitize SVG output with DOMPurify to prevent XSS from malicious mermaid blocks
+        const sanitizedSvg = DOMPurify.sanitize(result.svg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ['use'],
+        })
         setSvg(sanitizedSvg)
       })
       .catch((err) => setError(String(err)))
@@ -233,8 +235,12 @@ function isMarkdownFile(path: string): boolean {
  * strips any tag that is not an hljs <span>.
  */
 function sanitizeHljsHtml(html: string): string {
-  // Allow only <span ...> and </span> tags; strip everything else.
-  return html.replaceAll(/<\/?(?!span[\s>]|\/span>)[a-z][^>]*>/gi, '')
+  // DOMPurify strips everything except safe HTML; ALLOWED_TAGS restricted to
+  // only the <span> wrappers highlight.js produces.
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['span'],
+    ALLOWED_ATTR: ['class'],
+  })
 }
 
 // --- Tree Node State ---
