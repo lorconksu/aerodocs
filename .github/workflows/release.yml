@@ -39,13 +39,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: cloud
-          endpoint: "lorconksu/aerodocs-builder"
+          endpoint: "yiucloud/aerodocs-builder"
 
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: lorconksu/aerodocs
+          images: yiucloud/aerodocs
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -77,7 +77,7 @@ jobs:
         uses: docker/scout-action@v1
         with:
           command: cves
-          image: lorconksu/aerodocs:latest
+          image: yiucloud/aerodocs:latest
           summary: true
 
       - name: Docker Scout quickview
@@ -85,12 +85,12 @@ jobs:
         uses: docker/scout-action@v1
         with:
           command: quickview
-          image: lorconksu/aerodocs:latest
+          image: yiucloud/aerodocs:latest
 
       - name: Grype container scan
         uses: anchore/scan-action@v6
         with:
-          image: lorconksu/aerodocs:latest
+          image: yiucloud/aerodocs:latest
           fail-build: false
           severity-cutoff: high
           output-format: table
