@@ -7,7 +7,33 @@ import { relativeTime } from '@/lib/time'
 import { statusDot } from '@/lib/server-utils'
 import { useAuth } from '@/hooks/use-auth'
 import { AddServerModal } from '@/pages/add-server-modal'
+import { useAllServers } from '@/hooks/use-servers'
 import type { ServerListResponse } from '@/types/api'
+
+/** Run async tasks with bounded concurrency. */
+async function parallelLimit<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length)
+  let nextIndex = 0
+
+  async function runNext() {
+    while (nextIndex < tasks.length) {
+      const i = nextIndex++
+      try {
+        const value = await tasks[i]()
+        results[i] = { status: 'fulfilled', value }
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason }
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => runNext())
+  await Promise.all(workers)
+  return results
+}
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -19,18 +45,25 @@ export function DashboardPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAddModal, setShowAddModal] = useState(false)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['servers', statusFilter, searchTerm],
+  const hasFilters = !!statusFilter || !!searchTerm
+
+  // Use shared query when unfiltered; separate query when filters are active
+  const allServersQuery = useAllServers()
+
+  const filteredQuery = useQuery({
+    queryKey: ['servers', 'filtered', statusFilter, searchTerm],
     queryFn: () => {
       const params = new URLSearchParams()
       if (statusFilter) params.set('status', statusFilter)
       if (searchTerm) params.set('search', searchTerm)
-      const qs = params.toString()
-      const url = qs ? `/servers?${qs}` : '/servers'
-      return apiFetch<ServerListResponse>(url)
+      return apiFetch<ServerListResponse>(`/servers?${params.toString()}`)
     },
     refetchInterval: 10_000,
+    enabled: hasFilters,
   })
+
+  const data = hasFilters ? filteredQuery.data : allServersQuery.data
+  const isLoading = hasFilters ? filteredQuery.isLoading : allServersQuery.isLoading
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiFetch(`/servers/${id}/unregister`, { method: 'DELETE' }),
@@ -39,11 +72,21 @@ export function DashboardPage() {
 
   const batchDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      for (const id of ids) {
-        await apiFetch(`/servers/${id}/unregister`, { method: 'DELETE' })
+      const tasks = ids.map((id) => () =>
+        apiFetch(`/servers/${id}/unregister`, { method: 'DELETE' }),
+      )
+      const results = await parallelLimit(tasks, 5)
+      const failures = results.filter((r) => r.status === 'rejected')
+      if (failures.length > 0 && failures.length === ids.length) {
+        throw new Error('All unregister requests failed')
       }
     },
     onSuccess: () => {
+      setSelectedIds(new Set())
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    },
+    onError: () => {
+      // Even on partial failure, clear selection and refresh the list
       setSelectedIds(new Set())
       queryClient.invalidateQueries({ queryKey: ['servers'] })
     },

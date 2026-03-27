@@ -28,6 +28,11 @@ vi.mock('react-markdown', () => ({
 
 vi.mock('remark-gfm', () => ({ default: () => {} }))
 
+// Mock the lazy-loaded MarkdownViewer component
+vi.mock('@/components/markdown-viewer', () => ({
+  default: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
+}))
+
 // Mock individual highlight.js language modules
 vi.mock('highlight.js/lib/languages/bash', () => ({ default: {} }))
 vi.mock('highlight.js/lib/languages/css', () => ({ default: {} }))

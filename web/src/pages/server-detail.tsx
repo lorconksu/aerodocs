@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -43,10 +43,8 @@ import typescript from 'highlight.js/lib/languages/typescript'
 import xml from 'highlight.js/lib/languages/xml'
 import yaml from 'highlight.js/lib/languages/yaml'
 import 'highlight.js/styles/github-dark.css'
-import ReactMarkdown from 'react-markdown'
-import type { Components } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import mermaid from 'mermaid'
+// Lazy-load heavy markdown/mermaid viewer (code-split out of main bundle)
+const LazyMarkdownViewer = lazy(() => import('@/components/markdown-viewer'))
 import DOMPurify from 'dompurify'
 import { apiFetch } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth'
@@ -93,92 +91,6 @@ function formatFileSize(bytes: number): string {
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
-// Initialize mermaid with dark theme
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: 'strict',
-  theme: 'dark',
-  themeVariables: {
-    primaryColor: '#3b82f6',
-    primaryTextColor: '#e0e0e0',
-    lineColor: '#555',
-    secondaryColor: '#1e293b',
-    tertiaryColor: '#1a1a2e',
-  },
-})
-
-// Mermaid diagram component
-/* c8 ignore start */
-function MermaidDiagram({ chart }: Readonly<{ chart: string }>) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [svg, setSvg] = useState<string>('')
-  const [error, setError] = useState<string>('')
-
-  useEffect(() => {
-    const id = `mermaid-${crypto.randomUUID()}`
-    mermaid
-      .render(id, chart)
-      .then((result) => {
-        // Sanitize SVG output with DOMPurify to prevent XSS from malicious mermaid blocks
-        const sanitizedSvg = DOMPurify.sanitize(result.svg, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-          ADD_TAGS: ['use'],
-        })
-        setSvg(sanitizedSvg)
-      })
-      .catch((err) => setError(String(err)))
-  }, [chart])
-
-  if (error) {
-    return (
-      <pre className="p-3 bg-base border border-border rounded-lg text-xs text-status-error overflow-x-auto">
-        {error}
-      </pre>
-    )
-  }
-  return (
-    <div
-      ref={containerRef}
-      className="my-4 flex justify-center overflow-x-auto"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  )
-}
-/* c8 ignore stop */
-
-// Custom code block renderer for ReactMarkdown — renders mermaid blocks as diagrams
-/* c8 ignore start */
-const markdownComponents: Components = {
-  code({ className, children, ...props }) {
-    const match = /language-(\w+)/.exec(className || '')
-    const lang = match?.[1]
-    const content = String(children).replace(/\n$/, '')
-
-    if (lang === 'mermaid') {
-      return <MermaidDiagram chart={content} />
-    }
-
-    // Inline code (no language class)
-    if (!lang) {
-      return <code className={className} {...props}>{children}</code>
-    }
-
-    // Block code — use highlight.js
-    try {
-      const hljsLang = hljs.getLanguage(lang) ? lang : 'plaintext'
-      const result = hljs.highlight(content, { language: hljsLang })
-      return (
-        <code
-          className="hljs"
-          dangerouslySetInnerHTML={{ __html: sanitizeHljsHtml(result.value) }}
-        />
-      )
-    } catch {
-      return <code className={className} {...props}>{children}</code>
-    }
-  },
-}
-/* c8 ignore stop */
 
 function extensionToLanguage(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
@@ -1156,11 +1068,9 @@ function FileViewerContent({
       )}
       <div className="flex-1 overflow-auto">
         {isMarkdownFile(selectedFile.path) && markdownView === 'rendered' ? (
-          <div className="markdown-body p-6">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {decodedContent}
-            </ReactMarkdown>
-          </div>
+          <Suspense fallback={<div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-text-muted" /><span className="ml-2 text-text-muted text-sm">Loading viewer...</span></div>}>
+            <LazyMarkdownViewer content={decodedContent} />
+          </Suspense>
         ) : (
           <HighlightedCodeBlock html={htmlToRender} />
         )}
@@ -1664,23 +1574,10 @@ export function ServerDetailPage() {
     return () => globalThis.removeEventListener('keydown', handler)
   }, [])
 
-  // Count of search matches
+  // Compute match positions once when search term or content changes (not on navigation)
   /* c8 ignore start */
-  const matchCount = useMemo(() => {
-    if (!searchTerm || !decodedContent) return 0
-    const lowerContent = decodedContent.toLowerCase()
-    const lowerSearch = searchTerm.toLowerCase()
-    let count = 0, pos = 0
-    while ((pos = lowerContent.indexOf(lowerSearch, pos)) !== -1) { count++; pos++ }
-    return count
-  }, [searchTerm, decodedContent])
-  /* c8 ignore stop */
-
-  // HTML with search match highlights (replaces syntax-highlighted HTML when searching)
-  /* c8 ignore start */
-  const searchHighlightedHtml = useMemo(() => {
-    if (!searchTerm || !decodedContent || !highlightedHtml) return highlightedHtml
-
+  const searchMatchPositions = useMemo(() => {
+    if (!searchTerm || !decodedContent) return []
     const lowerContent = decodedContent.toLowerCase()
     const lowerSearch = searchTerm.toLowerCase()
     const positions: number[] = []
@@ -1689,27 +1586,44 @@ export function ServerDetailPage() {
       positions.push(pos)
       pos += 1
     }
+    return positions
+  }, [searchTerm, decodedContent])
 
-    if (positions.length === 0) return highlightedHtml
+  const matchCount = searchMatchPositions.length
+
+  // Build base HTML with all matches marked using data-match-idx attributes.
+  // This is expensive but only recomputes when searchTerm or content changes, NOT on navigation.
+  const searchBaseHtml = useMemo(() => {
+    if (!searchTerm || !decodedContent || searchMatchPositions.length === 0) return null
 
     let result = ''
     let lastEnd = 0
-    positions.forEach((matchPos, idx) => {
+    searchMatchPositions.forEach((matchPos, idx) => {
       const matchEnd = matchPos + searchTerm.length
       const before = decodedContent.substring(lastEnd, matchPos)
         .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
-      const match = decodedContent.substring(matchPos, matchEnd)
+      const matchText = decodedContent.substring(matchPos, matchEnd)
         .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
-      const cls = idx === currentMatch ? 'search-match-current' : 'search-match'
-      const id = idx === currentMatch ? ' id="current-search-match"' : ''
-      result += before + `<mark class="${cls}"${id}>${match}</mark>`
+      result += before + `<mark class="search-match" data-match-idx="${idx}">${matchText}</mark>`
       lastEnd = matchEnd
     })
     result += decodedContent.substring(lastEnd)
       .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
 
     return result
-  }, [searchTerm, decodedContent, highlightedHtml, currentMatch])
+  }, [searchTerm, decodedContent, searchMatchPositions])
+  /* c8 ignore stop */
+
+  // Cheaply update CSS class + id for current match via DOM manipulation (no HTML rebuild)
+  /* c8 ignore start */
+  const searchHighlightedHtml = useMemo(() => {
+    if (!searchBaseHtml) return highlightedHtml
+    // Replace the current match's class — simple string replace on the data-match-idx attribute
+    return searchBaseHtml.replace(
+      `class="search-match" data-match-idx="${currentMatch}"`,
+      `class="search-match-current" id="current-search-match" data-match-idx="${currentMatch}"`,
+    )
+  }, [searchBaseHtml, highlightedHtml, currentMatch])
   /* c8 ignore stop */
 
   // Scroll current match into view when it changes

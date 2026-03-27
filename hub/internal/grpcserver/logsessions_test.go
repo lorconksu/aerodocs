@@ -58,6 +58,90 @@ func TestLogSessions_MultipleDeliveries(t *testing.T) {
 	}
 }
 
+func TestLogSessions_OverflowTracking(t *testing.T) {
+	ls := NewLogSessions()
+	_ = ls.Register("srv-1", "req-1")
+	defer ls.Remove("srv-1", "req-1")
+
+	// Fill the buffer (capacity 64)
+	for i := 0; i < 64; i++ {
+		ok := ls.Deliver("srv-1", "req-1", []byte("x"))
+		if !ok {
+			t.Fatalf("delivery %d should succeed", i)
+		}
+	}
+
+	// No overflow yet
+	if n := ls.DrainOverflow("srv-1", "req-1"); n != 0 {
+		t.Fatalf("expected 0 overflow, got %d", n)
+	}
+
+	// Next deliveries should be dropped and counted
+	for i := 0; i < 10; i++ {
+		ok := ls.Deliver("srv-1", "req-1", []byte("dropped"))
+		if ok {
+			t.Fatalf("delivery %d should fail (buffer full)", i)
+		}
+	}
+
+	n := ls.DrainOverflow("srv-1", "req-1")
+	if n != 10 {
+		t.Fatalf("expected 10 overflow, got %d", n)
+	}
+
+	// DrainOverflow resets the counter
+	n = ls.DrainOverflow("srv-1", "req-1")
+	if n != 0 {
+		t.Fatalf("expected 0 after drain, got %d", n)
+	}
+}
+
+func TestLogSessions_DrainOverflowUnknownSession(t *testing.T) {
+	ls := NewLogSessions()
+	// DrainOverflow on a non-existent session returns 0 (no panic)
+	n := ls.DrainOverflow("srv-1", "nonexistent")
+	if n != 0 {
+		t.Fatalf("expected 0, got %d", n)
+	}
+}
+
+func TestLogSessions_OverflowClearedOnRemove(t *testing.T) {
+	ls := NewLogSessions()
+	_ = ls.Register("srv-1", "req-1")
+
+	// Fill buffer and cause overflow
+	for i := 0; i < 70; i++ {
+		ls.Deliver("srv-1", "req-1", []byte("x"))
+	}
+
+	ls.Remove("srv-1", "req-1")
+
+	// After removal, drain returns 0
+	n := ls.DrainOverflow("srv-1", "req-1")
+	if n != 0 {
+		t.Fatalf("expected 0 after remove, got %d", n)
+	}
+}
+
+func TestLogSessions_NormalDeliveryNoOverflow(t *testing.T) {
+	ls := NewLogSessions()
+	ch := ls.Register("srv-1", "req-1")
+	defer ls.Remove("srv-1", "req-1")
+
+	// Deliver and consume — no overflow should occur
+	for i := 0; i < 100; i++ {
+		ok := ls.Deliver("srv-1", "req-1", []byte("data"))
+		if !ok {
+			t.Fatalf("delivery %d should succeed", i)
+		}
+		<-ch
+	}
+
+	if n := ls.DrainOverflow("srv-1", "req-1"); n != 0 {
+		t.Fatalf("expected 0 overflow, got %d", n)
+	}
+}
+
 func TestLogSessions_CrossServerIsolation(t *testing.T) {
 	ls := NewLogSessions()
 	ch := ls.Register("srv-1", "req-1")
