@@ -120,6 +120,37 @@ func TestListAuditWithToOnly(t *testing.T) {
 	}
 }
 
+func TestListAuditWithUserIDAndOffset(t *testing.T) {
+	s := testStore(t)
+
+	if err := s.CreateUser(&model.User{
+		ID: "u1", Username: "audituser", Email: "a@b.com",
+		PasswordHash: "h", Role: model.RoleViewer,
+	}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	uid := "u1"
+	s.LogAudit(model.AuditEntry{ID: "a1", UserID: &uid, Action: model.AuditUserLogin})
+	s.LogAudit(model.AuditEntry{ID: "a2", UserID: &uid, Action: model.AuditUserLogin})
+	s.LogAudit(model.AuditEntry{ID: "a3", Action: model.AuditUserLogin}) // different user
+
+	entries, total, err := s.ListAuditLogs(model.AuditFilter{
+		UserID: &uid,
+		Limit:  1,
+		Offset: 1,
+	})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("expected total 2 for user filter, got %d", total)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry with offset, got %d", len(entries))
+	}
+}
+
 func TestListAuditWithFilter(t *testing.T) {
 	s := testStore(t)
 
