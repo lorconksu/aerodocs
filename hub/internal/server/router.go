@@ -11,6 +11,7 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	loginLimiter := newRateLimiter(10, 60*time.Second)
+	refreshLimiter := newRateLimiter(30, 60*time.Second)
 
 	// Public auth endpoints (rate-limited)
 	mux.Handle("GET /api/auth/status", loggingMiddleware(http.HandlerFunc(s.handleAuthStatus)))
@@ -18,8 +19,8 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("POST /api/auth/login", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLogin))))
 	mux.Handle("POST /api/auth/login/totp", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLoginTOTP))))
 
-	// Refresh endpoint (token in body)
-	mux.Handle("POST /api/auth/refresh", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleRefresh))))
+	// Refresh endpoint (separate, higher-limit rate limiter)
+	mux.Handle("POST /api/auth/refresh", loggingMiddleware(refreshLimiter.middleware(http.HandlerFunc(s.handleRefresh))))
 
 	// Setup-token-protected endpoints
 	mux.Handle("POST /api/auth/totp/setup", loggingMiddleware(s.authMiddleware(auth.TokenTypeSetup, http.HandlerFunc(s.handleTOTPSetup))))

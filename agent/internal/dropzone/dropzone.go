@@ -1,7 +1,7 @@
 package dropzone
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -59,10 +59,11 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 		var err error
 		f, err = os.Create(path)
 		if err != nil {
+			log.Printf("dropzone create error: %v", err)
 			return &pb.FileUploadAck{
 				RequestId: requestID,
 				Success:   false,
-				Error:     fmt.Sprintf("create file: %v", err),
+				Error:     "file operation failed",
 			}
 		}
 		d.uploads[requestID] = f
@@ -71,12 +72,13 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 	// Write data
 	if len(data) > 0 {
 		if _, err := f.Write(data); err != nil {
+			log.Printf("dropzone write error: %v", err)
 			f.Close()
 			delete(d.uploads, requestID)
 			return &pb.FileUploadAck{
 				RequestId: requestID,
 				Success:   false,
-				Error:     fmt.Sprintf("write chunk: %v", err),
+				Error:     "file operation failed",
 			}
 		}
 	}

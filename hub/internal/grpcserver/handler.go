@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -71,6 +72,16 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 // performHandshake receives the first message from the agent, handles registration or
 // reconnect-via-heartbeat, sends the appropriate ack, and returns the server ID.
 func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string, error) {
+	// Extract peer IP from gRPC context for use in registration
+	peerIP := ""
+	if p, ok := peer.FromContext(stream.Context()); ok {
+		if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
+			peerIP = host
+		} else {
+			peerIP = p.Addr.String()
+		}
+	}
+
 	msg, err := stream.Recv()
 	if err != nil {
 		return "", status.Errorf(codes.InvalidArgument, "failed to receive first message: %v", err)
@@ -78,7 +89,7 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 
 	switch p := msg.Payload.(type) {
 	case *pb.AgentMessage_Register:
-		return h.performRegisterHandshake(stream, p.Register)
+		return h.performRegisterHandshake(stream, p.Register, peerIP)
 	case *pb.AgentMessage_Heartbeat:
 		return h.performHeartbeatHandshake(stream, p.Heartbeat.ServerId)
 	default:
@@ -86,8 +97,9 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 	}
 }
 
-func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent) (string, error) {
-	serverID, err := h.handleRegister(reg.Token, reg.Hostname, reg.IpAddress, reg.Os, reg.AgentVersion)
+func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent, peerIP string) (string, error) {
+	// Use the actual gRPC peer IP instead of agent-supplied IP for security
+	serverID, err := h.handleRegister(reg.Token, reg.Hostname, peerIP, reg.Os, reg.AgentVersion)
 	if err != nil {
 		_ = stream.Send(&pb.HubMessage{
 			Payload: &pb.HubMessage_RegisterAck{

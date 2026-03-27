@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -21,8 +22,7 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func decodeJSON(r *http.Request, dst interface{}) error {
 	defer r.Body.Close()
-	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20) // 1MB limit
-	return json.NewDecoder(r.Body).Decode(dst)
+	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(dst)
 }
 
 // parsePagination extracts limit and offset from query params with safe defaults and caps.

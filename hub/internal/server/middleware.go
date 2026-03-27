@@ -188,10 +188,12 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP extracts the client IP from the request.
+// clientIP extracts the client IP from the request using RemoteAddr only.
+// When behind Traefik, RemoteAddr is set to the real client IP.
 func clientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		return strings.TrimSpace(strings.Split(fwd, ",")[0])
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
-	return r.RemoteAddr
+	return ip
 }
