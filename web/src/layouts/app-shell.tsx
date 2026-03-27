@@ -1,23 +1,17 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { LayoutDashboard, ScrollText, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
-import { apiFetch } from '@/lib/api'
 import { getAvatarColor } from '@/lib/avatar'
-import type { ServerListResponse } from '@/types/api'
+import { useAllServers } from '@/hooks/use-servers'
 
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [navCollapsed, setNavCollapsed] = useState(false)
 
-  const { data: serverData } = useQuery({
-    queryKey: ['servers'],
-    queryFn: () => apiFetch<ServerListResponse>('/servers?limit=1000'),
-    refetchInterval: 10_000,
-  })
+  const { data: serverData } = useAllServers()
 
   const servers = serverData?.servers ?? []
   const onlineCount = servers.filter((s) => s.status === 'online').length

@@ -1,15 +1,19 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 	"github.com/wyiu/aerodocs/hub/internal/model"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
 const (
@@ -21,25 +25,11 @@ const (
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 
-	// Limit request body size
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize+1024) // small buffer for form overhead
-
-	// Parse multipart form
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-		respondError(w, http.StatusRequestEntityTooLarge, "file too large (max 100MB)")
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "no file provided")
-		return
-	}
-	defer file.Close()
-
-	filename := filepath.Base(header.Filename)
-	if filename == "" || filename == "." || filename == "/" {
-		respondError(w, http.StatusBadRequest, "filename is required")
+	// Stream the multipart body directly instead of buffering via ParseMultipartForm.
+	// We use r.MultipartReader() which returns a streaming reader.
+	reader, filename, parseErr := parseMultipartFileStream(r)
+	if parseErr != nil {
+		respondError(w, parseErr.statusCode, parseErr.message)
 		return
 	}
 
@@ -53,7 +43,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	ch := s.pending.Register(serverID, requestID)
 	defer s.pending.Remove(serverID, requestID)
 
-	totalSize, streamErr := s.streamFileToAgent(serverID, requestID, filename, file)
+	totalSize, streamErr := s.streamFileToAgent(serverID, requestID, filename, reader)
 	if streamErr != nil {
 		respondError(w, streamErr.statusCode, streamErr.message)
 		return
@@ -99,8 +89,54 @@ type uploadStreamError struct {
 	message    string
 }
 
+// parseMultipartFileStream returns a streaming reader for the "file" part of a
+// multipart upload, plus the sanitised filename. It uses r.MultipartReader()
+// so the body is never buffered in memory or to a temp file.
+func parseMultipartFileStream(r *http.Request) (io.Reader, string, *uploadStreamError) {
+	ct := r.Header.Get("Content-Type")
+	if ct == "" {
+		return nil, "", &uploadStreamError{http.StatusBadRequest, "missing Content-Type header"}
+	}
+
+	mediaType, params, err := mime.ParseMediaType(ct)
+	if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+		return nil, "", &uploadStreamError{http.StatusBadRequest, "expected multipart/form-data"}
+	}
+
+	boundary := params["boundary"]
+	if boundary == "" {
+		return nil, "", &uploadStreamError{http.StatusBadRequest, "missing multipart boundary"}
+	}
+
+	mr := multipart.NewReader(r.Body, boundary)
+
+	// Iterate parts until we find the "file" field.
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			return nil, "", &uploadStreamError{http.StatusBadRequest, "no file provided"}
+		}
+		if err != nil {
+			return nil, "", &uploadStreamError{http.StatusBadRequest, "invalid multipart body"}
+		}
+
+		if part.FormName() != "file" {
+			// Skip non-file parts (drain so the reader advances).
+			continue
+		}
+
+		filename := filepath.Base(part.FileName())
+		if filename == "" || filename == "." || filename == "/" {
+			return nil, "", &uploadStreamError{http.StatusBadRequest, "filename is required"}
+		}
+
+		return part, filename, nil
+	}
+}
+
 // streamFileToAgent sends the file contents to the agent in chunks, followed by a final "done"
-// message. It returns the total number of bytes sent, or an uploadStreamError on failure.
+// message. It enforces the maxUploadSize limit by counting bytes as they stream through.
+// It returns the total number of bytes sent, or an uploadStreamError on failure.
 func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io.Reader) (int64, *uploadStreamError) {
 	buf := make([]byte, uploadChunkSize)
 	isFirst := true
@@ -110,6 +146,10 @@ func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io
 		n, readErr := file.Read(buf)
 		if n > 0 {
 			totalSize += int64(n)
+			if totalSize > maxUploadSize {
+				return 0, &uploadStreamError{http.StatusRequestEntityTooLarge, "file too large (max 100MB)"}
+			}
+
 			fname := ""
 			if isFirst {
 				fname = filename
