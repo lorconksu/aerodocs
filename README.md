@@ -73,7 +73,7 @@ For the full architecture breakdown, see [Architecture](docs/engineering/archite
 
 ```bash
 # Download the compose file
-curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/yiucloud/aerodocs/main/docker-compose.yml
 
 # Start AeroDocs
 docker compose up -d
@@ -83,7 +83,7 @@ The Hub starts on port 8081 (HTTP) and 9090 (gRPC). Open `http://localhost:8081`
 
 To pin a specific version instead of `latest`:
 ```yaml
-image: lorconksu/aerodocs:1.0.0
+image: yiucloud/aerodocs:1.0.0
 ```
 
 For building from source and development setup, see the [Development Guide](docs/engineering/development.md).

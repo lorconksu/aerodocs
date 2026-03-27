@@ -1,6 +1,6 @@
 services:
   aerodocs:
-    image: lorconksu/aerodocs:latest
+    image: yiucloud/aerodocs:latest
     container_name: aerodocs
     ports:
       - "8081:8081"
