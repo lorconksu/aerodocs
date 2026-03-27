@@ -29,13 +29,10 @@ COPY agent/ agent/
 RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/aerodocs-agent-linux-amd64 ./cmd/aerodocs-agent/
 RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o /out/aerodocs-agent-linux-arm64 ./cmd/aerodocs-agent/
 
-# Stage 3: Minimal runtime
-FROM debian:trixie-slim
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates tzdata && \
-    dpkg --purge --force-all tar libudev1 && \
-    rm -rf /var/lib/apt/lists/* && \
-    useradd -r -s /bin/false aerodocs && \
+# Stage 3: Minimal runtime (Wolfi — glibc-based, fast CVE patching, no systemd/ncurses/tar)
+FROM cgr.dev/chainguard/wolfi-base:latest
+RUN apk add --no-cache ca-certificates-bundle tzdata && \
+    adduser -D -s /bin/false aerodocs && \
     mkdir -p /data && chown aerodocs:aerodocs /data
 
 WORKDIR /app
