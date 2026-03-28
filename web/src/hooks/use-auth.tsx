@@ -1,13 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { apiFetch } from '@/lib/api'
-import { getAccessToken, setTokens, clearTokens } from '@/lib/auth'
+import { clearTokens } from '@/lib/auth'
 import type { User } from '@/types/api'
 
 interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
-  login: (accessToken: string, refreshToken: string, user: User) => void
+  login: (user: User) => void
   logout: () => void
 }
 
@@ -18,25 +18,21 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = getAccessToken()
-    if (!token) {
-      setIsLoading(false)
-      return
-    }
-
+    // Try to fetch user — cookie is sent automatically
     apiFetch<User>('/auth/me')
       .then(setUser)
-      .catch(() => clearTokens())
+      .catch(() => {
+        // Not authenticated or cookie expired — no cleanup needed
+      })
       .finally(() => setIsLoading(false))
   }, [])
 
-  const login = useCallback((accessToken: string, refreshToken: string, user: User) => {
-    setTokens(accessToken, refreshToken)
+  const login = useCallback((user: User) => {
     setUser(user)
   }, [])
 
-  const logout = useCallback(() => {
-    clearTokens()
+  const logout = useCallback(async () => {
+    await clearTokens()
     setUser(null)
   }, [])
 

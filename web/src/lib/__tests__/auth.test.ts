@@ -1,57 +1,52 @@
-import { getAccessToken, getRefreshToken, setTokens, clearTokens } from '../auth'
+import { getCSRFToken, clearTokens } from '../auth'
 
 describe('auth', () => {
   beforeEach(() => {
-    localStorage.clear()
+    // Clear cookies
+    document.cookie = 'aerodocs_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    vi.restoreAllMocks()
   })
 
-  describe('getAccessToken', () => {
-    it('returns null when no token stored', () => {
-      expect(getAccessToken()).toBeNull()
+  describe('getCSRFToken', () => {
+    it('returns empty string when no CSRF cookie is set', () => {
+      expect(getCSRFToken()).toBe('')
     })
 
-    it('returns the stored access token', () => {
-      localStorage.setItem('aerodocs_access_token', 'my-access-token')
-      expect(getAccessToken()).toBe('my-access-token')
-    })
-  })
-
-  describe('getRefreshToken', () => {
-    it('returns null when no token stored', () => {
-      expect(getRefreshToken()).toBeNull()
+    it('returns the CSRF token from cookie', () => {
+      document.cookie = 'aerodocs_csrf=test-csrf-token-123'
+      expect(getCSRFToken()).toBe('test-csrf-token-123')
     })
 
-    it('returns the stored refresh token', () => {
-      localStorage.setItem('aerodocs_refresh_token', 'my-refresh-token')
-      expect(getRefreshToken()).toBe('my-refresh-token')
-    })
-  })
-
-  describe('setTokens', () => {
-    it('stores both access and refresh tokens', () => {
-      setTokens('acc', 'ref')
-      expect(localStorage.getItem('aerodocs_access_token')).toBe('acc')
-      expect(localStorage.getItem('aerodocs_refresh_token')).toBe('ref')
-    })
-
-    it('overwrites existing tokens', () => {
-      setTokens('old-acc', 'old-ref')
-      setTokens('new-acc', 'new-ref')
-      expect(localStorage.getItem('aerodocs_access_token')).toBe('new-acc')
-      expect(localStorage.getItem('aerodocs_refresh_token')).toBe('new-ref')
+    it('returns the CSRF token when multiple cookies exist', () => {
+      document.cookie = 'other_cookie=abc'
+      document.cookie = 'aerodocs_csrf=my-csrf-value'
+      document.cookie = 'another=xyz'
+      expect(getCSRFToken()).toBe('my-csrf-value')
     })
   })
 
   describe('clearTokens', () => {
-    it('removes both tokens from localStorage', () => {
-      setTokens('acc', 'ref')
-      clearTokens()
-      expect(localStorage.getItem('aerodocs_access_token')).toBeNull()
-      expect(localStorage.getItem('aerodocs_refresh_token')).toBeNull()
+    it('calls the logout endpoint', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal('fetch', mockFetch)
+
+      await clearTokens()
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      })
+
+      vi.unstubAllGlobals()
     })
 
-    it('does not throw when tokens are not set', () => {
-      expect(() => clearTokens()).not.toThrow()
+    it('does not throw when fetch fails', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'))
+      vi.stubGlobal('fetch', mockFetch)
+
+      await expect(clearTokens()).resolves.toBeUndefined()
+
+      vi.unstubAllGlobals()
     })
   })
 })

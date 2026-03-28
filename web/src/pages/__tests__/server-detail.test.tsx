@@ -56,7 +56,7 @@ vi.mock('@/lib/api', () => ({
 }))
 
 vi.mock('@/lib/auth', () => ({
-  getAccessToken: vi.fn(() => 'test-token'),
+  getCSRFToken: vi.fn(() => 'test-csrf-token'),
 }))
 
 vi.mock('@/hooks/use-auth', () => ({

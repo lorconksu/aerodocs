@@ -29,11 +29,7 @@ function ProfileTab() {
     onSuccess: () => {
       // Refresh user data to get updated avatar
       apiFetch<User>('/auth/me').then(updatedUser => {
-        const accessToken = localStorage.getItem('aerodocs_access_token')
-        const refreshToken = localStorage.getItem('aerodocs_refresh_token')
-        if (accessToken && refreshToken) {
-          login(accessToken, refreshToken, updatedUser)
-        }
+        login(updatedUser)
       })
     },
   })
