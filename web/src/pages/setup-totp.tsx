@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import QRCode from 'qrcode'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Copy, Check } from 'lucide-react'
 import { apiFetchWithToken } from '@/lib/api'
@@ -17,6 +18,12 @@ export function SetupTOTPPage() {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const hasFetched = useRef(false)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  const renderQR = useCallback((qrUrl: string) => {
+    if (!qrCanvasRef.current) return
+    QRCode.toCanvas(qrCanvasRef.current, qrUrl, { width: 192, margin: 2 })
+  }, [])
 
   const submitCode = async (code: string) => {
     if (!setupToken) return
@@ -68,7 +75,7 @@ export function SetupTOTPPage() {
       {totpData && (
         <>
           <div className="bg-white rounded-lg p-4 mb-4 flex items-center justify-center">
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpData.qr_url)}`} alt="TOTP QR Code" className="w-48 h-48" />
+            <canvas ref={(el) => { qrCanvasRef.current = el; if (el) renderQR(totpData.qr_url) }} />
           </div>
 
           <div className="bg-elevated border border-border rounded px-3 py-2 mb-4">

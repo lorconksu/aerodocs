@@ -26,6 +26,10 @@ vi.mock('@/hooks/use-auth', () => ({
   })),
 }))
 
+vi.mock('qrcode', () => ({
+  default: { toCanvas: vi.fn() },
+}))
+
 // Mock clipboard
 Object.assign(navigator, {
   clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -72,11 +76,12 @@ describe('SetupTOTPPage', () => {
     })
   })
 
-  it('displays QR code image after fetching TOTP data', async () => {
+  it('renders QR code canvas after fetching TOTP data', async () => {
+    const QRCode = await import('qrcode')
     mockApiFetchWithToken.mockResolvedValueOnce(totpData)
     renderPage()
     await waitFor(() => {
-      expect(screen.getByAltText('TOTP QR Code')).toBeInTheDocument()
+      expect(QRCode.default.toCanvas).toHaveBeenCalled()
     })
   })
 
