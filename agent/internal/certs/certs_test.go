@@ -1,0 +1,207 @@
+package certs
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// newTestCA creates a self-signed CA certificate and key for testing.
+func newTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
+	t.Helper()
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate CA key: %v", err)
+	}
+	caTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "Test CA"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		IsCA:         true,
+		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create CA cert: %v", err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatalf("parse CA cert: %v", err)
+	}
+	return caCert, caKey
+}
+
+// signCSR signs a DER-encoded CSR with the given CA and returns the
+// signed certificate in DER encoding.
+func signCSR(t *testing.T, csrDER []byte, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notAfter time.Time) []byte {
+	t.Helper()
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	if err != nil {
+		t.Fatalf("parse CSR: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      csr.Subject,
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     notAfter,
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, caCert, csr.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("sign cert: %v", err)
+	}
+	return certDER
+}
+
+func TestGenerateCSR(t *testing.T) {
+	s := NewMemoryStore()
+	csrDER, err := s.GenerateCSR("srv-abc123")
+	if err != nil {
+		t.Fatalf("GenerateCSR: %v", err)
+	}
+	if len(csrDER) == 0 {
+		t.Fatal("CSR is empty")
+	}
+
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	if err != nil {
+		t.Fatalf("parse CSR: %v", err)
+	}
+	if err := csr.CheckSignature(); err != nil {
+		t.Fatalf("CSR signature invalid: %v", err)
+	}
+	if csr.Subject.CommonName != "srv-abc123" {
+		t.Errorf("CN = %q, want %q", csr.Subject.CommonName, "srv-abc123")
+	}
+}
+
+func TestStoreCertAndTLSConfig(t *testing.T) {
+	caCert, caKey := newTestCA(t)
+
+	s := NewMemoryStore()
+	csrDER, err := s.GenerateCSR("test-server")
+	if err != nil {
+		t.Fatalf("GenerateCSR: %v", err)
+	}
+
+	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
+
+	// Marshal CA cert to DER for StoreCert
+	caCertDER := caCert.Raw
+
+	if err := s.StoreCert(certDER, caCertDER); err != nil {
+		t.Fatalf("StoreCert: %v", err)
+	}
+
+	tlsCfg := s.TLSConfig()
+	if tlsCfg == nil {
+		t.Fatal("TLSConfig() returned nil after StoreCert")
+	}
+	if len(tlsCfg.Certificates) != 1 {
+		t.Errorf("expected 1 certificate, got %d", len(tlsCfg.Certificates))
+	}
+	if tlsCfg.RootCAs == nil {
+		t.Error("RootCAs is nil")
+	}
+}
+
+func TestNeedsRenewal(t *testing.T) {
+	caCert, caKey := newTestCA(t)
+	s := NewMemoryStore()
+
+	// No cert yet — should return false
+	if s.NeedsRenewal(time.Hour) {
+		t.Error("NeedsRenewal should be false with no cert")
+	}
+
+	csrDER, err := s.GenerateCSR("test")
+	if err != nil {
+		t.Fatalf("GenerateCSR: %v", err)
+	}
+
+	// Cert that expires in 2 hours
+	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(2*time.Hour))
+	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
+		t.Fatalf("StoreCert: %v", err)
+	}
+
+	// Threshold 1 hour — cert has ~2h left, should NOT need renewal
+	if s.NeedsRenewal(1 * time.Hour) {
+		t.Error("NeedsRenewal(1h) should be false when cert has ~2h left")
+	}
+
+	// Threshold 3 hours — cert has ~2h left, should need renewal
+	if !s.NeedsRenewal(3 * time.Hour) {
+		t.Error("NeedsRenewal(3h) should be true when cert has ~2h left")
+	}
+}
+
+func TestHasCert(t *testing.T) {
+	caCert, caKey := newTestCA(t)
+	s := NewMemoryStore()
+
+	if s.HasCert() {
+		t.Error("HasCert should be false before StoreCert")
+	}
+
+	csrDER, err := s.GenerateCSR("test")
+	if err != nil {
+		t.Fatalf("GenerateCSR: %v", err)
+	}
+
+	// After GenerateCSR we have a key but no cert yet
+	if s.HasCert() {
+		t.Error("HasCert should be false after GenerateCSR but before StoreCert")
+	}
+
+	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
+	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
+		t.Fatalf("StoreCert: %v", err)
+	}
+
+	if !s.HasCert() {
+		t.Error("HasCert should be true after StoreCert")
+	}
+}
+
+func TestDiskPersistence(t *testing.T) {
+	dir := t.TempDir()
+	caCert, caKey := newTestCA(t)
+
+	s := NewStore(dir)
+	csrDER, err := s.GenerateCSR("disk-test")
+	if err != nil {
+		t.Fatalf("GenerateCSR: %v", err)
+	}
+
+	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
+	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
+		t.Fatalf("StoreCert: %v", err)
+	}
+
+	// Verify files exist with correct permissions
+	for _, name := range []string{"client.crt", "client.key", "ca.crt"} {
+		path := filepath.Join(dir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Errorf("file %s not found: %v", name, err)
+			continue
+		}
+		if info.Size() == 0 {
+			t.Errorf("file %s is empty", name)
+		}
+		perm := info.Mode().Perm()
+		if perm != 0600 {
+			t.Errorf("file %s has permissions %o, want 0600", name, perm)
+		}
+	}
+}

@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/wyiu/aerodocs/agent/internal/certs"
 	"github.com/wyiu/aerodocs/agent/internal/dropzone"
 	"github.com/wyiu/aerodocs/agent/internal/filebrowser"
 	"github.com/wyiu/aerodocs/agent/internal/heartbeat"
@@ -34,6 +35,7 @@ type Config struct {
 	IPAddress    string
 	OS           string
 	AgentVersion string
+	CertDir      string // directory for mTLS cert storage; empty uses /etc/aerodocs/tls/
 }
 
 type Client struct {
@@ -49,9 +51,14 @@ type Client struct {
 	tailSessionsMu sync.Mutex
 	tailSessions   map[string]chan struct{}
 	dropzone       *dropzone.Dropzone
+	certStore      *certs.Store
 }
 
 func New(cfg Config) *Client {
+	certDir := cfg.CertDir
+	if certDir == "" {
+		certDir = "/etc/aerodocs/tls/"
+	}
 	return &Client{
 		hubAddr:      cfg.HubAddr,
 		serverID:     cfg.ServerID,
@@ -64,6 +71,7 @@ func New(cfg Config) *Client {
 		maxBackoff:   60 * time.Second,
 		tailSessions: make(map[string]chan struct{}),
 		dropzone:     dropzone.New(dropzone.DefaultDir),
+		certStore:    certs.NewStore(certDir),
 	}
 }
 
@@ -246,15 +254,68 @@ func (c *Client) handleMessage(msg *pb.HubMessage, sendCh chan<- *pb.AgentMessag
 		c.handleFileDeleteRequest(p, sendCh)
 	case *pb.HubMessage_UnregisterRequest:
 		c.handleUnregisterRequest(p, sendCh)
+	case *pb.HubMessage_CertRenewResponse:
+		c.handleCertRenewResponse(p)
 	default:
 		log.Printf("unhandled hub message: %T", p)
 	}
 }
 
-// dialHub creates a gRPC connection to the hub.
+func (c *Client) handleCertRenewResponse(p *pb.HubMessage_CertRenewResponse) {
+	resp := p.CertRenewResponse
+	if resp.Error != "" {
+		log.Printf("cert renewal rejected: %s", resp.Error)
+		return
+	}
+	if len(resp.ClientCert) == 0 || len(resp.CaCert) == 0 {
+		log.Printf("cert renewal response missing certs")
+		return
+	}
+	if err := c.certStore.StoreCert(resp.ClientCert, resp.CaCert); err != nil {
+		log.Printf("failed to store renewed certs: %v", err)
+		return
+	}
+	log.Printf("mTLS certificate renewed (will use on next reconnect)")
+}
+
+// startCertRenewalTicker checks cert expiry every 10s alongside heartbeats
+// and sends a CertRenewRequest when renewal is needed.
+func (c *Client) startCertRenewalTicker(interval time.Duration, sendCh chan<- *pb.AgentMessage, stop <-chan struct{}) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			if !c.certStore.HasCert() || !c.certStore.NeedsRenewal(6*time.Hour) {
+				continue
+			}
+			csrDER, err := c.certStore.GenerateCSR(c.serverID)
+			if err != nil {
+				log.Printf("cert renewal CSR generation failed: %v", err)
+				continue
+			}
+			sendCh <- &pb.AgentMessage{
+				Payload: &pb.AgentMessage_CertRenewRequest{
+					CertRenewRequest: &pb.CertRenewRequest{
+						Csr: csrDER,
+					},
+				},
+			}
+			log.Printf("sent cert renewal request")
+		}
+	}
+}
+
+// dialHub creates a gRPC connection to the hub. If the cert store has a
+// valid mTLS certificate, it is used for transport credentials. Otherwise
+// the connection falls back to auto-detected TLS or plaintext.
 func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	var creds grpc.DialOption
-	if c.useTLS() {
+	if tlsCfg := c.certStore.TLSConfig(); tlsCfg != nil {
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
+	} else if c.useTLS() {
 		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
 	} else {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
@@ -270,6 +331,15 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 // (reconnect) message and waits for the corresponding ack.
 func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) error {
 	if c.serverID == "" {
+		// Generate a CSR with a placeholder CN (serverID not known yet)
+		var csrDER []byte
+		csr, err := c.certStore.GenerateCSR("pending")
+		if err != nil {
+			log.Printf("warning: failed to generate CSR for registration: %v", err)
+		} else {
+			csrDER = csr
+		}
+
 		if err := stream.Send(&pb.AgentMessage{
 			Payload: &pb.AgentMessage_Register{
 				Register: &pb.RegisterAgent{
@@ -278,6 +348,7 @@ func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) error
 					IpAddress:    c.ipAddress,
 					Os:           c.os,
 					AgentVersion: c.agentVersion,
+					Csr:          csrDER,
 				},
 			},
 		}); err != nil {
@@ -296,6 +367,15 @@ func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) error
 		}
 		c.serverID = ack.ServerId
 		log.Printf("registered successfully: server_id=%s", c.serverID)
+
+		// Store mTLS certs if the hub provided them
+		if len(ack.ClientCert) > 0 && len(ack.CaCert) > 0 {
+			if err := c.certStore.StoreCert(ack.ClientCert, ack.CaCert); err != nil {
+				log.Printf("warning: failed to store mTLS certs: %v", err)
+			} else {
+				log.Printf("mTLS certificate stored (will use on next reconnect)")
+			}
+		}
 		return nil
 	}
 
@@ -373,6 +453,7 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 	hbStop := make(chan struct{})
 	defer close(hbStop)
 	go heartbeat.StartTicker(c.serverID, 10*time.Second, sendCh, hbStop)
+	go c.startCertRenewalTicker(10*time.Second, sendCh, hbStop)
 
 	recvErr := c.startRecvLoop(stream, sendCh)
 
