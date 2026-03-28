@@ -1,7 +1,9 @@
 package grpcserver
 
 import (
+	"crypto/ecdsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
@@ -9,9 +11,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/model"
 	"github.com/wyiu/aerodocs/hub/internal/store"
@@ -25,12 +29,34 @@ type Handler struct {
 	pending     *PendingRequests
 	logSessions *LogSessions
 	hbCoalescer *HeartbeatCoalescer
+	caCert      *x509.Certificate
+	caKey       *ecdsa.PrivateKey
+}
+
+// extractServerIDFromCert extracts the server ID from a client certificate's CN.
+func extractServerIDFromCert(cert *x509.Certificate) string {
+	if cert == nil {
+		return ""
+	}
+	return cert.Subject.CommonName
 }
 
 func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 	serverID, err := h.performHandshake(stream)
 	if err != nil {
 		return err
+	}
+
+	// Verify client certificate CN matches the server ID (if TLS peer info is available).
+	if p, ok := peer.FromContext(stream.Context()); ok {
+		if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
+			if len(tlsInfo.State.PeerCertificates) > 0 {
+				certCN := extractServerIDFromCert(tlsInfo.State.PeerCertificates[0])
+				if certCN != serverID {
+					return fmt.Errorf("cert CN %q does not match server ID %q", certCN, serverID)
+				}
+			}
+		}
 	}
 
 	h.connMgr.Register(serverID, stream)
@@ -165,6 +191,8 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 		if h.pending != nil {
 			h.pending.Deliver(serverID, p.UnregisterAck.RequestId, p.UnregisterAck)
 		}
+	case *pb.AgentMessage_CertRenewRequest:
+		h.handleCertRenewal(serverID, stream, p.CertRenewRequest)
 	default:
 		log.Printf("unhandled message type from %s: %T", serverID, p)
 	}
@@ -231,4 +259,38 @@ func (h *Handler) handleHeartbeat(serverID string) error {
 		_ = h.store.UpdateServerLastSeen(serverID, nil)
 	}
 	return nil
+}
+
+// handleCertRenewal processes a certificate renewal request from an agent.
+// It signs the provided CSR with the CA and returns the new client certificate.
+func (h *Handler) handleCertRenewal(serverID string, stream pb.AgentService_ConnectServer, req *pb.CertRenewRequest) {
+	sendCertResponse := func(resp *pb.CertRenewResponse) {
+		conn := h.connMgr.GetConn(serverID)
+		if conn == nil {
+			return
+		}
+		conn.SendMu.Lock()
+		_ = stream.Send(&pb.HubMessage{
+			Payload: &pb.HubMessage_CertRenewResponse{
+				CertRenewResponse: resp,
+			},
+		})
+		conn.SendMu.Unlock()
+	}
+
+	if h.caCert == nil || h.caKey == nil {
+		sendCertResponse(&pb.CertRenewResponse{Error: "CA not configured"})
+		return
+	}
+
+	clientCert, err := ca.SignCSR(h.caCert, h.caKey, req.Csr, serverID, 12*time.Hour)
+	if err != nil {
+		sendCertResponse(&pb.CertRenewResponse{Error: err.Error()})
+		return
+	}
+
+	sendCertResponse(&pb.CertRenewResponse{
+		ClientCert: clientCert.Raw,
+		CaCert:     h.caCert.Raw,
+	})
 }
