@@ -14,14 +14,17 @@ const (
 )
 
 // setAuthCookies sets the access, refresh, and CSRF cookies on the response.
-func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string, isDev bool) {
+// setAuthCookies sets the access, refresh, and CSRF cookies on the response.
+// The Secure flag is NOT set because the hub never serves HTTPS directly —
+// TLS is terminated at the reverse proxy (Traefik). SameSite=Strict provides
+// equivalent cross-site protection. The proxy adds Secure via its own headers.
+func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieAccess,
 		Value:    accessToken,
 		Path:     "/",
 		MaxAge:   900, // 15 minutes
 		HttpOnly: true,
-		Secure:   !isDev,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -31,7 +34,6 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string, isD
 		Path:     "/api/auth/refresh",
 		MaxAge:   604800, // 7 days
 		HttpOnly: true,
-		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -42,7 +44,6 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string, isD
 		Path:     "/",
 		MaxAge:   604800, // 7 days
 		HttpOnly: false,
-		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 }

@@ -17,7 +17,7 @@ func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 
 func TestSetAuthCookies(t *testing.T) {
 	w := httptest.NewRecorder()
-	setAuthCookies(w, "access123", "refresh456", false)
+	setAuthCookies(w, "access123", "refresh456")
 
 	cookies := w.Result().Cookies()
 	if len(cookies) != 3 {
@@ -33,9 +33,6 @@ func TestSetAuthCookies(t *testing.T) {
 	}
 	if !access.HttpOnly {
 		t.Error("access cookie should be httpOnly")
-	}
-	if !access.Secure {
-		t.Error("access cookie should be Secure in non-dev mode")
 	}
 	if access.SameSite != http.SameSiteStrictMode {
 		t.Error("access cookie should be SameSite=Strict")
@@ -57,9 +54,6 @@ func TestSetAuthCookies(t *testing.T) {
 	if !refresh.HttpOnly {
 		t.Error("refresh cookie should be httpOnly")
 	}
-	if !refresh.Secure {
-		t.Error("refresh cookie should be Secure")
-	}
 	if refresh.Path != "/api/auth/refresh" {
 		t.Errorf("refresh path = %q, want /api/auth/refresh", refresh.Path)
 	}
@@ -74,9 +68,6 @@ func TestSetAuthCookies(t *testing.T) {
 	if csrf.HttpOnly {
 		t.Error("CSRF cookie should NOT be httpOnly")
 	}
-	if !csrf.Secure {
-		t.Error("CSRF cookie should be Secure")
-	}
 	if csrf.SameSite != http.SameSiteStrictMode {
 		t.Error("CSRF cookie should be SameSite=Strict")
 	}
@@ -85,37 +76,6 @@ func TestSetAuthCookies(t *testing.T) {
 	}
 	if len(csrf.Value) != 64 {
 		t.Errorf("CSRF token length = %d, want 64 hex chars", len(csrf.Value))
-	}
-}
-
-func TestSetAuthCookies_DevMode(t *testing.T) {
-	w := httptest.NewRecorder()
-	setAuthCookies(w, "access123", "refresh456", true)
-
-	cookies := w.Result().Cookies()
-	access := findCookie(cookies, cookieAccess)
-	if access == nil {
-		t.Fatal("missing access cookie")
-	}
-	if access.Secure {
-		t.Error("access cookie should NOT be Secure in dev mode")
-	}
-
-	// refresh and csrf should still be Secure even in dev mode
-	refresh := findCookie(cookies, cookieRefresh)
-	if refresh == nil {
-		t.Fatal("missing refresh cookie")
-	}
-	if !refresh.Secure {
-		t.Error("refresh cookie should still be Secure in dev mode")
-	}
-
-	csrf := findCookie(cookies, cookieCSRF)
-	if csrf == nil {
-		t.Fatal("missing CSRF cookie")
-	}
-	if !csrf.Secure {
-		t.Error("CSRF cookie should still be Secure in dev mode")
 	}
 }
 

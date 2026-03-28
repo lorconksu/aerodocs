@@ -189,7 +189,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		Action: model.AuditUserLogin, IPAddress: &ip,
 	})
 
-	setAuthCookies(w, accessToken, refreshToken, s.isDev)
+	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -240,7 +240,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		IPAddress: &ip,
 	})
 
-	setAuthCookies(w, accessToken, refreshToken, s.isDev)
+	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -386,7 +386,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	// Refresh user to get updated totp_enabled
 	user, _ = s.store.GetUserByID(userID)
 
-	setAuthCookies(w, accessToken, refreshToken, s.isDev)
+	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
