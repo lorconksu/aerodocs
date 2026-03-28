@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
-import { apiFetch } from '@/lib/api'
 import { clearTokens } from '@/lib/auth'
 import type { User } from '@/types/api'
 
