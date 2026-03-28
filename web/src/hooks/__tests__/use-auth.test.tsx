@@ -2,19 +2,12 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import { vi } from 'vitest'
 import { AuthProvider, useAuth } from '../use-auth'
 
-// Mock API
-vi.mock('@/lib/api', () => ({
-  apiFetch: vi.fn(),
-}))
-
 // Mock auth
 vi.mock('@/lib/auth', () => ({
   clearTokens: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { apiFetch } from '@/lib/api'
 import { clearTokens } from '@/lib/auth'
-const mockApiFetch = apiFetch as ReturnType<typeof vi.fn>
 const mockClearTokens = clearTokens as ReturnType<typeof vi.fn>
 
 // Helper component to expose context values
@@ -35,24 +28,26 @@ function TestConsumer() {
 
 describe('AuthProvider', () => {
   beforeEach(() => {
-    mockApiFetch.mockReset()
     mockClearTokens.mockReset()
     mockClearTokens.mockResolvedValue(undefined)
+    vi.restoreAllMocks()
   })
 
   it('starts in loading state and fetches /auth/me on mount', async () => {
-    mockApiFetch.mockRejectedValueOnce(new Error('Unauthorized'))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 401 }))
     render(<AuthProvider><TestConsumer /></AuthProvider>)
     await waitFor(() => {
       expect(screen.getByTestId('loading').textContent).toBe('false')
     })
     expect(screen.getByTestId('authenticated').textContent).toBe('false')
-    expect(mockApiFetch).toHaveBeenCalledWith('/auth/me')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/me', { credentials: 'same-origin' })
   })
 
   it('sets user when /auth/me succeeds (cookie is valid)', async () => {
     const mockUser = { id: '1', username: 'admin', email: 'a@b.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' }
-    mockApiFetch.mockResolvedValueOnce(mockUser)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockUser), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
 
     render(<AuthProvider><TestConsumer /></AuthProvider>)
 
@@ -64,7 +59,7 @@ describe('AuthProvider', () => {
   })
 
   it('sets user=null when /auth/me fails (no valid cookie)', async () => {
-    mockApiFetch.mockRejectedValueOnce(new Error('Unauthorized'))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 401 }))
 
     render(<AuthProvider><TestConsumer /></AuthProvider>)
 
@@ -75,7 +70,7 @@ describe('AuthProvider', () => {
   })
 
   it('login updates user state', async () => {
-    mockApiFetch.mockRejectedValueOnce(new Error('Unauthorized'))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 401 }))
     render(<AuthProvider><TestConsumer /></AuthProvider>)
     await waitFor(() => {
       expect(screen.getByTestId('loading').textContent).toBe('false')
@@ -91,7 +86,9 @@ describe('AuthProvider', () => {
 
   it('logout calls clearTokens and sets user=null', async () => {
     const mockUser = { id: '1', username: 'admin', email: 'a@b.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' }
-    mockApiFetch.mockResolvedValueOnce(mockUser)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockUser), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
 
     render(<AuthProvider><TestConsumer /></AuthProvider>)
     await waitFor(() => {
@@ -110,7 +107,6 @@ describe('AuthProvider', () => {
 
 describe('useAuth outside AuthProvider', () => {
   it('throws an error when used outside AuthProvider', () => {
-    // Suppress console.error for this test
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<TestConsumer />)).toThrow('useAuth must be used within AuthProvider')
     spy.mockRestore()
