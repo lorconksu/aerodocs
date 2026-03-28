@@ -23,7 +23,7 @@ export default async function globalSetup() {
 
   // Start container
   console.log('Starting container...')
-  run('docker', ['run', '-d', '--name', containerName, '-p', `${httpPort}:8081`, imageName])
+  run('docker', ['run', '-d', '--name', containerName, '-p', `${httpPort}:8081`, imageName, '--dev'])
 
   // Wait for ready
   const baseURL = `http://localhost:${httpPort}`
