@@ -23,8 +23,7 @@ export default async function globalSetup() {
 
   // Start container
   console.log('Starting container...')
-  run('docker', ['run', '-d', '--name', containerName, '-p', `${httpPort}:8081`, imageName,
-    '--addr', ':8081', '--grpc-addr', ':9090', '--db', '/data/aerodocs.db', '--agent-bin-dir', '/app', '--dev'])
+  run('docker', ['run', '-d', '--name', containerName, '-p', `${httpPort}:8081`, imageName])
 
   // Wait for ready
   const baseURL = `http://localhost:${httpPort}`

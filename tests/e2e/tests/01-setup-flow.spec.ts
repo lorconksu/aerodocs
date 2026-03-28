@@ -8,7 +8,7 @@ test.describe('First-time setup flow', () => {
   test('completes setup: register → TOTP setup → dashboard', async ({ page }) => {
     // Navigate to root — should redirect to /setup (uninitialized system)
     await page.goto(BASE_URL + '/')
-    await expect(page).toHaveURL(/\/setup$/, { timeout: 15000 })
+    await expect(page).toHaveURL(/\/setup$/)
 
     // Fill out registration form
     await page.getByPlaceholder('username').fill('admin')
