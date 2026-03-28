@@ -24,10 +24,21 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      const resp = await apiFetch<LoginResponse>('/auth/login', {
+      // Use raw fetch for login — apiFetch's auto-refresh on 401 would
+      // redirect to /login instead of showing the "invalid credentials" error.
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password } satisfies LoginRequest),
+        credentials: 'same-origin',
       })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Login failed' }))
+        throw new Error((body as { error?: string }).error || 'Login failed')
+      }
+
+      const resp = await res.json() as LoginResponse
 
       if (resp.requires_totp_setup && resp.setup_token) {
         navigate('/setup/totp', { state: { setupToken: resp.setup_token } })
