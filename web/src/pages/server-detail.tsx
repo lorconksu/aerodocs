@@ -47,7 +47,7 @@ import 'highlight.js/styles/github-dark.css'
 const LazyMarkdownViewer = lazy(() => import('@/components/markdown-viewer'))
 import DOMPurify from 'dompurify'
 import { apiFetch } from '@/lib/api'
-import { getAccessToken } from '@/lib/auth'
+import { getCSRFToken } from '@/lib/auth'
 import { relativeTime } from '@/lib/time'
 import { statusDot } from '@/lib/server-utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -487,16 +487,17 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
       const formData = new FormData()
       formData.append('file', file)
 
-      const token = getAccessToken()
       const headers: HeadersInit = {}
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
+      const csrfToken = getCSRFToken()
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken
       }
       // Do NOT set Content-Type — browser sets it with the multipart boundary
 
       const res = await fetch(`/api/servers/${serverId}/upload`, {
         method: 'POST',
         headers,
+        credentials: 'same-origin',
         body: formData,
       })
 
@@ -870,12 +871,13 @@ function LiveTail({
 
     async function startStream(signal: AbortSignal) {
       try {
-        const token = getAccessToken()
         const params = new URLSearchParams({ path: filePath })
         if (grep) params.set('grep', grep)
 
+        const csrfToken = getCSRFToken()
         const response = await fetch(`/api/servers/${serverId}/logs/tail?${params.toString()}`, {
-          headers: { 'Authorization': `Bearer ${token}` },
+          headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+          credentials: 'same-origin',
           signal,
         })
 

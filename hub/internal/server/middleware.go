@@ -38,14 +38,7 @@ func TokenTypeFromContext(ctx context.Context) string {
 // authMiddleware validates JWT from Authorization header and enforces token type.
 func (s *Server) authMiddleware(requiredType string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenStr := ""
-
-		// Extract token from Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
-		}
-
+		tokenStr := readAccessToken(r)
 		if tokenStr == "" {
 			respondError(w, http.StatusUnauthorized, "missing authorization token")
 			return
@@ -95,7 +88,8 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		if s.isDev {
 			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusNoContent)

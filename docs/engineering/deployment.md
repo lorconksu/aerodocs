@@ -278,6 +278,67 @@ The agent reconnects with **exponential backoff** - starting at 1 second and cap
 
 ---
 
+## mTLS Configuration (v1.1)
+
+As of v1.1, the Hub supports mutual TLS (mTLS) for gRPC connections from agents. This provides cryptographic identity verification beyond the initial registration token.
+
+### How it works
+
+1. **Automatic CA generation** -- On first boot, the Hub generates an ECDSA P-256 Certificate Authority. No manual certificate management is required.
+2. **Agent certificates issued during registration** -- When an agent registers, the Hub signs a client certificate (12-hour validity) and sends it to the agent over the gRPC stream.
+3. **In-stream renewal** -- Agents automatically renew their certificates at the 6-hour mark (50% lifetime), with no downtime or reconnection.
+4. **Agent cert storage** -- Client certificates and keys are stored at `/etc/aerodocs/tls/` on each agent host.
+
+### Enabling mandatory mTLS
+
+By default, mTLS is optional for backward compatibility. Agents that support mTLS will use it; older agents continue to work without it.
+
+To enforce mTLS for all agent connections, add the `--require-mtls` flag:
+
+```bash
+# Docker: add to the command in docker-compose.yml
+command: ["--require-mtls"]
+
+# Bare-metal: add to the ExecStart line in the systemd unit
+ExecStart=/opt/aerodocs/bin/aerodocs \
+  --addr 127.0.0.1:8081 \
+  --grpc-addr 0.0.0.0:9090 \
+  --db /var/lib/aerodocs/aerodocs.db \
+  --agent-bin-dir /opt/aerodocs/agent-bins \
+  --require-mtls
+```
+
+### Upgrading existing agents
+
+Existing agents deployed before v1.1 do not have mTLS certificates. To upgrade them:
+
+1. Re-register the agent (unregister from the Hub UI, then re-run the install script with a new token)
+2. The new agent will automatically receive an mTLS certificate during registration
+3. Once all agents are re-registered, enable `--require-mtls` on the Hub
+
+### Certificate locations (agent)
+
+| File | Path | Description |
+|------|------|-------------|
+| Client cert | `/etc/aerodocs/tls/client.crt` | Agent's certificate signed by Hub CA |
+| Client key | `/etc/aerodocs/tls/client.key` | Agent's private key (never leaves the machine) |
+| CA cert | `/etc/aerodocs/tls/ca.crt` | Hub CA certificate for verifying the Hub |
+
+---
+
+## Cookie-Based Authentication (v1.1)
+
+As of v1.1, the web UI uses **httpOnly cookies** for JWT token storage instead of localStorage. This change is fully automatic -- no configuration is needed.
+
+- Tokens are set as `HttpOnly`, `Secure`, `SameSite=Strict` cookies
+- CSRF protection uses a double-submit cookie pattern (handled by the frontend automatically)
+- Non-browser clients (scripts, CLI tools) can still use `Authorization: Bearer <token>` headers
+- The refresh token cookie is scoped to `/api/auth/refresh` to limit exposure
+
+No action is required from operators. The cookie auth is active by default when upgrading to v1.1.
+
+---
+
 ## DNS Setup
 
 Point your domain's A record (and AAAA for IPv6) to the public IP of the server running Traefik.
@@ -409,6 +470,7 @@ The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no s
 | `--grpc-addr` | `:9090` | gRPC listen address for agent connections |
 | `--db` | `aerodocs.db` | Path to the SQLite database file |
 | `--agent-bin-dir` | `` | Directory containing agent binaries served via `/install/{os}/{arch}` |
+| `--require-mtls` | `false` | Require agents to present valid mTLS certificates (v1.1+) |
 | `--dev` | `false` | Enable development mode (permissive CORS, no embedded frontend served) |
 
 **Example:**

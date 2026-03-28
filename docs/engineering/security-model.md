@@ -201,9 +201,13 @@ func (c *Client) useTLS() bool {
 }
 ```
 
+### gRPC Mutual TLS (mTLS)
+
+As of v1.1, the gRPC channel between Hub and Agents supports mutual TLS authentication. See [Section 10](#10-grpc-mutual-tls-v11) for full details. When `--require-mtls` is enabled, both sides verify each other's identity via certificates issued by the Hub's built-in CA.
+
 ### Other Transport Controls
 
-- **No secrets in URLs or query params** -- Authentication tokens are passed exclusively in the `Authorization` header or request body, never as URL parameters.
+- **No secrets in URLs or query params** -- Authentication tokens are passed exclusively in httpOnly cookies (browser clients) or the `Authorization` header (non-browser clients), never as URL parameters.
 - **HTTP/2** -- gRPC connections use HTTP/2 by default. The Hub's gRPC server and Agent client both use `google.golang.org/grpc`.
 - **CORS** -- In development mode only, CORS headers allow `http://localhost:5173`. Production deployments serve the SPA from the Hub itself, eliminating cross-origin requests.
 
@@ -447,7 +451,7 @@ flowchart LR
     Browser -->|"HTTPS"| Traefik
     Traefik -->|"HTTP (localhost)"| Hub
     Hub -->|"Read/Write"| DB
-    Hub <-->|"gRPC\n(TLS or LAN)"| Agent
+    Hub <-->|"gRPC\n(mTLS or TLS/LAN)"| Agent
     Agent -->|"Validated\nFile I/O"| FS
 
     style External fill:#fee,stroke:#c00
@@ -474,21 +478,84 @@ The following threats are explicitly out of scope for this security model:
 - **Traefik vulnerabilities** (CVEs in the reverse proxy itself)
 - **Supply chain attacks** on Go dependencies
 - **Denial of service** beyond the login rate limiter (no general request rate limiting)
-- **Browser-side attacks** (XSS, CSRF) -- the SPA is served from the same origin as the API, and no cookies are used for auth (token-based only)
+- **Browser-side attacks** (XSS) -- the SPA is served from the same origin as the API; CSRF is mitigated via double-submit cookies with SameSite=Strict
 - **Database encryption at rest** -- relies on OS-level disk encryption if required
+
+---
+
+## 9. Cookie-Based Authentication (v1.1)
+
+As of v1.1, JWT tokens are stored in **httpOnly cookies** instead of `localStorage`. This makes tokens completely inaccessible to JavaScript, eliminating the primary token-theft vector from XSS attacks.
+
+### Cookie Configuration
+
+| Attribute    | Value            | Rationale                                                  |
+|-------------|------------------|------------------------------------------------------------|
+| `HttpOnly`  | `true`           | Prevents JavaScript access to tokens                       |
+| `Secure`    | `true`           | Cookies only sent over HTTPS                               |
+| `SameSite`  | `Strict`         | Blocks cross-site request inclusion                        |
+| `Path`      | `/` (access) / `/api/auth/refresh` (refresh) | Refresh token scoped to refresh endpoint only |
+
+### CSRF Protection
+
+Cookie-based auth introduces CSRF risk. AeroDocs uses a **double-submit cookie** pattern:
+
+1. On login, the server sets a `csrf_token` cookie (readable by JavaScript, not httpOnly)
+2. The frontend reads this cookie and sends it as an `X-CSRF-Token` header on every state-changing request
+3. The server compares the header value against the cookie value -- a mismatch rejects the request
+
+Because `SameSite=Strict` prevents cookies from being sent on cross-origin requests in modern browsers, this provides defense-in-depth against CSRF.
+
+### Backward Compatibility
+
+Non-browser clients (CLI tools, scripts, other agents) can still authenticate using **Bearer tokens** in the `Authorization` header. The auth middleware checks for a Bearer token first and falls back to cookie extraction. This ensures API compatibility for automated integrations.
+
+---
+
+## 10. gRPC Mutual TLS (v1.1)
+
+As of v1.1, AeroDocs supports **mutual TLS (mTLS)** on the gRPC channel between Hub and Agents. This provides cryptographic identity verification in both directions -- the Agent authenticates the Hub's CA, and the Hub authenticates the Agent's client certificate.
+
+### Hub Certificate Authority
+
+- The Hub generates an **ECDSA P-256 CA keypair** on first boot if no CA exists
+- The CA certificate and private key are stored in the Hub's data directory
+- All agent client certificates are signed by this CA
+
+### Agent Client Certificates
+
+- During registration, the Hub issues a **client certificate** to the Agent
+- Certificates use **ECDSA P-256** keys and have a **12-hour validity** period
+- The Agent generates its own private key locally -- **the private key never leaves the agent machine**
+- Certificates are stored at `/etc/aerodocs/tls/` on the agent host
+
+### In-Stream Certificate Renewal
+
+- At **50% of certificate lifetime** (the 6-hour mark), the Agent initiates an in-stream certificate renewal
+- Renewal happens over the existing gRPC bidirectional stream -- no reconnection required
+- The Hub issues a fresh 12-hour certificate signed by its CA
+- If renewal fails, the Agent retries with exponential backoff before the certificate expires
+
+### Enforcement Mode
+
+| Flag               | Default | Behavior                                                       |
+|--------------------|---------|----------------------------------------------------------------|
+| `--require-mtls`   | `false` | When `false`, agents can connect with or without mTLS (backward compatible). When `true`, all agents must present a valid client certificate. |
+
+Setting `--require-mtls=true` rejects any gRPC connection that does not present a valid client certificate signed by the Hub's CA. This is recommended for production deployments after all agents have been re-registered with mTLS support.
 
 ---
 
 ## Known Limitations
 
-### JWT Tokens in localStorage
+### Rate Limiter State
 
-AeroDocs stores JWT access and refresh tokens in the browser's `localStorage`. This means any JavaScript running on the page (including code injected via an XSS attack) can read and exfiltrate these tokens.
+The login rate limiter is in-memory and per-process. In a multi-instance deployment (not currently supported), rate limits would not be shared across instances.
 
-**Mitigations in place:**
-- **Content Security Policy** - CSP restricts script sources to `'self'`, blocking inline scripts and external script injection
-- **Short access token lifetime** - Access tokens expire in 15 minutes, limiting the window of exploitation
-- **No user-controlled HTML rendering** - `react-markdown` does not render raw HTML (no `rehype-raw` plugin), and highlight.js output is sanitized
-- **X-Frame-Options: DENY** - Prevents clickjacking attacks that could be used to steal tokens
+### Single JWT Signing Key
 
-**Planned improvement (v1.1):** Migrate to httpOnly cookies for token storage, which makes tokens completely inaccessible to JavaScript. This requires implementing CSRF protection (SameSite cookies + CSRF tokens) and updating the auth flow.
+All token types share a single HMAC-SHA256 signing key. Rotation requires restarting the Hub, which invalidates all outstanding tokens.
+
+### mTLS Optional by Default
+
+The `--require-mtls` flag defaults to `false` for backward compatibility. Deployments that do not explicitly enable it still allow unauthenticated gRPC connections (relying on registration tokens for initial trust).
