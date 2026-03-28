@@ -1,6 +1,9 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 // csrfMiddleware enforces the double-submit cookie pattern for mutating requests.
 // Safe methods (GET, HEAD, OPTIONS) are exempt. Requests using Bearer authentication
@@ -19,7 +22,14 @@ func csrfMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// No cookie-based session means no CSRF risk (e.g., login, register).
+		// Auth endpoints handle their own authentication and don't rely on
+		// cookie-based sessions, so CSRF protection is not needed.
+		if strings.HasPrefix(r.URL.Path, "/api/auth/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// No cookie-based session means no CSRF risk.
 		// If neither the access cookie nor the CSRF cookie is present, this
 		// request is not using cookie auth, so skip CSRF validation.
 		if readCSRFCookie(r) == "" && readAccessToken(r) == "" {
