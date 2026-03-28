@@ -1,0 +1,108 @@
+package server
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"net/http"
+	"strings"
+)
+
+const (
+	cookieAccess  = "aerodocs_access"
+	cookieRefresh = "aerodocs_refresh"
+	cookieCSRF    = "aerodocs_csrf"
+)
+
+// setAuthCookies sets the access, refresh, and CSRF cookies on the response.
+func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string, isDev bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieAccess,
+		Value:    accessToken,
+		Path:     "/",
+		MaxAge:   900, // 15 minutes
+		HttpOnly: true,
+		Secure:   !isDev,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieRefresh,
+		Value:    refreshToken,
+		Path:     "/api/auth/refresh",
+		MaxAge:   604800, // 7 days
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	csrfToken := generateCSRFToken()
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieCSRF,
+		Value:    csrfToken,
+		Path:     "/",
+		MaxAge:   604800, // 7 days
+		HttpOnly: false,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// clearAuthCookies clears all auth cookies by setting MaxAge to -1.
+func clearAuthCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:   cookieAccess,
+		Path:   "/",
+		MaxAge: -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:   cookieRefresh,
+		Path:   "/api/auth/refresh",
+		MaxAge: -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:   cookieCSRF,
+		Path:   "/",
+		MaxAge: -1,
+	})
+}
+
+// readAccessToken reads the access token from the cookie first, falling back
+// to the Authorization: Bearer header.
+func readAccessToken(r *http.Request) string {
+	if c, err := r.Cookie(cookieAccess); err == nil && c.Value != "" {
+		return c.Value
+	}
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	return ""
+}
+
+// generateCSRFToken returns a 32-byte random hex string.
+func generateCSRFToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
+// readCSRFToken reads the CSRF token from the X-CSRF-Token header.
+func readCSRFToken(r *http.Request) string {
+	return r.Header.Get("X-CSRF-Token")
+}
+
+// readCSRFCookie reads the CSRF cookie value from the request.
+func readCSRFCookie(r *http.Request) string {
+	if c, err := r.Cookie(cookieCSRF); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+// isUsingBearerAuth returns true if the request has an Authorization: Bearer header.
+func isUsingBearerAuth(r *http.Request) bool {
+	return strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
+}
+
