@@ -98,12 +98,28 @@ func TestCSRFMiddleware_AllowsBearerAuth(t *testing.T) {
 	}
 }
 
-func TestCSRFMiddleware_NoCookie(t *testing.T) {
+func TestCSRFMiddleware_NoCookies_SkipsValidation(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
+	// No cookies at all = not a cookie-based session (e.g., login/register).
+	// CSRF validation should be skipped.
 	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
 	req.Header.Set("X-CSRF-Token", "tok123")
-	// No cookie.
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 (CSRF skipped for non-cookie session), got %d", rr.Code)
+	}
+}
+
+func TestCSRFMiddleware_AccessCookiePresent_RequiresCSRF(t *testing.T) {
+	handler := csrfMiddleware(ok200)
+
+	// Access cookie present but no CSRF cookie/header = should be blocked.
+	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
+	req.AddCookie(&http.Cookie{Name: "aerodocs_access", Value: "some-token"})
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)

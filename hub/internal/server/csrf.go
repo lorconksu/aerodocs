@@ -19,6 +19,14 @@ func csrfMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// No cookie-based session means no CSRF risk (e.g., login, register).
+		// If neither the access cookie nor the CSRF cookie is present, this
+		// request is not using cookie auth, so skip CSRF validation.
+		if readCSRFCookie(r) == "" && readAccessToken(r) == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Validate CSRF: X-CSRF-Token header must match aerodocs_csrf cookie.
 		cookieToken := readCSRFCookie(r)
 		headerToken := readCSRFToken(r)
