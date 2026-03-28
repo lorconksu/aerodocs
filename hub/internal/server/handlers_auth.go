@@ -189,6 +189,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		Action: model.AuditUserLogin, IPAddress: &ip,
 	})
 
+	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -197,13 +198,21 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	var req model.RefreshRequest
-	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
-		return
+	// Read refresh token from cookie first, fall back to request body
+	refreshTokenStr := ""
+	if c, err := r.Cookie(cookieRefresh); err == nil {
+		refreshTokenStr = c.Value
+	}
+	if refreshTokenStr == "" {
+		var req model.RefreshRequest
+		if err := decodeJSON(r, &req); err != nil {
+			respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+			return
+		}
+		refreshTokenStr = req.RefreshToken
 	}
 
-	claims, err := auth.ValidateToken(s.jwtSecret, req.RefreshToken)
+	claims, err := auth.ValidateToken(s.jwtSecret, refreshTokenStr)
 	if err != nil || claims.TokenType != auth.TokenTypeRefresh {
 		respondError(w, http.StatusUnauthorized, "invalid or expired refresh token")
 		return
@@ -231,10 +240,16 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		IPAddress: &ip,
 	})
 
+	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	clearAuthCookies(w)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -371,6 +386,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	// Refresh user to get updated totp_enabled
 	user, _ = s.store.GetUserByID(userID)
 
+	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

@@ -22,6 +22,9 @@ func (s *Server) routes() http.Handler {
 	// Refresh endpoint (separate, higher-limit rate limiter)
 	mux.Handle("POST /api/auth/refresh", loggingMiddleware(refreshLimiter.middleware(http.HandlerFunc(s.handleRefresh))))
 
+	// Logout endpoint (no auth required — just clears cookies)
+	mux.Handle("POST /api/auth/logout", loggingMiddleware(http.HandlerFunc(s.handleLogout)))
+
 	// Setup-token-protected endpoints
 	mux.Handle("POST /api/auth/totp/setup", loggingMiddleware(s.authMiddleware(auth.TokenTypeSetup, http.HandlerFunc(s.handleTOTPSetup))))
 	mux.Handle("POST /api/auth/totp/enable", loggingMiddleware(s.authMiddleware(auth.TokenTypeSetup, http.HandlerFunc(s.handleTOTPEnable))))
@@ -78,6 +81,6 @@ func (s *Server) routes() http.Handler {
 	// SPA catch-all — serves embedded frontend, falls back to index.html
 	mux.Handle("/", s.spaHandler())
 
-	// Apply CORS globally, then security headers as outermost wrapper
-	return securityHeaders(s.corsMiddleware(mux))
+	// Apply CSRF, then CORS globally, then security headers as outermost wrapper
+	return securityHeaders(s.corsMiddleware(csrfMiddleware(mux)))
 }

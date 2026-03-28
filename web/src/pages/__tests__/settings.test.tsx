@@ -645,8 +645,6 @@ describe('SettingsPage', () => {
     mockApiFetch
       .mockResolvedValueOnce({ status: 'ok' }) // PUT /auth/avatar
       .mockResolvedValueOnce(updatedUser)       // GET /auth/me
-    localStorage.setItem('aerodocs_access_token', 'acc-token')
-    localStorage.setItem('aerodocs_refresh_token', 'ref-token')
     renderPage()
     fireEvent.click(screen.getByText('Remove'))
     await waitFor(() => {
@@ -656,13 +654,11 @@ describe('SettingsPage', () => {
       expect(mockApiFetch).toHaveBeenCalledWith('/auth/me')
     })
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith('acc-token', 'ref-token', updatedUser)
+      expect(mockLogin).toHaveBeenCalledWith(updatedUser)
     })
-    localStorage.removeItem('aerodocs_access_token')
-    localStorage.removeItem('aerodocs_refresh_token')
   })
 
-  it('avatarMutation onSuccess without tokens does not call login', async () => {
+  it('avatarMutation onSuccess always calls login with updated user (cookie auth)', async () => {
     const mockLogin = vi.fn()
     mockUseAuth.mockReturnValue({
       user: { id: 'u1', username: 'admin', email: 'admin@test.com', role: 'admin', totp_enabled: true, avatar: 'data:image/png;base64,abc', created_at: '', updated_at: '' },
@@ -672,20 +668,17 @@ describe('SettingsPage', () => {
     mockApiFetch
       .mockResolvedValueOnce({ status: 'ok' }) // PUT /auth/avatar
       .mockResolvedValueOnce(updatedUser)       // GET /auth/me
-    // No tokens in localStorage
-    localStorage.removeItem('aerodocs_access_token')
-    localStorage.removeItem('aerodocs_refresh_token')
     renderPage()
     fireEvent.click(screen.getByText('Remove'))
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/auth/avatar', expect.objectContaining({ method: 'PUT' }))
     })
     await waitFor(() => {
-      // /auth/me is called as part of onSuccess
       expect(mockApiFetch).toHaveBeenCalledWith('/auth/me')
     })
-    // login should NOT have been called (no tokens)
-    expect(mockLogin).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith(updatedUser)
+    })
   })
 
   it('file input onChange triggers avatar upload', async () => {

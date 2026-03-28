@@ -1,15 +1,13 @@
 import { vi, type MockedFunction } from 'vitest'
 import { apiFetch, apiFetchWithToken } from '../api'
 
-// We need to access module-level state — reset it between tests by re-importing
-// via a factory approach won't work cleanly; instead we test the public surface.
-
 const mockFetch = vi.fn() as MockedFunction<typeof fetch>
 
 beforeEach(() => {
   vi.stubGlobal('fetch', mockFetch)
-  localStorage.clear()
   mockFetch.mockReset()
+  // Clear cookies
+  document.cookie = 'aerodocs_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
   // Reset window.location.href stub
   Object.defineProperty(window, 'location', {
     value: { href: '' },
@@ -37,33 +35,34 @@ function makeResponse(
 }
 
 describe('apiFetch', () => {
-  it('calls fetch with the correct URL and JSON content-type', async () => {
+  it('calls fetch with the correct URL, JSON content-type, and credentials', async () => {
     mockFetch.mockResolvedValueOnce(makeResponse({ data: 'ok' }))
     const result = await apiFetch<{ data: string }>('/test')
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/test',
       expect.objectContaining({
         headers: expect.any(Headers),
+        credentials: 'same-origin',
       }),
     )
     expect(result).toEqual({ data: 'ok' })
   })
 
-  it('includes Authorization header when access token exists', async () => {
-    localStorage.setItem('aerodocs_access_token', 'my-token')
+  it('includes X-CSRF-Token header when CSRF cookie exists', async () => {
+    document.cookie = 'aerodocs_csrf=csrf-token-abc'
     mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
     await apiFetch('/protected')
     const [, init] = mockFetch.mock.calls[0]
     const headers = init!.headers as Headers
-    expect(headers.get('Authorization')).toBe('Bearer my-token')
+    expect(headers.get('X-CSRF-Token')).toBe('csrf-token-abc')
   })
 
-  it('does not include Authorization header when no access token', async () => {
+  it('does not include X-CSRF-Token header when no CSRF cookie', async () => {
     mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
     await apiFetch('/public')
     const [, init] = mockFetch.mock.calls[0]
     const headers = init!.headers as Headers
-    expect(headers.get('Authorization')).toBeNull()
+    expect(headers.get('X-CSRF-Token')).toBeNull()
   })
 
   it('throws with the error message from JSON body on non-ok response', async () => {
@@ -114,57 +113,32 @@ describe('apiFetch', () => {
     expect(result).toBeUndefined()
   })
 
-  it('on 401 with refresh token: refreshes and retries successfully', async () => {
-    localStorage.setItem('aerodocs_access_token', 'old-token')
-    localStorage.setItem('aerodocs_refresh_token', 'refresh-token')
-
+  it('on 401: refreshes via cookie and retries successfully', async () => {
     // First call returns 401
     mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Unauthorized' }, 401))
-    // Second call is the refresh request — returns new tokens
-    mockFetch.mockResolvedValueOnce(
-      makeResponse({ access_token: 'new-token', refresh_token: 'new-refresh' }),
-    )
-    // Third call is the retry with new token
+    // Second call is the refresh request — returns ok (server sets new cookies)
+    mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
+    // Third call is the retry
     mockFetch.mockResolvedValueOnce(makeResponse({ data: 'success' }))
 
     const result = await apiFetch<{ data: string }>('/protected')
     expect(result).toEqual({ data: 'success' })
-    // Check that new access token was stored
-    expect(localStorage.getItem('aerodocs_access_token')).toBe('new-token')
+
+    // Verify refresh was called with credentials
+    const [refreshUrl, refreshInit] = mockFetch.mock.calls[1]
+    expect(refreshUrl).toBe('/api/auth/refresh')
+    expect(refreshInit!.method).toBe('POST')
+    expect(refreshInit!.credentials).toBe('same-origin')
   })
 
-  it('on 401 with refresh token: clears tokens and redirects when refresh fails', async () => {
-    localStorage.setItem('aerodocs_access_token', 'old-token')
-    localStorage.setItem('aerodocs_refresh_token', 'refresh-token')
-
+  it('on 401: redirects to /login when refresh fails', async () => {
     // First call returns 401
     mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Unauthorized' }, 401))
-    // Refresh call fails (non-ok)
+    // Refresh call fails
     mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Invalid refresh' }, 401))
 
     await expect(apiFetch('/protected')).rejects.toThrow('Session expired')
-    expect(localStorage.getItem('aerodocs_access_token')).toBeNull()
     expect(window.location.href).toBe('/login')
-  })
-
-  it('on 401 with refresh token: clears tokens when refresh fetch throws (catch block)', async () => {
-    localStorage.setItem('aerodocs_access_token', 'old-token')
-    localStorage.setItem('aerodocs_refresh_token', 'refresh-token')
-
-    // First call returns 401
-    mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Unauthorized' }, 401))
-    // Refresh fetch itself throws (network error — covers catch block in refreshTokens, line 26)
-    mockFetch.mockRejectedValueOnce(new Error('Network error'))
-
-    await expect(apiFetch('/protected')).rejects.toThrow('Session expired')
-    expect(window.location.href).toBe('/login')
-  })
-
-  it('on 401 without refresh token: throws the error immediately', async () => {
-    localStorage.setItem('aerodocs_access_token', 'bad-token')
-    // No refresh token
-    mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Unauthorized' }, 401))
-    await expect(apiFetch('/protected')).rejects.toThrow('Unauthorized')
   })
 
   it('passes custom options (method, body) to fetch', async () => {
@@ -173,6 +147,18 @@ describe('apiFetch', () => {
     const [, init] = mockFetch.mock.calls[0]
     expect(init!.method).toBe('POST')
     expect(init!.body).toBe(JSON.stringify({ name: 'test' }))
+  })
+
+  it('includes CSRF token in refresh request when cookie exists', async () => {
+    document.cookie = 'aerodocs_csrf=my-csrf'
+    mockFetch.mockResolvedValueOnce(makeResponse({ error: 'Unauthorized' }, 401))
+    mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
+    mockFetch.mockResolvedValueOnce(makeResponse({ data: 'ok' }))
+
+    await apiFetch('/protected')
+
+    const [, refreshInit] = mockFetch.mock.calls[1]
+    expect((refreshInit!.headers as Record<string, string>)['X-CSRF-Token']).toBe('my-csrf')
   })
 })
 
@@ -183,6 +169,13 @@ describe('apiFetchWithToken', () => {
     const [, init] = mockFetch.mock.calls[0]
     const headers = init!.headers as Headers
     expect(headers.get('Authorization')).toMatch(/^Bearer .+/)
+  })
+
+  it('includes credentials same-origin', async () => {
+    mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
+    await apiFetchWithToken('/setup', 'tok')
+    const [, init] = mockFetch.mock.calls[0]
+    expect(init!.credentials).toBe('same-origin')
   })
 
   it('returns parsed JSON on success', async () => {
@@ -222,5 +215,14 @@ describe('apiFetchWithToken', () => {
     const [url, init] = mockFetch.mock.calls[0]
     expect(url).toBe('/api/auth/totp/enable')
     expect(init!.method).toBe('POST')
+  })
+
+  it('includes CSRF token when cookie exists', async () => {
+    document.cookie = 'aerodocs_csrf=csrf-for-setup'
+    mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
+    await apiFetchWithToken('/setup', 'tok')
+    const [, init] = mockFetch.mock.calls[0]
+    const headers = init!.headers as Headers
+    expect(headers.get('X-CSRF-Token')).toBe('csrf-for-setup')
   })
 })
