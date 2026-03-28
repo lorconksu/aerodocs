@@ -34,6 +34,7 @@ type AgentMessage struct {
 	//	*AgentMessage_FileReadResponse
 	//	*AgentMessage_FileDeleteResponse
 	//	*AgentMessage_UnregisterAck
+	//	*AgentMessage_CertRenewRequest
 	Payload       isAgentMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -148,6 +149,15 @@ func (x *AgentMessage) GetUnregisterAck() *UnregisterAck {
 	return nil
 }
 
+func (x *AgentMessage) GetCertRenewRequest() *CertRenewRequest {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_CertRenewRequest); ok {
+			return x.CertRenewRequest
+		}
+	}
+	return nil
+}
+
 type isAgentMessage_Payload interface {
 	isAgentMessage_Payload()
 }
@@ -185,6 +195,10 @@ type AgentMessage_UnregisterAck struct {
 	UnregisterAck *UnregisterAck `protobuf:"bytes,16,opt,name=unregister_ack,json=unregisterAck,proto3,oneof"`
 }
 
+type AgentMessage_CertRenewRequest struct {
+	CertRenewRequest *CertRenewRequest `protobuf:"bytes,17,opt,name=cert_renew_request,json=certRenewRequest,proto3,oneof"`
+}
+
 func (*AgentMessage_Heartbeat) isAgentMessage_Payload() {}
 
 func (*AgentMessage_Register) isAgentMessage_Payload() {}
@@ -201,6 +215,8 @@ func (*AgentMessage_FileDeleteResponse) isAgentMessage_Payload() {}
 
 func (*AgentMessage_UnregisterAck) isAgentMessage_Payload() {}
 
+func (*AgentMessage_CertRenewRequest) isAgentMessage_Payload() {}
+
 // Messages from Hub → Agent
 type HubMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -215,6 +231,7 @@ type HubMessage struct {
 	//	*HubMessage_LogStreamStop
 	//	*HubMessage_FileDeleteRequest
 	//	*HubMessage_UnregisterRequest
+	//	*HubMessage_CertRenewResponse
 	Payload       isHubMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -338,6 +355,15 @@ func (x *HubMessage) GetUnregisterRequest() *UnregisterRequest {
 	return nil
 }
 
+func (x *HubMessage) GetCertRenewResponse() *CertRenewResponse {
+	if x != nil {
+		if x, ok := x.Payload.(*HubMessage_CertRenewResponse); ok {
+			return x.CertRenewResponse
+		}
+	}
+	return nil
+}
+
 type isHubMessage_Payload interface {
 	isHubMessage_Payload()
 }
@@ -379,6 +405,10 @@ type HubMessage_UnregisterRequest struct {
 	UnregisterRequest *UnregisterRequest `protobuf:"bytes,16,opt,name=unregister_request,json=unregisterRequest,proto3,oneof"`
 }
 
+type HubMessage_CertRenewResponse struct {
+	CertRenewResponse *CertRenewResponse `protobuf:"bytes,17,opt,name=cert_renew_response,json=certRenewResponse,proto3,oneof"`
+}
+
 func (*HubMessage_HeartbeatAck) isHubMessage_Payload() {}
 
 func (*HubMessage_RegisterAck) isHubMessage_Payload() {}
@@ -396,6 +426,8 @@ func (*HubMessage_LogStreamStop) isHubMessage_Payload() {}
 func (*HubMessage_FileDeleteRequest) isHubMessage_Payload() {}
 
 func (*HubMessage_UnregisterRequest) isHubMessage_Payload() {}
+
+func (*HubMessage_CertRenewResponse) isHubMessage_Payload() {}
 
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -508,6 +540,7 @@ type RegisterAgent struct {
 	IpAddress     string                 `protobuf:"bytes,3,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
 	Os            string                 `protobuf:"bytes,4,opt,name=os,proto3" json:"os,omitempty"`
 	AgentVersion  string                 `protobuf:"bytes,5,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	Csr           []byte                 `protobuf:"bytes,6,opt,name=csr,proto3" json:"csr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -577,11 +610,20 @@ func (x *RegisterAgent) GetAgentVersion() string {
 	return ""
 }
 
+func (x *RegisterAgent) GetCsr() []byte {
+	if x != nil {
+		return x.Csr
+	}
+	return nil
+}
+
 type RegisterAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	ServerId      string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	ClientCert    []byte                 `protobuf:"bytes,4,opt,name=client_cert,json=clientCert,proto3" json:"client_cert,omitempty"`
+	CaCert        []byte                 `protobuf:"bytes,5,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -635,6 +677,20 @@ func (x *RegisterAck) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *RegisterAck) GetClientCert() []byte {
+	if x != nil {
+		return x.ClientCert
+	}
+	return nil
+}
+
+func (x *RegisterAck) GetCaCert() []byte {
+	if x != nil {
+		return x.CaCert
+	}
+	return nil
 }
 
 type SystemInfo struct {
@@ -1558,11 +1614,116 @@ func (x *UnregisterAck) GetError() string {
 	return ""
 }
 
+// Certificate renewal (mTLS)
+type CertRenewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Csr           []byte                 `protobuf:"bytes,1,opt,name=csr,proto3" json:"csr,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CertRenewRequest) Reset() {
+	*x = CertRenewRequest{}
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CertRenewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CertRenewRequest) ProtoMessage() {}
+
+func (x *CertRenewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CertRenewRequest.ProtoReflect.Descriptor instead.
+func (*CertRenewRequest) Descriptor() ([]byte, []int) {
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *CertRenewRequest) GetCsr() []byte {
+	if x != nil {
+		return x.Csr
+	}
+	return nil
+}
+
+type CertRenewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClientCert    []byte                 `protobuf:"bytes,1,opt,name=client_cert,json=clientCert,proto3" json:"client_cert,omitempty"`
+	CaCert        []byte                 `protobuf:"bytes,2,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CertRenewResponse) Reset() {
+	*x = CertRenewResponse{}
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CertRenewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CertRenewResponse) ProtoMessage() {}
+
+func (x *CertRenewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_aerodocs_v1_agent_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CertRenewResponse.ProtoReflect.Descriptor instead.
+func (*CertRenewResponse) Descriptor() ([]byte, []int) {
+	return file_proto_aerodocs_v1_agent_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *CertRenewResponse) GetClientCert() []byte {
+	if x != nil {
+		return x.ClientCert
+	}
+	return nil
+}
+
+func (x *CertRenewResponse) GetCaCert() []byte {
+	if x != nil {
+		return x.CaCert
+	}
+	return nil
+}
+
+func (x *CertRenewResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_proto_aerodocs_v1_agent_proto protoreflect.FileDescriptor
 
 const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/aerodocs/v1/agent.proto\x12\vaerodocs.v1\"\xd2\x04\n" +
+	"\x1dproto/aerodocs/v1/agent.proto\x12\vaerodocs.v1\"\xa1\x05\n" +
 	"\fAgentMessage\x126\n" +
 	"\theartbeat\x18\x01 \x01(\v2\x16.aerodocs.v1.HeartbeatH\x00R\theartbeat\x128\n" +
 	"\bregister\x18\x02 \x01(\v2\x1a.aerodocs.v1.RegisterAgentH\x00R\bregister\x12M\n" +
@@ -1572,8 +1733,9 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\x0ffile_upload_ack\x18\f \x01(\v2\x1a.aerodocs.v1.FileUploadAckH\x00R\rfileUploadAck\x12M\n" +
 	"\x12file_read_response\x18\r \x01(\v2\x1d.aerodocs.v1.FileReadResponseH\x00R\x10fileReadResponse\x12S\n" +
 	"\x14file_delete_response\x18\x0f \x01(\v2\x1f.aerodocs.v1.FileDeleteResponseH\x00R\x12fileDeleteResponse\x12C\n" +
-	"\x0eunregister_ack\x18\x10 \x01(\v2\x1a.aerodocs.v1.UnregisterAckH\x00R\runregisterAckB\t\n" +
-	"\apayload\"\xba\x05\n" +
+	"\x0eunregister_ack\x18\x10 \x01(\v2\x1a.aerodocs.v1.UnregisterAckH\x00R\runregisterAck\x12M\n" +
+	"\x12cert_renew_request\x18\x11 \x01(\v2\x1d.aerodocs.v1.CertRenewRequestH\x00R\x10certRenewRequestB\t\n" +
+	"\apayload\"\x8c\x06\n" +
 	"\n" +
 	"HubMessage\x12@\n" +
 	"\rheartbeat_ack\x18\x01 \x01(\v2\x19.aerodocs.v1.HeartbeatAckH\x00R\fheartbeatAck\x12=\n" +
@@ -1585,7 +1747,8 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\x11file_read_request\x18\r \x01(\v2\x1c.aerodocs.v1.FileReadRequestH\x00R\x0ffileReadRequest\x12D\n" +
 	"\x0flog_stream_stop\x18\x0e \x01(\v2\x1a.aerodocs.v1.LogStreamStopH\x00R\rlogStreamStop\x12P\n" +
 	"\x13file_delete_request\x18\x0f \x01(\v2\x1e.aerodocs.v1.FileDeleteRequestH\x00R\x11fileDeleteRequest\x12O\n" +
-	"\x12unregister_request\x18\x10 \x01(\v2\x1e.aerodocs.v1.UnregisterRequestH\x00R\x11unregisterRequestB\t\n" +
+	"\x12unregister_request\x18\x10 \x01(\v2\x1e.aerodocs.v1.UnregisterRequestH\x00R\x11unregisterRequest\x12P\n" +
+	"\x13cert_renew_response\x18\x11 \x01(\v2\x1e.aerodocs.v1.CertRenewResponseH\x00R\x11certRenewResponseB\t\n" +
 	"\apayload\"\x80\x01\n" +
 	"\tHeartbeat\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1c\n" +
@@ -1593,18 +1756,22 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\vsystem_info\x18\x03 \x01(\v2\x17.aerodocs.v1.SystemInfoR\n" +
 	"systemInfo\",\n" +
 	"\fHeartbeatAck\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\"\x95\x01\n" +
+	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\"\xa7\x01\n" +
 	"\rRegisterAgent\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x03 \x01(\tR\tipAddress\x12\x0e\n" +
 	"\x02os\x18\x04 \x01(\tR\x02os\x12#\n" +
-	"\ragent_version\x18\x05 \x01(\tR\fagentVersion\"Z\n" +
+	"\ragent_version\x18\x05 \x01(\tR\fagentVersion\x12\x10\n" +
+	"\x03csr\x18\x06 \x01(\fR\x03csr\"\x94\x01\n" +
 	"\vRegisterAck\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1b\n" +
 	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\x9e\x01\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x1f\n" +
+	"\vclient_cert\x18\x04 \x01(\fR\n" +
+	"clientCert\x12\x17\n" +
+	"\aca_cert\x18\x05 \x01(\fR\x06caCert\"\x9e\x01\n" +
 	"\n" +
 	"SystemInfo\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
@@ -1682,6 +1849,13 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"$\n" +
+	"\x10CertRenewRequest\x12\x10\n" +
+	"\x03csr\x18\x01 \x01(\fR\x03csr\"c\n" +
+	"\x11CertRenewResponse\x12\x1f\n" +
+	"\vclient_cert\x18\x01 \x01(\fR\n" +
+	"clientCert\x12\x17\n" +
+	"\aca_cert\x18\x02 \x01(\fR\x06caCert\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error2Q\n" +
 	"\fAgentService\x12A\n" +
 	"\aConnect\x12\x19.aerodocs.v1.AgentMessage\x1a\x17.aerodocs.v1.HubMessage(\x010\x01B,Z*github.com/wyiu/aerodocs/proto/aerodocs/v1b\x06proto3"
@@ -1698,7 +1872,7 @@ func file_proto_aerodocs_v1_agent_proto_rawDescGZIP() []byte {
 	return file_proto_aerodocs_v1_agent_proto_rawDescData
 }
 
-var file_proto_aerodocs_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_proto_aerodocs_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_proto_aerodocs_v1_agent_proto_goTypes = []any{
 	(*AgentMessage)(nil),       // 0: aerodocs.v1.AgentMessage
 	(*HubMessage)(nil),         // 1: aerodocs.v1.HubMessage
@@ -1721,6 +1895,8 @@ var file_proto_aerodocs_v1_agent_proto_goTypes = []any{
 	(*FileDeleteResponse)(nil), // 18: aerodocs.v1.FileDeleteResponse
 	(*UnregisterRequest)(nil),  // 19: aerodocs.v1.UnregisterRequest
 	(*UnregisterAck)(nil),      // 20: aerodocs.v1.UnregisterAck
+	(*CertRenewRequest)(nil),   // 21: aerodocs.v1.CertRenewRequest
+	(*CertRenewResponse)(nil),  // 22: aerodocs.v1.CertRenewResponse
 }
 var file_proto_aerodocs_v1_agent_proto_depIdxs = []int32{
 	2,  // 0: aerodocs.v1.AgentMessage.heartbeat:type_name -> aerodocs.v1.Heartbeat
@@ -1731,24 +1907,26 @@ var file_proto_aerodocs_v1_agent_proto_depIdxs = []int32{
 	11, // 5: aerodocs.v1.AgentMessage.file_read_response:type_name -> aerodocs.v1.FileReadResponse
 	18, // 6: aerodocs.v1.AgentMessage.file_delete_response:type_name -> aerodocs.v1.FileDeleteResponse
 	20, // 7: aerodocs.v1.AgentMessage.unregister_ack:type_name -> aerodocs.v1.UnregisterAck
-	3,  // 8: aerodocs.v1.HubMessage.heartbeat_ack:type_name -> aerodocs.v1.HeartbeatAck
-	5,  // 9: aerodocs.v1.HubMessage.register_ack:type_name -> aerodocs.v1.RegisterAck
-	7,  // 10: aerodocs.v1.HubMessage.file_list_request:type_name -> aerodocs.v1.FileListRequest
-	12, // 11: aerodocs.v1.HubMessage.log_stream_request:type_name -> aerodocs.v1.LogStreamRequest
-	15, // 12: aerodocs.v1.HubMessage.file_upload_request:type_name -> aerodocs.v1.FileUploadRequest
-	10, // 13: aerodocs.v1.HubMessage.file_read_request:type_name -> aerodocs.v1.FileReadRequest
-	14, // 14: aerodocs.v1.HubMessage.log_stream_stop:type_name -> aerodocs.v1.LogStreamStop
-	17, // 15: aerodocs.v1.HubMessage.file_delete_request:type_name -> aerodocs.v1.FileDeleteRequest
-	19, // 16: aerodocs.v1.HubMessage.unregister_request:type_name -> aerodocs.v1.UnregisterRequest
-	6,  // 17: aerodocs.v1.Heartbeat.system_info:type_name -> aerodocs.v1.SystemInfo
-	9,  // 18: aerodocs.v1.FileListResponse.files:type_name -> aerodocs.v1.FileNode
-	0,  // 19: aerodocs.v1.AgentService.Connect:input_type -> aerodocs.v1.AgentMessage
-	1,  // 20: aerodocs.v1.AgentService.Connect:output_type -> aerodocs.v1.HubMessage
-	20, // [20:21] is the sub-list for method output_type
-	19, // [19:20] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	21, // 8: aerodocs.v1.AgentMessage.cert_renew_request:type_name -> aerodocs.v1.CertRenewRequest
+	3,  // 9: aerodocs.v1.HubMessage.heartbeat_ack:type_name -> aerodocs.v1.HeartbeatAck
+	5,  // 10: aerodocs.v1.HubMessage.register_ack:type_name -> aerodocs.v1.RegisterAck
+	7,  // 11: aerodocs.v1.HubMessage.file_list_request:type_name -> aerodocs.v1.FileListRequest
+	12, // 12: aerodocs.v1.HubMessage.log_stream_request:type_name -> aerodocs.v1.LogStreamRequest
+	15, // 13: aerodocs.v1.HubMessage.file_upload_request:type_name -> aerodocs.v1.FileUploadRequest
+	10, // 14: aerodocs.v1.HubMessage.file_read_request:type_name -> aerodocs.v1.FileReadRequest
+	14, // 15: aerodocs.v1.HubMessage.log_stream_stop:type_name -> aerodocs.v1.LogStreamStop
+	17, // 16: aerodocs.v1.HubMessage.file_delete_request:type_name -> aerodocs.v1.FileDeleteRequest
+	19, // 17: aerodocs.v1.HubMessage.unregister_request:type_name -> aerodocs.v1.UnregisterRequest
+	22, // 18: aerodocs.v1.HubMessage.cert_renew_response:type_name -> aerodocs.v1.CertRenewResponse
+	6,  // 19: aerodocs.v1.Heartbeat.system_info:type_name -> aerodocs.v1.SystemInfo
+	9,  // 20: aerodocs.v1.FileListResponse.files:type_name -> aerodocs.v1.FileNode
+	0,  // 21: aerodocs.v1.AgentService.Connect:input_type -> aerodocs.v1.AgentMessage
+	1,  // 22: aerodocs.v1.AgentService.Connect:output_type -> aerodocs.v1.HubMessage
+	22, // [22:23] is the sub-list for method output_type
+	21, // [21:22] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_proto_aerodocs_v1_agent_proto_init() }
@@ -1765,6 +1943,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 		(*AgentMessage_FileReadResponse)(nil),
 		(*AgentMessage_FileDeleteResponse)(nil),
 		(*AgentMessage_UnregisterAck)(nil),
+		(*AgentMessage_CertRenewRequest)(nil),
 	}
 	file_proto_aerodocs_v1_agent_proto_msgTypes[1].OneofWrappers = []any{
 		(*HubMessage_HeartbeatAck)(nil),
@@ -1776,6 +1955,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 		(*HubMessage_LogStreamStop)(nil),
 		(*HubMessage_FileDeleteRequest)(nil),
 		(*HubMessage_UnregisterRequest)(nil),
+		(*HubMessage_CertRenewResponse)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1783,7 +1963,7 @@ func file_proto_aerodocs_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_aerodocs_v1_agent_proto_rawDesc), len(file_proto_aerodocs_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

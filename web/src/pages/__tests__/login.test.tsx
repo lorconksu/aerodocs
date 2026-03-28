@@ -18,6 +18,13 @@ vi.mock('@/lib/api', () => ({
 import { apiFetch } from '@/lib/api'
 const mockApiFetch = apiFetch as ReturnType<typeof vi.fn>
 
+function mockFetchResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -33,7 +40,8 @@ describe('LoginPage', () => {
   beforeEach(() => {
     mockApiFetch.mockReset()
     mockNavigate.mockReset()
-    // Default: system is initialized
+    vi.restoreAllMocks()
+    // Default: system is initialized (apiFetch used for /auth/status)
     mockApiFetch.mockResolvedValueOnce({ initialized: true })
   })
 
@@ -66,7 +74,9 @@ describe('LoginPage', () => {
   })
 
   it('submits form and navigates to /login/totp when totp_token returned', async () => {
-    mockApiFetch.mockResolvedValueOnce({ totp_token: 'totp-tok-123' })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockFetchResponse({ totp_token: 'totp-tok-123' })
+    )
     renderPage()
 
     fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
@@ -79,7 +89,9 @@ describe('LoginPage', () => {
   })
 
   it('navigates to /setup/totp when requires_totp_setup is true', async () => {
-    mockApiFetch.mockResolvedValueOnce({ requires_totp_setup: true, setup_token: 'setup-tok' })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockFetchResponse({ requires_totp_setup: true, setup_token: 'setup-tok' })
+    )
     renderPage()
 
     fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
@@ -92,7 +104,9 @@ describe('LoginPage', () => {
   })
 
   it('shows error message when login fails', async () => {
-    mockApiFetch.mockRejectedValueOnce(new Error('Invalid credentials'))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockFetchResponse({ error: 'Invalid credentials' }, 401)
+    )
     renderPage()
 
     fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
@@ -104,8 +118,8 @@ describe('LoginPage', () => {
     })
   })
 
-  it('shows generic error when non-Error is thrown', async () => {
-    mockApiFetch.mockRejectedValueOnce('oops')
+  it('shows generic error when fetch throws', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'))
     renderPage()
 
     fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
@@ -113,13 +127,15 @@ describe('LoginPage', () => {
     fireEvent.submit(screen.getByRole('button', { name: /sign in/i }).closest('form')!)
 
     await waitFor(() => {
-      expect(screen.getByText('Login failed')).toBeInTheDocument()
+      expect(screen.getByText('Network error')).toBeInTheDocument()
     })
   })
 
   it('shows loading state during submit', async () => {
-    let resolve!: (val: unknown) => void
-    mockApiFetch.mockReturnValueOnce(new Promise(r => { resolve = r }))
+    let resolvePromise!: (val: Response) => void
+    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(
+      new Promise(r => { resolvePromise = r })
+    )
     renderPage()
 
     fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
@@ -129,31 +145,28 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Signing in...')).toBeInTheDocument()
     })
-    resolve({ totp_token: 't' })
+    resolvePromise(mockFetchResponse({ totp_token: 't' }))
   })
 
   it('ignores status check errors', async () => {
     mockApiFetch.mockReset()
     mockApiFetch.mockRejectedValueOnce(new Error('Network error'))
     renderPage()
-    // Should not throw or crash
     await waitFor(() => {
       expect(screen.getByPlaceholderText('username')).toBeInTheDocument()
     })
   })
 
-  it('does nothing when login response has no totp_token or requires_totp_setup (line 34 false branch)', async () => {
-    // Login succeeds but no TOTP required (unusual scenario, covers the else-if false branch)
-    mockApiFetch.mockResolvedValueOnce({}) // empty response — no totp_token, no requires_totp_setup
+  it('does nothing when login response has no totp_token or requires_totp_setup', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockFetchResponse({}))
     renderPage()
 
     fireEvent.change(screen.getByPlaceholderText('username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByPlaceholderText('password'), { target: { value: 'secret' } })
     fireEvent.submit(screen.getByRole('button', { name: /sign in/i }).closest('form')!)
 
-    // No navigation should occur
     await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith('/auth/login', expect.any(Object))
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/login', expect.any(Object))
     })
     expect(mockNavigate).not.toHaveBeenCalled()
   })

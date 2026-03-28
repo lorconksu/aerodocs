@@ -25,7 +25,7 @@ export function LoginTOTPPage() {
         body: JSON.stringify({ totp_token: totpToken, code } satisfies LoginTOTPRequest),
       })
 
-      login(resp.access_token, resp.refresh_token, resp.user)
+      login(resp.user)
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')

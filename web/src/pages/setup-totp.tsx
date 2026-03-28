@@ -29,7 +29,7 @@ export function SetupTOTPPage() {
         body: JSON.stringify({ code } satisfies TOTPEnableRequest),
       })
 
-      login(resp.access_token, resp.refresh_token, resp.user)
+      login(resp.user)
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')

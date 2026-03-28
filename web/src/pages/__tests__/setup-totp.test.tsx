@@ -150,7 +150,7 @@ describe('SetupTOTPPage', () => {
     fireEvent.click(verifyBtn)
 
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith('acc', 'ref', authResponse.user)
+      expect(mockLogin).toHaveBeenCalledWith(authResponse.user)
       expect(mockNavigate).toHaveBeenCalledWith('/')
     })
   })

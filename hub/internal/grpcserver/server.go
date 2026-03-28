@@ -1,13 +1,18 @@
 package grpcserver
 
 import (
+	"crypto/ecdsa"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
+	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
@@ -29,6 +34,8 @@ type Config struct {
 	ConnMgr     *connmgr.ConnManager
 	Pending     *PendingRequests
 	LogSessions *LogSessions
+	CACert      *x509.Certificate
+	CAKey       *ecdsa.PrivateKey
 }
 
 func New(cfg Config) *Server {
@@ -47,13 +54,33 @@ func New(cfg Config) *Server {
 		hbCoalescer: hbCoalescer,
 		addr:        cfg.Addr,
 	}
-	s.grpcServer = grpc.NewServer()
+
+	var opts []grpc.ServerOption
+	if cfg.CACert != nil && cfg.CAKey != nil {
+		serverCert, serverKey, err := ca.GenerateServerCert(cfg.CACert, cfg.CAKey, "aerodocs-hub")
+		if err != nil {
+			log.Fatalf("grpc: generate server TLS cert: %v", err)
+		}
+		caPool := x509.NewCertPool()
+		caPool.AddCert(cfg.CACert)
+		tlsCfg := &tls.Config{
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+			ClientCAs:    caPool,
+			Certificates: []tls.Certificate{{Certificate: [][]byte{serverCert.Raw}, PrivateKey: serverKey, Leaf: serverCert}},
+			MinVersion:   tls.VersionTLS13,
+		}
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	}
+
+	s.grpcServer = grpc.NewServer(opts...)
 	handler := &Handler{
 		store:       cfg.Store,
 		connMgr:     cfg.ConnMgr,
 		pending:     s.pending,
 		logSessions: s.logSessions,
 		hbCoalescer: hbCoalescer,
+		caCert:      cfg.CACert,
+		caKey:       cfg.CAKey,
 	}
 	pb.RegisterAgentServiceServer(s.grpcServer, handler)
 	return s
