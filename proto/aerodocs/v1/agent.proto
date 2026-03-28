@@ -19,6 +19,7 @@ message AgentMessage {
     FileReadResponse file_read_response = 13;
     FileDeleteResponse file_delete_response = 15;
     UnregisterAck unregister_ack = 16;
+    CertRenewRequest cert_renew_request = 17;
   }
 }
 
@@ -35,6 +36,7 @@ message HubMessage {
     LogStreamStop log_stream_stop = 14;
     FileDeleteRequest file_delete_request = 15;
     UnregisterRequest unregister_request = 16;
+    CertRenewResponse cert_renew_response = 17;
   }
 }
 
@@ -54,12 +56,15 @@ message RegisterAgent {
   string ip_address = 3;
   string os = 4;
   string agent_version = 5;
+  bytes csr = 6;
 }
 
 message RegisterAck {
   bool success = 1;
   string server_id = 2;
   string error = 3;
+  bytes client_cert = 4;
+  bytes ca_cert = 5;
 }
 
 message SystemInfo {
@@ -156,5 +161,16 @@ message UnregisterRequest {
 message UnregisterAck {
   string request_id = 1;
   bool success = 2;
+  string error = 3;
+}
+
+// Certificate renewal (mTLS)
+message CertRenewRequest {
+  bytes csr = 1;
+}
+
+message CertRenewResponse {
+  bytes client_cert = 1;
+  bytes ca_cert = 2;
   string error = 3;
 }
