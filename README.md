@@ -56,6 +56,9 @@ So I built one. AeroDocs is a single Go binary that embeds its own frontend and 
 - **Role-Based Access** - Admin and Viewer roles with per-server, per-path permissions enforced at both Hub and Agent layers
 - **Immutable Audit Log** - Every action permanently recorded with 23 event types - who did what, when, and from where
 - **Break-Glass Recovery** - Emergency TOTP reset via direct command-line access on the Hub server
+- **gRPC mTLS** - Hub-issued 12-hour ECDSA P-256 client certificates for agent authentication with automatic in-stream renewal
+- **Cookie Auth** - httpOnly/SameSite=Strict cookies with double-submit CSRF pattern (Bearer token fallback preserved)
+- **Client-Side QR** - TOTP QR codes generated locally in-browser, no external service dependencies
 
 ## Architecture
 
@@ -83,7 +86,7 @@ The Hub starts on port 8081 (HTTP) and 9090 (gRPC). Open `http://localhost:8081`
 
 To pin a specific version instead of `latest`:
 ```yaml
-image: yiucloud/aerodocs:1.0.0
+image: yiucloud/aerodocs:1.1.3
 ```
 
 For building from source and development setup, see the [Development Guide](docs/engineering/development.md).
@@ -101,8 +104,8 @@ For building from source and development setup, see the [Development Guide](docs
 |-----------|-----------|
 | Language | Go 1.26+ |
 | Database | SQLite (via `modernc.org/sqlite`, pure Go) |
-| Auth | JWT (access/refresh/setup/totp tokens) + TOTP |
-| Hub↔Agent | Protocol Buffers / gRPC (bidirectional stream) |
+| Auth | JWT (access/refresh/setup/totp tokens) + TOTP + httpOnly cookies |
+| Hub↔Agent | Protocol Buffers / gRPC (bidirectional stream + mTLS) |
 | Hub↔Browser | REST + SSE (Server-Sent Events) |
 | Reverse Proxy | Traefik (TLS termination, HTTP + gRPC routing) |
 
