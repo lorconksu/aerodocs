@@ -206,4 +206,67 @@ describe('PreferencesTab', () => {
       expect(screen.getByText('No notification preferences available.')).toBeInTheDocument()
     })
   })
+
+  it('toggling a disabled checkbox enables it', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByText('Agent Online')).toBeInTheDocument()
+    })
+
+    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+    // Find an unchecked checkbox (agent.online or user.created)
+    const uncheckedCheckbox = checkboxes.find(c => !c.checked)
+    expect(uncheckedCheckbox).toBeTruthy()
+
+    fireEvent.click(uncheckedCheckbox!)
+
+    await waitFor(() => {
+      expect(uncheckedCheckbox!.checked).toBe(true)
+    })
+  })
+
+  it('checkboxes have aria-label attributes', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: 'Agent Offline' })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: 'Agent Online' })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: 'User Login' })).toBeInTheDocument()
+    })
+  })
+
+  it('categories are sorted alphabetically', async () => {
+    renderTab()
+    await waitFor(() => {
+      const categoryHeadings = screen.getAllByRole('heading', { level: 4 })
+      const categoryNames = categoryHeadings.map(h => h.textContent)
+      const sorted = [...categoryNames].sort((a, b) => (a ?? '').localeCompare(b ?? ''))
+      expect(categoryNames).toEqual(sorted)
+    })
+  })
+
+  it('save button is not disabled when not pending', async () => {
+    renderTab()
+    await waitFor(() => {
+      const saveButton = screen.getByRole('button', { name: 'Save Preferences' })
+      expect(saveButton).not.toBeDisabled()
+    })
+  })
+
+  it('shows generic error message when save fails with non-Error', async () => {
+    mockApiFetch.mockReset()
+    mockApiFetch
+      .mockResolvedValueOnce({ preferences: mockPreferences })
+      .mockRejectedValueOnce('unexpected string error')
+
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save Preferences' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Preferences' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to save preferences')).toBeInTheDocument()
+    })
+  })
 })

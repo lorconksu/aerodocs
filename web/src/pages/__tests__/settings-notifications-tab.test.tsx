@@ -272,4 +272,113 @@ describe('NotificationsTab', () => {
     const loadingEls = screen.getAllByText('Loading...')
     expect(loadingEls.length).toBeGreaterThan(0)
   })
+
+  it('updates host input when user types', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('smtp.example.com')).toBeInTheDocument()
+    })
+
+    const hostInput = screen.getByPlaceholderText('smtp.example.com') as HTMLInputElement
+    fireEvent.change(hostInput, { target: { value: 'mail.myserver.com' } })
+    expect(hostInput.value).toBe('mail.myserver.com')
+  })
+
+  it('updates port input when user types', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('587')).toBeInTheDocument()
+    })
+
+    const portInput = screen.getByPlaceholderText('587') as HTMLInputElement
+    fireEvent.change(portInput, { target: { value: '465' } })
+    expect(portInput.value).toBe('465')
+  })
+
+  it('updates username input when user types', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('user@example.com')).toBeInTheDocument()
+    })
+
+    const usernameInput = screen.getByPlaceholderText('user@example.com') as HTMLInputElement
+    fireEvent.change(usernameInput, { target: { value: 'admin@myserver.com' } })
+    expect(usernameInput.value).toBe('admin@myserver.com')
+  })
+
+  it('updates password input when user types', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument()
+    })
+
+    const passwordInput = screen.getByPlaceholderText('••••••••') as HTMLInputElement
+    fireEvent.change(passwordInput, { target: { value: 'newpassword123' } })
+    expect(passwordInput.value).toBe('newpassword123')
+  })
+
+  it('updates from address input when user types', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('AeroDocs <noreply@example.com>')).toBeInTheDocument()
+    })
+
+    const fromInput = screen.getByPlaceholderText('AeroDocs <noreply@example.com>') as HTMLInputElement
+    fireEvent.change(fromInput, { target: { value: 'MyApp <no-reply@myapp.com>' } })
+    expect(fromInput.value).toBe('MyApp <no-reply@myapp.com>')
+  })
+
+  it('shows save error when SMTP save fails', async () => {
+    mockApiFetch.mockReset()
+    mockApiFetch
+      .mockResolvedValueOnce(mockSMTPConfig)
+      .mockResolvedValueOnce({ entries: [], total: 0 })
+      .mockRejectedValueOnce(new Error('SMTP save failed'))
+
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save SMTP Settings' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save SMTP Settings' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('SMTP save failed')).toBeInTheDocument()
+    })
+  })
+
+  it('Send Test button is disabled when recipient is empty', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send Test' })).toBeInTheDocument()
+    })
+
+    const sendButton = screen.getByRole('button', { name: 'Send Test' })
+    expect(sendButton).toBeDisabled()
+  })
+
+  it('Send Test button is enabled after typing a recipient', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('recipient@example.com')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('recipient@example.com'), {
+      target: { value: 'test@example.com' },
+    })
+
+    const sendButton = screen.getByRole('button', { name: 'Send Test' })
+    expect(sendButton).not.toBeDisabled()
+  })
+
+  it('labels have correct htmlFor associations', async () => {
+    renderTab()
+    await waitFor(() => {
+      expect(screen.getByLabelText('Host')).toBeInTheDocument()
+      expect(screen.getByLabelText('Port')).toBeInTheDocument()
+      expect(screen.getByLabelText('Username')).toBeInTheDocument()
+      expect(screen.getByLabelText('Password')).toBeInTheDocument()
+      expect(screen.getByLabelText('From Address')).toBeInTheDocument()
+    })
+  })
 })

@@ -125,8 +125,9 @@ export function NotificationsTab() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-xs text-text-muted mb-1">Host</label>
+                  <label htmlFor="smtp-host" className="block text-xs text-text-muted mb-1">Host</label>
                   <input
+                    id="smtp-host"
                     type="text"
                     placeholder="smtp.example.com"
                     value={form.host}
@@ -135,20 +136,22 @@ export function NotificationsTab() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-text-muted mb-1">Port</label>
+                  <label htmlFor="smtp-port" className="block text-xs text-text-muted mb-1">Port</label>
                   <input
+                    id="smtp-port"
                     type="number"
                     placeholder="587"
                     value={form.port}
-                    onChange={e => handleFormChange('port', parseInt(e.target.value, 10) || 0)}
+                    onChange={e => handleFormChange('port', Number.parseInt(e.target.value, 10) || 0)}
                     className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted mb-1">Username</label>
+                <label htmlFor="smtp-username" className="block text-xs text-text-muted mb-1">Username</label>
                 <input
+                  id="smtp-username"
                   type="text"
                   placeholder="user@example.com"
                   value={form.username}
@@ -158,8 +161,9 @@ export function NotificationsTab() {
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted mb-1">Password</label>
+                <label htmlFor="smtp-password" className="block text-xs text-text-muted mb-1">Password</label>
                 <input
+                  id="smtp-password"
                   type="password"
                   placeholder="••••••••"
                   value={form.password}
@@ -169,8 +173,9 @@ export function NotificationsTab() {
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted mb-1">From Address</label>
+                <label htmlFor="smtp-from" className="block text-xs text-text-muted mb-1">From Address</label>
                 <input
+                  id="smtp-from"
                   type="text"
                   placeholder="AeroDocs <noreply@example.com>"
                   value={form.from}

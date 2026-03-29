@@ -51,7 +51,7 @@ export function PreferencesTab() {
     return acc
   }, {})
 
-  const categories = Object.keys(grouped).sort()
+  const categories = Object.keys(grouped).sort((a, b) => a.localeCompare(b))
 
   return (
     <div className="max-w-lg space-y-6">
@@ -83,6 +83,7 @@ export function PreferencesTab() {
                 </div>
                 <input
                   type="checkbox"
+                  aria-label={pref.label}
                   checked={pref.enabled}
                   onChange={e => handleToggle(pref.event_type, e.target.checked)}
                   className="w-4 h-4 rounded border-border accent-accent"
