@@ -40,7 +40,7 @@ export async function apiFetch<T>(
         credentials: 'same-origin',
       })
     } else {
-      window.location.href = '/login'
+      globalThis.location.href = '/login'
       throw new Error('Session expired')
     }
   }
