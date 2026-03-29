@@ -78,15 +78,10 @@ func TestRegisterFirstUser(t *testing.T) {
 func TestRegisterBlocked_AfterFirstUser(t *testing.T) {
 	s := testServer(t)
 
-	// Register first user
-	body, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
-	})
-	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-	s.routes().ServeHTTP(rec, req)
+	// Register first user and complete full setup (including TOTP)
+	_ = registerAndGetAdminToken(t, s)
 
-	// Try to register again
+	// Try to register again — should be blocked
 	body2, _ := json.Marshal(model.RegisterRequest{
 		Username: "hacker", Email: "hacker@test.com", Password: "MyP@ssw0rd!234",
 	})
@@ -899,13 +894,8 @@ func TestRegister_WeakPassword(t *testing.T) {
 func TestAuthStatus_Initialized(t *testing.T) {
 	s := testServer(t)
 
-	// Register a user first
-	body, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
-	})
-	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-	s.routes().ServeHTTP(rec, req)
+	// Complete full setup (register + TOTP)
+	_ = registerAndGetAdminToken(t, s)
 
 	// Check status
 	statusReq := httptest.NewRequest("GET", "/api/auth/status", nil)
@@ -919,7 +909,7 @@ func TestAuthStatus_Initialized(t *testing.T) {
 	var resp model.AuthStatusResponse
 	json.NewDecoder(statusRec.Body).Decode(&resp)
 	if !resp.Initialized {
-		t.Fatal("expected initialized=true after registration")
+		t.Fatal("expected initialized=true after full setup")
 	}
 }
 
