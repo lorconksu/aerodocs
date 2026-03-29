@@ -134,6 +134,48 @@ func TestNotifier_SendsWhenConfigured(t *testing.T) {
 	}
 }
 
+// TestNotifier_SendFailure verifies that when SMTP send fails, a "failed" log entry is created.
+func TestNotifier_SendFailure(t *testing.T) {
+	st := testStoreAndUser(t)
+
+	// Configure SMTP with an unreachable port to force send failure
+	smtpCfgs := []struct{ k, v string }{
+		{"smtp_host", "127.0.0.1"},
+		{"smtp_port", "1"}, // port 1 is unreachable
+		{"smtp_from", "test@test.com"},
+		{"smtp_enabled", "true"},
+		{"smtp_tls", "false"},
+	}
+	for _, c := range smtpCfgs {
+		if err := st.SetConfig(c.k, c.v); err != nil {
+			t.Fatalf("SetConfig %s: %v", c.k, err)
+		}
+	}
+
+	n := New(st)
+	defer n.Close()
+
+	n.Notify(model.NotifyAgentOffline, map[string]string{
+		"server_name": "web-01",
+		"server_id":   "srv-1",
+		"timestamp":   "2026-03-29 12:00:00 UTC",
+	})
+
+	// Wait for worker to process and log the failure
+	time.Sleep(500 * time.Millisecond)
+
+	entries, total, err := st.ListNotificationLog(50, 0)
+	if err != nil {
+		t.Fatalf("ListNotificationLog: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected 1 log entry, got %d", total)
+	}
+	if entries[0].Status != "failed" {
+		t.Fatalf("expected 'failed' status, got %q", entries[0].Status)
+	}
+}
+
 // TestNotifier_Close verifies that Close() doesn't hang or deadlock.
 func TestNotifier_Close(t *testing.T) {
 	st := testStoreAndUser(t)

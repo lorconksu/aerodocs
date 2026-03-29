@@ -204,6 +204,81 @@ func generateSelfSignedCert(t *testing.T) tls.Certificate {
 	return cert
 }
 
+// TestSendEmail_WithAuth verifies that PlainAuth credentials are used when username and password are set.
+func TestSendEmail_WithAuth(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start mock server: %v", err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	// Mock server that handles AUTH LOGIN/PLAIN exchange
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			received <- ""
+			return
+		}
+		defer conn.Close()
+		fmt.Fprintf(conn, "220 localhost ESMTP\r\n")
+		buf := make([]byte, 4096)
+		var allData string
+		for {
+			n, connErr := conn.Read(buf)
+			if connErr != nil {
+				break
+			}
+			data := string(buf[:n])
+			allData += data
+			switch {
+			case strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO"):
+				fmt.Fprintf(conn, "250-localhost\r\n250 AUTH PLAIN LOGIN\r\n")
+			case strings.HasPrefix(data, "AUTH"):
+				fmt.Fprintf(conn, "235 Authentication successful\r\n")
+			case strings.HasPrefix(data, "MAIL FROM"):
+				fmt.Fprintf(conn, "250 OK\r\n")
+			case strings.HasPrefix(data, "RCPT TO"):
+				fmt.Fprintf(conn, "250 OK\r\n")
+			case strings.HasPrefix(data, "DATA"):
+				fmt.Fprintf(conn, "354 Send data\r\n")
+			case strings.Contains(data, "\r\n.\r\n"):
+				fmt.Fprintf(conn, "250 OK\r\n")
+			case strings.HasPrefix(data, "QUIT"):
+				fmt.Fprintf(conn, "221 Bye\r\n")
+				received <- allData
+				return
+			}
+		}
+		received <- allData
+	}()
+
+	addr := ln.Addr().(*net.TCPAddr)
+	cfg := model.SMTPConfig{
+		Host:     "127.0.0.1",
+		Port:     addr.Port,
+		Username: "user@example.com",
+		Password: "secretpass",
+		From:     "sender@example.com",
+		Enabled:  true,
+		TLS:      false,
+	}
+
+	err = SendEmail(cfg, "recipient@example.com", "Auth Test", "Testing auth path.")
+	if err != nil {
+		t.Fatalf("SendEmail with auth returned error: %v", err)
+	}
+
+	select {
+	case data := <-received:
+		if !strings.Contains(data, "AUTH") {
+			t.Errorf("expected AUTH in SMTP exchange, got: %q", data)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("timeout waiting for mock SMTP server")
+	}
+}
+
 // TestSendEmail_TLS_DialError verifies that sendTLS returns a wrapped error when the TLS dial fails.
 func TestSendEmail_TLS_DialError(t *testing.T) {
 	cfg := model.SMTPConfig{

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -32,49 +33,21 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	set := func(key, value string) error {
-		return s.store.SetConfig(key, value)
+	configs := map[string]string{
+		"smtp_host":     req.Host,
+		"smtp_port":     strconv.Itoa(req.Port),
+		"smtp_username": req.Username,
+		"smtp_from":     req.From,
+		"smtp_tls":      fmt.Sprintf("%t", req.TLS),
+		"smtp_enabled":  fmt.Sprintf("%t", req.Enabled),
+	}
+	if req.Password != "" && req.Password != redactedValue {
+		configs["smtp_password"] = req.Password
 	}
 
-	if err := set("smtp_host", req.Host); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save smtp_host")
-		return
-	}
-	if err := set("smtp_port", strconv.Itoa(req.Port)); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save smtp_port")
-		return
-	}
-	if err := set("smtp_username", req.Username); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save smtp_username")
-		return
-	}
-	if err := set("smtp_from", req.From); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save smtp_from")
-		return
-	}
-
-	tlsVal := "false"
-	if req.TLS {
-		tlsVal = "true"
-	}
-	if err := set("smtp_tls", tlsVal); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save smtp_tls")
-		return
-	}
-
-	enabledVal := "false"
-	if req.Enabled {
-		enabledVal = "true"
-	}
-	if err := set("smtp_enabled", enabledVal); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save smtp_enabled")
-		return
-	}
-
-	// Skip password update if it's the placeholder or empty
-	if req.Password != redactedValue && req.Password != "" {
-		if err := set("smtp_password", req.Password); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to save smtp_password")
+	for key, value := range configs {
+		if err := s.store.SetConfig(key, value); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save %s", key))
 			return
 		}
 	}
