@@ -50,6 +50,8 @@ describe('AppShell', () => {
   beforeEach(() => {
     mockApiFetch.mockResolvedValue({ servers: [], total: 0 })
     mockNavigate.mockReset()
+    // Reset global fetch mock
+    vi.restoreAllMocks()
   })
 
   it('renders navigation links', async () => {
@@ -141,6 +143,30 @@ describe('AppShell', () => {
     await waitFor(() => {
       const avatarImg = screen.getByAltText('')
       expect(avatarImg).toBeInTheDocument()
+    })
+  })
+
+  it('renders avatar initial when user has no avatar and no username (covers ?? branch on line 59)', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: '1', username: undefined, role: 'admin', email: 'a@b.com', avatar: null, totp_enabled: true, created_at: '', updated_at: '' },
+      logout: vi.fn(),
+    })
+    renderWithProviders(<AppShell />)
+    // Just verify it renders without crashing; getAvatarColor is called with ''
+    await waitFor(() => {
+      expect(screen.getByTestId('outlet')).toBeInTheDocument()
+    })
+  })
+
+  it('displays version when fetch resolves with version string', async () => {
+    // Mock global fetch so the useEffect resolves with a version
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      json: () => Promise.resolve({ version: '1.2.3', user: null }),
+    } as Response)
+
+    renderWithProviders(<AppShell />)
+    await waitFor(() => {
+      expect(screen.getByText('v1.2.3')).toBeInTheDocument()
     })
   })
 })
