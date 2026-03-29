@@ -21,7 +21,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     // Use raw fetch (not apiFetch) to avoid the 401 → redirect-to-login loop
     // on initial load when no session exists.
     fetch('/api/auth/me', { credentials: 'same-origin' })
-      .then(res => res.ok ? res.json() as Promise<User> : Promise.reject())
+      .then(res => res.ok ? res.json() as Promise<User> : Promise.reject(new Error('not authenticated')))
       .then(setUser)
       .catch(() => {
         // Not authenticated or cookie expired — no cleanup needed
