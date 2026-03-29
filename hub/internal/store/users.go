@@ -53,11 +53,11 @@ func (s *Store) InitializedUserCount() (int, error) {
 func (s *Store) DeleteIncompleteUsers() error {
 	// Delete audit logs first (FK without CASCADE)
 	_, err := s.db.Exec(`DELETE FROM audit_logs WHERE user_id IN
-		(SELECT id FROM users WHERE totp_enabled = 0 AND totp_secret IS NULL)`)
+		(SELECT id FROM users WHERE totp_enabled = 0)`)
 	if err != nil {
 		return fmt.Errorf("delete incomplete user audit logs: %w", err)
 	}
-	_, err = s.db.Exec("DELETE FROM users WHERE totp_enabled = 0 AND totp_secret IS NULL")
+	_, err = s.db.Exec("DELETE FROM users WHERE totp_enabled = 0")
 	if err != nil {
 		return fmt.Errorf("delete incomplete users: %w", err)
 	}
