@@ -16,7 +16,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to check user count")
 		return
 	}
-	respondJSON(w, http.StatusOK, model.AuthStatusResponse{Initialized: count > 0})
+	respondJSON(w, http.StatusOK, model.AuthStatusResponse{Initialized: count > 0, Version: Version})
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {

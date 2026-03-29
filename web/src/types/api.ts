@@ -13,6 +13,7 @@ export interface User {
 
 export interface AuthStatusResponse {
   initialized: boolean
+  version: string
 }
 
 export interface RegisterRequest {

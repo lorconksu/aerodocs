@@ -22,7 +22,8 @@ COPY proto/ proto/
 # Build Hub (needs CGO for SQLite)
 COPY hub/ hub/
 COPY --from=frontend /app/web/dist hub/web/dist
-RUN cd hub && CGO_ENABLED=1 go build -ldflags="-s -w" -o /out/aerodocs ./cmd/aerodocs/
+ARG VERSION=dev
+RUN cd hub && CGO_ENABLED=1 go build -ldflags="-s -w -X github.com/wyiu/aerodocs/hub/internal/server.Version=${VERSION}" -o /out/aerodocs ./cmd/aerodocs/
 
 # Build Agent (pure Go, cross-compile for linux/amd64 and linux/arm64)
 COPY agent/ agent/

@@ -14,6 +14,9 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+// Version is set at build time via -ldflags.
+var Version = "dev"
+
 type Server struct {
 	httpServer  *http.Server
 	store       *store.Store
