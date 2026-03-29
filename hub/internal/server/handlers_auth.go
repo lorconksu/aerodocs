@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	count, err := s.store.UserCount()
+	count, err := s.store.InitializedUserCount()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to check user count")
 		return
@@ -20,14 +20,20 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	// Only allowed when no users exist
-	count, err := s.store.UserCount()
+	// Only allowed when no fully-initialized users exist
+	count, err := s.store.InitializedUserCount()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to check user count")
 		return
 	}
 	if count > 0 {
 		respondError(w, http.StatusForbidden, "registration disabled — use admin to create users")
+		return
+	}
+
+	// Clean up any users from incomplete setup attempts
+	if err := s.store.DeleteIncompleteUsers(); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to clean up incomplete setup")
 		return
 	}
 

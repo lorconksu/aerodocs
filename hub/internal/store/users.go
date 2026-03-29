@@ -40,6 +40,30 @@ func (s *Store) UserCount() (int, error) {
 	return count, err
 }
 
+// InitializedUserCount returns the number of users that have completed
+// full setup (password + TOTP enabled).
+func (s *Store) InitializedUserCount() (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM users WHERE totp_enabled = 1").Scan(&count)
+	return count, err
+}
+
+// DeleteIncompleteUsers removes users that registered but never finished
+// TOTP setup, so the initial setup flow can be retried.
+func (s *Store) DeleteIncompleteUsers() error {
+	// Delete audit logs first (FK without CASCADE)
+	_, err := s.db.Exec(`DELETE FROM audit_logs WHERE user_id IN
+		(SELECT id FROM users WHERE totp_enabled = 0 AND totp_secret IS NULL)`)
+	if err != nil {
+		return fmt.Errorf("delete incomplete user audit logs: %w", err)
+	}
+	_, err = s.db.Exec("DELETE FROM users WHERE totp_enabled = 0 AND totp_secret IS NULL")
+	if err != nil {
+		return fmt.Errorf("delete incomplete users: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) UpdateUserTOTP(userID string, secret *string, enabled bool) error {
 	_, err := s.db.Exec(
 		"UPDATE users SET totp_secret = ?, totp_enabled = ?, updated_at = datetime('now') WHERE id = ?",

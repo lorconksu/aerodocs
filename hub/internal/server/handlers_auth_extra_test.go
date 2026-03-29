@@ -36,7 +36,7 @@ func TestHandleAuthStatus_AfterFirstUserBeforeTOTP(t *testing.T) {
 	regRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(regRec, regReq)
 
-	// Check status - user exists so initialized should be true
+	// Check status - user exists but TOTP not enabled, so initialized should be false
 	statusReq := httptest.NewRequest("GET", "/api/auth/status", nil)
 	statusRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(statusRec, statusReq)
@@ -47,8 +47,36 @@ func TestHandleAuthStatus_AfterFirstUserBeforeTOTP(t *testing.T) {
 
 	var resp model.AuthStatusResponse
 	json.NewDecoder(statusRec.Body).Decode(&resp)
-	if !resp.Initialized {
-		t.Fatal("expected initialized=true after registration")
+	if resp.Initialized {
+		t.Fatal("expected initialized=false before TOTP setup completes")
+	}
+}
+
+// TestRegisterAllowed_AfterIncompleteSetup verifies that if a user registered
+// but never completed TOTP, the setup flow can be restarted.
+func TestRegisterAllowed_AfterIncompleteSetup(t *testing.T) {
+	s := testServer(t)
+
+	// Register a user but don't complete TOTP setup
+	regBody, _ := json.Marshal(model.RegisterRequest{
+		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
+	})
+	regReq := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(regBody))
+	regRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(regRec, regReq)
+	if regRec.Code != http.StatusOK {
+		t.Fatalf("first register: expected 200, got %d", regRec.Code)
+	}
+
+	// Re-register — incomplete user should be cleaned up and new registration allowed
+	regBody2, _ := json.Marshal(model.RegisterRequest{
+		Username: "admin2", Email: "admin2@test.com", Password: "MyP@ssw0rd!234",
+	})
+	regReq2 := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(regBody2))
+	regRec2 := httptest.NewRecorder()
+	s.routes().ServeHTTP(regRec2, regReq2)
+	if regRec2.Code != http.StatusOK {
+		t.Fatalf("re-register after incomplete setup: expected 200, got %d: %s", regRec2.Code, regRec2.Body.String())
 	}
 }
 
