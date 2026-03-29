@@ -8,16 +8,16 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/notify"
 )
 
-const maskedPassword = "********"
+const redactedValue = "********"
 
 // handleGetSMTPConfig returns the current SMTP configuration.
-// Password is write-only: returns maskedPassword if set, empty string if not.
+// Password is write-only: returns redactedValue if set, empty string if not.
 func (s *Server) handleGetSMTPConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := notify.LoadSMTPConfig(s.store)
 
 	// Mask the password
 	if cfg.Password != "" {
-		cfg.Password = maskedPassword
+		cfg.Password = redactedValue
 	}
 
 	respondJSON(w, http.StatusOK, cfg)
@@ -72,7 +72,7 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Skip password update if it's the placeholder or empty
-	if req.Password != maskedPassword && req.Password != "" {
+	if req.Password != redactedValue && req.Password != "" {
 		if err := set("smtp_password", req.Password); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to save smtp_password")
 			return

@@ -1,10 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
@@ -299,5 +304,300 @@ func TestSMTPConfig_NonAdminForbidden(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s %s: expected 403 for viewer, got %d", ep.method, ep.path, rec.Code)
 		}
+	}
+}
+
+// TestTestSMTP_EmptyRecipient verifies that sending a test email without a recipient returns 400.
+func TestTestSMTP_EmptyRecipient(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	body := mustJSON(t, model.SMTPTestRequest{Recipient: ""})
+	req := httptest.NewRequest("POST", "/api/settings/smtp/test", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty recipient, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestTestSMTP_InvalidBody verifies that a malformed request body returns 400.
+func TestTestSMTP_InvalidBody(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	req := httptest.NewRequest("POST", "/api/settings/smtp/test", bytes.NewBufferString("not-json"))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid body, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestTestSMTP_SMTPDialError verifies that a connection failure to the SMTP server returns 502.
+func TestTestSMTP_SMTPDialError(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	// Configure SMTP with an unreachable host/port so SendEmail fails
+	putBody := mustJSON(t, model.SMTPConfig{
+		Host:    "127.0.0.1",
+		Port:    19999, // unlikely to be listening
+		From:    "noreply@example.com",
+		Enabled: true,
+	})
+	putReq := httptest.NewRequest("PUT", "/api/settings/smtp", putBody)
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	s.routes().ServeHTTP(httptest.NewRecorder(), putReq)
+
+	body := mustJSON(t, model.SMTPTestRequest{Recipient: "admin@example.com"})
+	req := httptest.NewRequest("POST", "/api/settings/smtp/test", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 when SMTP unreachable, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// mockSMTPServerForTest runs a minimal SMTP server and signals when a message is received.
+func mockSMTPServerForTest(t *testing.T, ln net.Listener, done chan<- struct{}) {
+	t.Helper()
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, "220 localhost ESMTP\r\n")
+	buf := make([]byte, 4096)
+	var allData string
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			break
+		}
+		data := string(buf[:n])
+		allData += data
+		if strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO") {
+			fmt.Fprintf(conn, "250-localhost\r\n250 OK\r\n")
+		} else if strings.HasPrefix(data, "MAIL FROM") {
+			fmt.Fprintf(conn, "250 OK\r\n")
+		} else if strings.HasPrefix(data, "RCPT TO") {
+			fmt.Fprintf(conn, "250 OK\r\n")
+		} else if strings.HasPrefix(data, "DATA") {
+			fmt.Fprintf(conn, "354 Send data\r\n")
+		} else if strings.Contains(data, "\r\n.\r\n") {
+			fmt.Fprintf(conn, "250 OK\r\n")
+		} else if strings.HasPrefix(data, "QUIT") {
+			fmt.Fprintf(conn, "221 Bye\r\n")
+			break
+		}
+	}
+	close(done)
+}
+
+// TestTestSMTP_Success verifies that a valid SMTP config and recipient returns 200.
+func TestTestSMTP_Success(t *testing.T) {
+	// Start a mock SMTP server
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("start mock smtp: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go mockSMTPServerForTest(t, ln, done)
+
+	addr := ln.Addr().(*net.TCPAddr)
+
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	// Configure SMTP pointing at mock server
+	putBody := mustJSON(t, model.SMTPConfig{
+		Host:    "127.0.0.1",
+		Port:    addr.Port,
+		From:    "noreply@aerodocs.local",
+		Enabled: true,
+	})
+	putReq := httptest.NewRequest("PUT", "/api/settings/smtp", putBody)
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	s.routes().ServeHTTP(httptest.NewRecorder(), putReq)
+
+	// Send test email
+	body := mustJSON(t, model.SMTPTestRequest{Recipient: "admin@example.com"})
+	req := httptest.NewRequest("POST", "/api/settings/smtp/test", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for successful test email, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["status"] != "sent" {
+		t.Errorf("expected status=sent, got %q", resp["status"])
+	}
+
+	// Wait for mock server to receive the message
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Error("timeout waiting for mock SMTP to receive message")
+	}
+}
+
+// getAdminUserID retrieves the admin user's ID directly from the store.
+func getAdminUserID(t *testing.T, s *Server) string {
+	t.Helper()
+	users, err := s.store.ListUsers()
+	if err != nil {
+		t.Fatalf("list users: %v", err)
+	}
+	if len(users) == 0 {
+		t.Fatal("no users found")
+	}
+	return users[0].ID
+}
+
+// TestListNotificationLog_WithEntries verifies that log entries are returned after being written.
+func TestListNotificationLog_WithEntries(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+	adminID := getAdminUserID(t, s)
+
+	// Insert notification log entries using the real admin user ID
+	errMsg := "dial error"
+	if err := s.store.LogNotification("test-id-1", adminID, model.NotifyAgentOnline, "Agent online", "failed", &errMsg); err != nil {
+		t.Fatalf("log notification: %v", err)
+	}
+	if err := s.store.LogNotification("test-id-2", adminID, model.NotifyAgentOffline, "Agent offline", "sent", nil); err != nil {
+		t.Fatalf("log notification: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/api/notifications/log", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	total := int(resp["total"].(float64))
+	if total != 2 {
+		t.Errorf("expected total=2, got %d", total)
+	}
+
+	entries := resp["entries"].([]interface{})
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(entries))
+	}
+}
+
+// TestNotificationLog_Pagination verifies limit/offset parameters.
+func TestNotificationLog_Pagination(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+	adminID := getAdminUserID(t, s)
+
+	// Insert 3 entries using the real admin user ID
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("log-id-%d", i)
+		if err := s.store.LogNotification(id, adminID, model.NotifyAgentOnline, "subj", "sent", nil); err != nil {
+			t.Fatalf("log notification: %v", err)
+		}
+	}
+
+	// Fetch with limit=2, offset=1
+	req := httptest.NewRequest("GET", "/api/notifications/log?limit=2&offset=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	total := int(resp["total"].(float64))
+	if total != 3 {
+		t.Errorf("expected total=3, got %d", total)
+	}
+
+	entries := resp["entries"].([]interface{})
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries with limit=2, got %d", len(entries))
+	}
+}
+
+// TestGetNotificationPreferences_Viewer verifies that a viewer can read their own preferences.
+func TestGetNotificationPreferences_Viewer(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+	viewerToken := createViewerAndGetToken(t, s, adminToken)
+
+	req := httptest.NewRequest("GET", "/api/notifications/preferences", nil)
+	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for viewer preferences, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if _, ok := resp["preferences"]; !ok {
+		t.Fatal("expected 'preferences' key in response")
+	}
+}
+
+// TestUpdateNotificationPreferences_Viewer verifies that a viewer can update their own preferences.
+func TestUpdateNotificationPreferences_Viewer(t *testing.T) {
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+	viewerToken := createViewerAndGetToken(t, s, adminToken)
+
+	updateBody := mustJSON(t, model.NotificationPreferencesRequest{
+		Preferences: []model.NotificationPrefUpdate{
+			{EventType: model.NotifyAgentOnline, Enabled: false},
+		},
+	})
+	req := httptest.NewRequest("PUT", "/api/notifications/preferences", updateBody)
+	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for viewer update preferences, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUpdateNotificationPreferences_InvalidBody verifies that a malformed body returns 400.
+func TestUpdateNotificationPreferences_InvalidBody(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	req := httptest.NewRequest("PUT", "/api/notifications/preferences", bytes.NewBufferString("not-json"))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid body, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

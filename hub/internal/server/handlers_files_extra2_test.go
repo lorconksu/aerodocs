@@ -7,6 +7,7 @@ import (
 
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -61,6 +62,9 @@ func testServerWithFileErrorAgent(t *testing.T) (s *Server, adminToken, serverID
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
 
+	notifier := notify.New(st)
+	t.Cleanup(func() { notifier.Close() })
+
 	s = New(Config{
 		Addr:        ":0",
 		Store:       st,
@@ -69,6 +73,7 @@ func testServerWithFileErrorAgent(t *testing.T) (s *Server, adminToken, serverID
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		Notifier:    notifier,
 	})
 
 	adminToken = registerAndGetAdminToken(t, s)

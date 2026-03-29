@@ -1,7 +1,15 @@
 package notify
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"testing"
@@ -157,5 +165,142 @@ func TestBuildMessage(t *testing.T) {
 	}
 	if !strings.Contains(msg, "Test body content.") {
 		t.Errorf("missing body content in message: %q", msg)
+	}
+}
+
+// generateSelfSignedCert generates an in-memory self-signed TLS certificate for testing.
+func generateSelfSignedCert(t *testing.T) tls.Certificate {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "127.0.0.1"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+
+	keyDER, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("load key pair: %v", err)
+	}
+	return cert
+}
+
+// TestSendEmail_TLS_DialError verifies that sendTLS returns a wrapped error when the TLS dial fails.
+func TestSendEmail_TLS_DialError(t *testing.T) {
+	cfg := model.SMTPConfig{
+		Host:    "127.0.0.1",
+		Port:    19998, // nothing listening here
+		From:    "sender@example.com",
+		Enabled: true,
+		TLS:     true,
+	}
+	err := SendEmail(cfg, "to@example.com", "Test Subject", "Test body.")
+	if err == nil {
+		t.Fatal("expected error when TLS dial fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "smtp tls dial") {
+		t.Errorf("expected 'smtp tls dial' in error, got: %v", err)
+	}
+}
+
+// TestSendEmail_TLS_Success verifies that sendTLS successfully sends a message over TLS.
+// It starts a mock TLS SMTP server with a self-signed certificate and uses InsecureSkipVerify.
+func TestSendEmail_TLS_Success(t *testing.T) {
+	cert := generateSelfSignedCert(t)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	// Accept one TLS connection and run a minimal SMTP conversation
+	received := make(chan string, 1)
+	go func() {
+		tlsLn := tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cert}})
+		conn, err := tlsLn.Accept()
+		if err != nil {
+			received <- ""
+			return
+		}
+		defer conn.Close()
+		fmt.Fprintf(conn, "220 localhost ESMTP\r\n")
+		buf := make([]byte, 4096)
+		var allData string
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				break
+			}
+			data := string(buf[:n])
+			allData += data
+			if strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO") {
+				fmt.Fprintf(conn, "250-localhost\r\n250 OK\r\n")
+			} else if strings.HasPrefix(data, "MAIL FROM") {
+				fmt.Fprintf(conn, "250 OK\r\n")
+			} else if strings.HasPrefix(data, "RCPT TO") {
+				fmt.Fprintf(conn, "250 OK\r\n")
+			} else if strings.HasPrefix(data, "DATA") {
+				fmt.Fprintf(conn, "354 Send data\r\n")
+			} else if strings.Contains(data, "\r\n.\r\n") {
+				fmt.Fprintf(conn, "250 OK\r\n")
+			} else if strings.HasPrefix(data, "QUIT") {
+				fmt.Fprintf(conn, "221 Bye\r\n")
+				break
+			}
+		}
+		received <- allData
+	}()
+
+	addr := ln.Addr().(*net.TCPAddr)
+
+	// Use InsecureSkipVerify to connect to the self-signed cert server.
+	// We override the package-level tlsDialer to inject test settings.
+	origDialer := tlsDialer
+	tlsDialer = func(network, addr string, cfg *tls.Config) (*tls.Conn, error) {
+		cfg = cfg.Clone()
+		cfg.InsecureSkipVerify = true //nolint:gosec // test only — self-signed cert
+		return tls.Dial(network, addr, cfg)
+	}
+	defer func() { tlsDialer = origDialer }()
+
+	smtpCfg := model.SMTPConfig{
+		Host:    "127.0.0.1",
+		Port:    addr.Port,
+		From:    "sender@example.com",
+		Enabled: true,
+		TLS:     true,
+	}
+
+	if err := SendEmail(smtpCfg, "recipient@example.com", "TLS Test", "Hello over TLS."); err != nil {
+		t.Fatalf("SendEmail with TLS returned error: %v", err)
+	}
+
+	select {
+	case data := <-received:
+		if !strings.Contains(data, "MAIL FROM") {
+			t.Errorf("expected MAIL FROM in TLS SMTP exchange, got: %q", data)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("timeout waiting for TLS SMTP server to receive data")
 	}
 }

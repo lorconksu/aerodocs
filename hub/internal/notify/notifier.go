@@ -85,11 +85,10 @@ func (n *Notifier) Notify(eventType string, context map[string]string) {
 // worker processes queued email jobs until the queue channel is closed.
 func (n *Notifier) worker() {
 	defer n.wg.Done()
-	cfg := LoadSMTPConfig(n.store)
 
 	for job := range n.queue {
 		// Reload config each time so we pick up any changes
-		cfg = LoadSMTPConfig(n.store)
+		cfg := LoadSMTPConfig(n.store)
 
 		err := SendEmail(cfg, job.To, job.Subject, job.Body)
 
@@ -107,7 +106,6 @@ func (n *Notifier) worker() {
 			log.Printf("notify: log notification: %v", logErr)
 		}
 	}
-	_ = cfg // suppress unused warning after loop ends
 }
 
 // LoadSMTPConfig reads SMTP settings from the store's _config table.

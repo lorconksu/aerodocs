@@ -8,6 +8,7 @@ import (
 
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/model"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -53,9 +54,12 @@ func testHandler(t *testing.T) (*Handler, *store.Store) {
 	}
 	t.Cleanup(func() { st.Close() })
 	cm := connmgr.New()
+	notifier := notify.New(st)
+	t.Cleanup(func() { notifier.Close() })
 	h := &Handler{
-		store:   st,
-		connMgr: cm,
+		store:    st,
+		connMgr:  cm,
+		notifier: notifier,
 	}
 	return h, st
 }

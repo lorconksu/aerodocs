@@ -3,7 +3,6 @@ package notify
 import (
 	"crypto/tls"
 	"fmt"
-	"net"
 	"net/smtp"
 	"strings"
 
@@ -32,13 +31,13 @@ func SendEmail(cfg model.SMTPConfig, to, subject, body string) error {
 	return smtp.SendMail(addr, auth, cfg.From, []string{to}, []byte(msg))
 }
 
-// sendTLS connects using tls.Dial and sends the message over an encrypted connection.
+// sendTLS connects using tlsDialer and sends the message over an encrypted connection.
 func sendTLS(cfg model.SMTPConfig, addr string, auth smtp.Auth, to, msg string) error {
 	tlsCfg := &tls.Config{
 		ServerName: cfg.Host,
 	}
 
-	conn, err := tls.Dial("tcp", addr, tlsCfg)
+	conn, err := tlsDialer("tcp", addr, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("smtp tls dial: %w", err)
 	}
@@ -76,6 +75,11 @@ func sendTLS(cfg model.SMTPConfig, addr string, auth smtp.Auth, to, msg string) 
 	return client.Quit()
 }
 
+// tlsDialer is used for TLS connections; wraps tls.Dial to allow test injection.
+var tlsDialer = func(network, addr string, cfg *tls.Config) (*tls.Conn, error) {
+	return tls.Dial(network, addr, cfg)
+}
+
 // buildMessage constructs a minimal RFC 2822 email message.
 func buildMessage(from, to, subject, body string) string {
 	var sb strings.Builder
@@ -89,7 +93,3 @@ func buildMessage(from, to, subject, body string) string {
 	return sb.String()
 }
 
-// dialNet is used for plain (non-TLS) connections; wraps net.Dial to allow test injection.
-var dialNet = func(network, addr string) (net.Conn, error) {
-	return net.Dial(network, addr)
-}
