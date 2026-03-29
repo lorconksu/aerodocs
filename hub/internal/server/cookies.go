@@ -11,6 +11,7 @@ const (
 	cookieAccess  = "aerodocs_access"
 	cookieRefresh = "aerodocs_refresh"
 	cookieCSRF    = "aerodocs_csrf"
+	bearerPrefix  = "Bearer "
 )
 
 // setAuthCookies sets the access, refresh, and CSRF cookies on the response.
@@ -74,8 +75,8 @@ func readAccessToken(r *http.Request) string {
 		return c.Value
 	}
 	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
+	if strings.HasPrefix(auth, bearerPrefix) {
+		return strings.TrimPrefix(auth, bearerPrefix)
 	}
 	return ""
 }
@@ -104,6 +105,6 @@ func readCSRFCookie(r *http.Request) string {
 
 // isUsingBearerAuth returns true if the request has an Authorization: Bearer header.
 func isUsingBearerAuth(r *http.Request) bool {
-	return strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return strings.HasPrefix(r.Header.Get("Authorization"), bearerPrefix)
 }
 

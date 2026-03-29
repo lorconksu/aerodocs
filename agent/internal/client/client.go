@@ -331,54 +331,74 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 // (reconnect) message and waits for the corresponding ack.
 func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) error {
 	if c.serverID == "" {
-		// Generate a CSR with a placeholder CN (serverID not known yet)
-		var csrDER []byte
-		csr, err := c.certStore.GenerateCSR("pending")
-		if err != nil {
-			log.Printf("warning: failed to generate CSR for registration: %v", err)
-		} else {
-			csrDER = csr
-		}
+		return c.sendRegister(stream)
+	}
+	return c.sendHeartbeatHandshake(stream)
+}
 
-		if err := stream.Send(&pb.AgentMessage{
-			Payload: &pb.AgentMessage_Register{
-				Register: &pb.RegisterAgent{
-					Token:        c.token,
-					Hostname:     c.hostname,
-					IpAddress:    c.ipAddress,
-					Os:           c.os,
-					AgentVersion: c.agentVersion,
-					Csr:          csrDER,
-				},
+// sendRegister performs the initial agent registration, assigns the server ID,
+// and stores any mTLS certificates provided in the ack.
+func (c *Client) sendRegister(stream pb.AgentService_ConnectClient) error {
+	csrDER := c.generateCSRForRegistration()
+
+	if err := stream.Send(&pb.AgentMessage{
+		Payload: &pb.AgentMessage_Register{
+			Register: &pb.RegisterAgent{
+				Token:        c.token,
+				Hostname:     c.hostname,
+				IpAddress:    c.ipAddress,
+				Os:           c.os,
+				AgentVersion: c.agentVersion,
+				Csr:          csrDER,
 			},
-		}); err != nil {
-			return fmt.Errorf("send register: %w", err)
-		}
-		msg, err := stream.Recv()
-		if err != nil {
-			return fmt.Errorf("recv register ack: %w", err)
-		}
-		ack := msg.GetRegisterAck()
-		if ack == nil {
-			return fmt.Errorf("expected RegisterAck, got %T", msg.Payload)
-		}
-		if !ack.Success {
-			return fmt.Errorf("registration rejected: %s", ack.Error)
-		}
-		c.serverID = ack.ServerId
-		log.Printf("registered successfully: server_id=%s", c.serverID)
-
-		// Store mTLS certs if the hub provided them
-		if len(ack.ClientCert) > 0 && len(ack.CaCert) > 0 {
-			if err := c.certStore.StoreCert(ack.ClientCert, ack.CaCert); err != nil {
-				log.Printf("warning: failed to store mTLS certs: %v", err)
-			} else {
-				log.Printf("mTLS certificate stored (will use on next reconnect)")
-			}
-		}
-		return nil
+		},
+	}); err != nil {
+		return fmt.Errorf("send register: %w", err)
 	}
 
+	msg, err := stream.Recv()
+	if err != nil {
+		return fmt.Errorf("recv register ack: %w", err)
+	}
+	ack := msg.GetRegisterAck()
+	if ack == nil {
+		return fmt.Errorf("expected RegisterAck, got %T", msg.Payload)
+	}
+	if !ack.Success {
+		return fmt.Errorf("registration rejected: %s", ack.Error)
+	}
+	c.serverID = ack.ServerId
+	log.Printf("registered successfully: server_id=%s", c.serverID)
+	c.storeMTLSCerts(ack)
+	return nil
+}
+
+// generateCSRForRegistration generates a CSR with a placeholder CN.
+// Returns nil on failure (registration proceeds without a CSR).
+func (c *Client) generateCSRForRegistration() []byte {
+	csr, err := c.certStore.GenerateCSR("pending")
+	if err != nil {
+		log.Printf("warning: failed to generate CSR for registration: %v", err)
+		return nil
+	}
+	return csr
+}
+
+// storeMTLSCerts persists the mTLS client cert and CA cert from a register ack.
+func (c *Client) storeMTLSCerts(ack interface{ GetClientCert() []byte; GetCaCert() []byte }) {
+	if len(ack.GetClientCert()) == 0 || len(ack.GetCaCert()) == 0 {
+		return
+	}
+	if err := c.certStore.StoreCert(ack.GetClientCert(), ack.GetCaCert()); err != nil {
+		log.Printf("warning: failed to store mTLS certs: %v", err)
+	} else {
+		log.Printf("mTLS certificate stored (will use on next reconnect)")
+	}
+}
+
+// sendHeartbeatHandshake sends a heartbeat as the reconnect handshake and
+// waits for the HeartbeatAck.
+func (c *Client) sendHeartbeatHandshake(stream pb.AgentService_ConnectClient) error {
 	if err := stream.Send(heartbeat.BuildMessage(c.serverID)); err != nil {
 		return fmt.Errorf("send heartbeat: %w", err)
 	}
