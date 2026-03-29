@@ -1,15 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { LayoutDashboard, ScrollText, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
 import { getAvatarColor } from '@/lib/avatar'
 import { useAllServers } from '@/hooks/use-servers'
+import type { AuthStatusResponse } from '@/types/api'
 
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [navCollapsed, setNavCollapsed] = useState(false)
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    fetch('/api/auth/status').then(r => r.json()).then((d: AuthStatusResponse) => setVersion(d.version)).catch(() => {})
+  }, [])
 
   const { data: serverData } = useAllServers()
 
@@ -97,7 +103,7 @@ export function AppShell() {
             {navCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             {!navCollapsed && <span className="text-xs">Collapse</span>}
           </button>
-          {!navCollapsed && <div className="px-4 pt-1 text-[10px] text-text-faint uppercase tracking-widest">v0.1.0</div>}
+          {!navCollapsed && version && <div className="px-4 pt-1 text-[10px] text-text-faint uppercase tracking-widest">v{version}</div>}
         </nav>
 
         {/* Main Content */}
