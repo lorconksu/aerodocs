@@ -66,8 +66,8 @@ check "SPA serves HTML" \
 check "Register first user" \
     'curl -sf -X POST "http://localhost:$HTTP_PORT/api/auth/register" -H "Content-Type: application/json" -d "{\"username\":\"admin\",\"email\":\"admin@test.com\",\"password\":\"SmokeTest!2026\"}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert \"setup_token\" in d"'
 
-check "Initialized after register" \
-    'curl -sf "http://localhost:$HTTP_PORT/api/auth/status" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d[\"initialized\"] == True"'
+check "Not initialized until TOTP complete" \
+    'curl -sf "http://localhost:$HTTP_PORT/api/auth/status" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d[\"initialized\"] == False, \"expected not initialized before TOTP setup\""'
 
 check "No container restarts" \
     '[[ $(docker inspect "$CONTAINER_NAME" --format="{{.RestartCount}}") == "0" ]]'
