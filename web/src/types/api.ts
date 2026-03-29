@@ -178,3 +178,31 @@ export interface CreatePathRequest {
   user_id: string
   path: string
 }
+
+export interface SMTPConfig {
+  host: string
+  port: number
+  username: string
+  password: string
+  from: string
+  tls: boolean
+  enabled: boolean
+}
+
+export interface NotificationPreference {
+  event_type: string
+  label: string
+  category: string
+  enabled: boolean
+}
+
+export interface NotificationLogEntry {
+  id: string
+  user_id: string
+  username: string
+  event_type: string
+  subject: string
+  status: 'sent' | 'failed'
+  error: string | null
+  created_at: string
+}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wyiu/aerodocs/hub/internal/auth"
@@ -131,6 +132,12 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		ID: uuid.NewString(), UserID: &adminID,
 		Action: model.AuditUserCreated, Target: &user.ID, IPAddress: &ip,
 	})
+	if s.notifier != nil {
+		s.notifier.Notify(model.NotifyUserCreated, map[string]string{
+			"username":  req.Username,
+			"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
+		})
+	}
 
 	respondJSON(w, http.StatusCreated, model.CreateUserResponse{
 		User:              *user,

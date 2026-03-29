@@ -9,6 +9,7 @@ import (
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 	"github.com/wyiu/aerodocs/hub/internal/model"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
@@ -25,11 +26,15 @@ func testServer(t *testing.T) *Server {
 		t.Fatalf("init jwt secret: %v", err)
 	}
 
+	notifier := notify.New(st)
+	t.Cleanup(func() { notifier.Close() })
+
 	return New(Config{
 		Addr:      ":0",
 		Store:     st,
 		JWTSecret: jwtSecret,
 		IsDev:     true,
+		Notifier:  notifier,
 	})
 }
 

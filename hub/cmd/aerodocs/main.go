@@ -12,6 +12,7 @@ import (
 	hub "github.com/wyiu/aerodocs/hub"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/server"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
@@ -45,6 +46,9 @@ func runServer() error {
 	}
 	defer st.Close()
 
+	notifier := notify.New(st)
+	defer notifier.Close()
+
 	jwtSecret, err := server.InitJWTSecret(st)
 	if err != nil {
 		return fmt.Errorf("init JWT secret: %w", err)
@@ -65,6 +69,7 @@ func runServer() error {
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		Notifier:    notifier,
 	})
 
 	grpcSrv := grpcserver.New(grpcserver.Config{
@@ -73,6 +78,7 @@ func runServer() error {
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		Notifier:    notifier,
 	})
 
 	// Start heartbeat monitor
