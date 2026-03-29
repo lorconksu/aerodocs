@@ -74,6 +74,13 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 			Detail:    &detail,
 			IPAddress: &ip,
 		})
+		if s.notifier != nil {
+			s.notifier.Notify(model.NotifyFileUploaded, map[string]string{
+				"filename": filename, "server_name": serverID,
+				"server_id": serverID, "username": userID,
+				"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			})
+		}
 
 		respondJSON(w, http.StatusOK, model.UploadFileResponse{
 			Filename: filename,

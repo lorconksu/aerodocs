@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wyiu/aerodocs/hub/internal/auth"
@@ -113,6 +114,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.store.LogAudit(model.AuditEntry{
 			ID: uuid.NewString(), Action: model.AuditUserLoginFailed, IPAddress: &ip,
 		})
+		if s.notifier != nil {
+			s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
+				"username": req.Username, "ip": ip,
+				"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			})
+		}
 		respondError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -123,6 +130,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			ID: uuid.NewString(), UserID: &user.ID,
 			Action: model.AuditUserLoginFailed, IPAddress: &ip,
 		})
+		if s.notifier != nil {
+			s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
+				"username": req.Username, "ip": ip,
+				"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			})
+		}
 		respondError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -381,6 +394,12 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		ID: uuid.NewString(), UserID: &userID,
 		Action: model.AuditUserTOTPEnabled, IPAddress: &ip,
 	})
+	if s.notifier != nil {
+		s.notifier.Notify(model.NotifyTOTPChanged, map[string]string{
+			"username": user.Username, "detail": "TOTP enabled",
+			"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		})
+	}
 
 	// Generate full access tokens now that 2FA is enabled
 	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
@@ -440,6 +459,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		ID: uuid.NewString(), UserID: &userID,
 		Action: model.AuditUserPasswordChanged, IPAddress: &ip,
 	})
+	if s.notifier != nil {
+		s.notifier.Notify(model.NotifyPasswordChanged, map[string]string{
+			"username":  user.Username,
+			"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		})
+	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "password updated"})
 }
@@ -475,7 +500,6 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "user not found")
 		return
 	}
-	_ = targetUser // used for existence check
 
 	// Disable target user's TOTP
 	if err := s.store.UpdateUserTOTP(req.UserID, nil, false); err != nil {
@@ -488,6 +512,12 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		ID: uuid.NewString(), UserID: &adminID,
 		Action: model.AuditUserTOTPDisabled, Target: &req.UserID, IPAddress: &ip,
 	})
+	if s.notifier != nil {
+		s.notifier.Notify(model.NotifyTOTPChanged, map[string]string{
+			"username": targetUser.Username, "detail": "TOTP disabled",
+			"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		})
+	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "totp disabled"})
 }

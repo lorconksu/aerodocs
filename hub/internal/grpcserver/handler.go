@@ -18,6 +18,7 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/model"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -31,6 +32,7 @@ type Handler struct {
 	hbCoalescer *HeartbeatCoalescer
 	caCert      *x509.Certificate
 	caKey       *ecdsa.PrivateKey
+	notifier    *notify.Notifier
 }
 
 // extractServerIDFromCert extracts the server ID from a client certificate's CN.
@@ -70,6 +72,17 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		Target:    &serverID,
 		IPAddress: &peerAddr,
 	})
+	if h.notifier != nil {
+		serverName := serverID
+		if srv, err := h.store.GetServerByID(serverID); err == nil {
+			serverName = srv.Name
+		}
+		h.notifier.Notify(model.NotifyAgentOnline, map[string]string{
+			"server_name": serverName,
+			"server_id":   serverID,
+			"timestamp":   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		})
+	}
 	log.Printf("agent connected: %s from %s", serverID, peerAddr)
 
 	defer func() {
@@ -82,6 +95,17 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 			Action: model.AuditServerDisconnected,
 			Target: &serverID,
 		})
+		if h.notifier != nil {
+			serverName := serverID
+			if srv, err := h.store.GetServerByID(serverID); err == nil {
+				serverName = srv.Name
+			}
+			h.notifier.Notify(model.NotifyAgentOffline, map[string]string{
+				"server_name": serverName,
+				"server_id":   serverID,
+				"timestamp":   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			})
+		}
 		log.Printf("agent disconnected: %s", serverID)
 	}()
 
