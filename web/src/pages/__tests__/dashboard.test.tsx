@@ -429,4 +429,37 @@ describe('DashboardPage', () => {
       expect(screen.getByText(/\d+ min ago/)).toBeInTheDocument()
     })
   })
+
+  it('shows hostname / — when hostname exists but ip is null (line 256 ?? branch)', async () => {
+    const server = { ...mockServers[0], hostname: 'myhost', ip_address: null }
+    mockApiFetch.mockResolvedValue({ servers: [server], total: 1 })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('myhost / —')).toBeInTheDocument()
+    })
+  })
+
+  it('Unregister Selected handles all-fail case (parallelLimit rejected branch + batchDelete error handler)', async () => {
+    // First call: server list; subsequent DELETE calls: all reject
+    mockApiFetch
+      .mockResolvedValueOnce({ servers: [mockServers[0]], total: 1 })
+      .mockRejectedValueOnce(new Error('network error')) // DELETE fails
+      .mockResolvedValue({ servers: [], total: 0 }) // refetch after onError
+
+    renderPage()
+    await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1))
+
+    // Select all via header checkbox
+    const [headerCheckbox] = screen.getAllByRole('checkbox')
+    fireEvent.click(headerCheckbox)
+    await waitFor(() => expect(screen.getByText('1 selected')).toBeInTheDocument())
+
+    // Click unregister selected — all deletes will fail → throws → onError fires
+    fireEvent.click(screen.getByText(/unregister selected/i))
+
+    // After onError: selection is cleared
+    await waitFor(() => {
+      expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
+    })
+  })
 })
