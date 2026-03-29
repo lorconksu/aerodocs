@@ -795,4 +795,27 @@ describe('SettingsPage', () => {
       expect(screen.getByText('Failed to delete user')).toBeInTheDocument()
     })
   })
+
+  it('clicking Notifications tab switches to NotificationsTab for admin', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({ host: 'smtp.example.com', port: 587, username: '', password: '', from: '', tls: false, enabled: false })
+      .mockResolvedValueOnce({ entries: [], total: 0 })
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    await waitFor(() => {
+      expect(screen.getByText('SMTP Configuration')).toBeInTheDocument()
+    })
+  })
+
+  it('clicking Alerts tab switches to PreferencesTab', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({ preferences: [] })
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alerts' }))
+    await waitFor(() => {
+      expect(screen.getByText('Email Notification Preferences')).toBeInTheDocument()
+    })
+  })
 })

@@ -14,6 +14,7 @@ import (
 
 	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -36,6 +37,7 @@ type Config struct {
 	LogSessions *LogSessions
 	CACert      *x509.Certificate
 	CAKey       *ecdsa.PrivateKey
+	Notifier    *notify.Notifier
 }
 
 func New(cfg Config) *Server {
@@ -81,6 +83,7 @@ func New(cfg Config) *Server {
 		hbCoalescer: hbCoalescer,
 		caCert:      cfg.CACert,
 		caKey:       cfg.CAKey,
+		notifier:    cfg.Notifier,
 	}
 	pb.RegisterAgentServiceServer(s.grpcServer, handler)
 	return s

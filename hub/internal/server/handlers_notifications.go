@@ -1,0 +1,136 @@
+package server
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"github.com/wyiu/aerodocs/hub/internal/model"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
+)
+
+const redactedValue = "********"
+
+// handleGetSMTPConfig returns the current SMTP configuration.
+// Password is write-only: returns redactedValue if set, empty string if not.
+func (s *Server) handleGetSMTPConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := notify.LoadSMTPConfig(s.store)
+
+	// Mask the password
+	if cfg.Password != "" {
+		cfg.Password = redactedValue
+	}
+
+	respondJSON(w, http.StatusOK, cfg)
+}
+
+// handleUpdateSMTPConfig saves SMTP configuration fields to the store.
+// If password is "********" or empty, the existing password is preserved.
+func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) {
+	var req model.SMTPConfig
+	if err := decodeJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	configs := map[string]string{
+		"smtp_host":     req.Host,
+		"smtp_port":     strconv.Itoa(req.Port),
+		"smtp_username": req.Username,
+		"smtp_from":     req.From,
+		"smtp_tls":      fmt.Sprintf("%t", req.TLS),
+		"smtp_enabled":  fmt.Sprintf("%t", req.Enabled),
+	}
+	if req.Password != "" && req.Password != redactedValue {
+		configs["smtp_password"] = req.Password
+	}
+
+	for key, value := range configs {
+		if err := s.store.SetConfig(key, value); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save %s", key))
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleTestSMTP sends a test email to the given recipient using the current SMTP config.
+func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
+	var req model.SMTPTestRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	if req.Recipient == "" {
+		respondError(w, http.StatusBadRequest, "recipient is required")
+		return
+	}
+
+	cfg := notify.LoadSMTPConfig(s.store)
+
+	// Force enabled for the test send so SendEmail doesn't skip it
+	cfg.Enabled = true
+
+	if err := notify.SendEmail(cfg, req.Recipient, "AeroDocs SMTP Test", "This is a test email from AeroDocs. Your SMTP configuration is working correctly."); err != nil {
+		respondError(w, http.StatusBadGateway, "failed to send test email: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+// handleGetNotificationPreferences returns the authenticated user's notification preferences.
+func (s *Server) handleGetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+
+	prefs, err := s.store.GetNotificationPreferences(userID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get notification preferences")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"preferences": prefs})
+}
+
+// handleUpdateNotificationPreferences saves notification preference updates for the authenticated user.
+func (s *Server) handleUpdateNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	var req model.NotificationPreferencesRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+
+	for _, pref := range req.Preferences {
+		if err := s.store.SetNotificationPreference(userID, pref.EventType, pref.Enabled); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to update preference for "+pref.EventType)
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleListNotificationLog returns a paginated list of notification log entries.
+func (s *Server) handleListNotificationLog(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r.URL.Query(), 50)
+
+	entries, total, err := s.store.ListNotificationLog(limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list notification log")
+		return
+	}
+
+	// Return empty slice rather than null
+	if entries == nil {
+		entries = []model.NotificationLogEntry{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"entries": entries,
+		"total":   total,
+	})
+}

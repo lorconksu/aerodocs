@@ -42,6 +42,14 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("DELETE /api/users/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteUser)))))
 	mux.Handle("GET /api/audit-logs", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListAuditLogs)))))
 
+	// Notification endpoints
+	mux.Handle("GET /api/settings/smtp", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleGetSMTPConfig)))))
+	mux.Handle("PUT /api/settings/smtp", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateSMTPConfig)))))
+	mux.Handle("POST /api/settings/smtp/test", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleTestSMTP)))))
+	mux.Handle("GET /api/notifications/preferences", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleGetNotificationPreferences))))
+	mux.Handle("PUT /api/notifications/preferences", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleUpdateNotificationPreferences))))
+	mux.Handle("GET /api/notifications/log", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListNotificationLog)))))
+
 	// Server endpoints (any authenticated user, role-filtered in handler)
 	mux.Handle("GET /api/servers", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleListServers))))
 	mux.Handle("POST /api/servers", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleCreateServer)))))

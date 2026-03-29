@@ -11,6 +11,7 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
@@ -29,6 +30,7 @@ type Server struct {
 	pending     *grpcserver.PendingRequests
 	logSessions *grpcserver.LogSessions
 	totpCache   *auth.TOTPUsedCodes
+	notifier    *notify.Notifier
 }
 
 type Config struct {
@@ -42,6 +44,7 @@ type Config struct {
 	ConnMgr     *connmgr.ConnManager
 	Pending     *grpcserver.PendingRequests
 	LogSessions *grpcserver.LogSessions
+	Notifier    *notify.Notifier
 }
 
 func New(cfg Config) *Server {
@@ -56,6 +59,7 @@ func New(cfg Config) *Server {
 		pending:     cfg.Pending,
 		logSessions: cfg.LogSessions,
 		totpCache:   auth.NewTOTPUsedCodes(),
+		notifier:    cfg.Notifier,
 	}
 
 	mux := s.routes()

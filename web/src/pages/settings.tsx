@@ -8,6 +8,8 @@ import { getAvatarColor, setAvatarColor as persistAvatarColor, AVATAR_COLORS } f
 import { validatePassword } from '@/lib/password'
 import type { ChangePasswordRequest, User, Role, TOTPDisableRequest } from '@/types/api'
 import { CreateUserModal } from '@/pages/create-user-modal'
+import { NotificationsTab } from '@/pages/settings-notifications-tab'
+import { PreferencesTab } from '@/pages/settings-preferences-tab'
 
 function ProfileTab() {
   const { user } = useAuth()
@@ -523,9 +525,17 @@ export function SettingsPage() {
   const isAdmin = user?.role === 'admin'
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab')
-  const activeTab = (tabFromUrl === 'users' && isAdmin) ? 'users' : 'profile'
 
-  const setActiveTab = (tab: 'profile' | 'users') => {
+  const resolveTab = (): 'profile' | 'users' | 'notifications' | 'alerts' => {
+    if (tabFromUrl === 'users' && isAdmin) return 'users'
+    if (tabFromUrl === 'notifications' && isAdmin) return 'notifications'
+    if (tabFromUrl === 'alerts') return 'alerts'
+    return 'profile'
+  }
+
+  const activeTab = resolveTab()
+
+  const setActiveTab = (tab: 'profile' | 'users' | 'notifications' | 'alerts') => {
     setSearchParams({ tab }, { replace: true })
   }
 
@@ -557,11 +567,35 @@ export function SettingsPage() {
             Users
           </button>
         )}
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'notifications'
+                ? 'border-accent text-text-primary'
+                : 'border-transparent text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            Notifications
+          </button>
+        )}
+        <button
+          onClick={() => setActiveTab('alerts')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'alerts'
+              ? 'border-accent text-text-primary'
+              : 'border-transparent text-text-muted hover:text-text-secondary'
+          }`}
+        >
+          Alerts
+        </button>
       </div>
 
       {/* Tab content */}
       {activeTab === 'profile' && <ProfileTab />}
       {activeTab === 'users' && isAdmin && <UsersTab />}
+      {activeTab === 'notifications' && isAdmin && <NotificationsTab />}
+      {activeTab === 'alerts' && <PreferencesTab />}
     </div>
   )
 }
