@@ -11,6 +11,7 @@ import (
 
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -155,6 +156,9 @@ func testServerWithAgentAndLogOverflow(t *testing.T) (s *Server, adminToken, ser
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
 
+	notifier := notify.New(st)
+	t.Cleanup(func() { notifier.Close() })
+
 	s = New(Config{
 		Addr:        ":0",
 		Store:       st,
@@ -163,6 +167,7 @@ func testServerWithAgentAndLogOverflow(t *testing.T) (s *Server, adminToken, ser
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		Notifier:    notifier,
 	})
 
 	adminToken = registerAndGetAdminToken(t, s)

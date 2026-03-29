@@ -11,6 +11,7 @@ import (
 
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 	"google.golang.org/grpc/metadata"
@@ -542,6 +543,9 @@ func testServerWithCustomAgent(t *testing.T, streamFactory func(pending *grpcser
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
 
+	notifier := notify.New(st)
+	t.Cleanup(func() { notifier.Close() })
+
 	s = New(Config{
 		Addr:        ":0",
 		Store:       st,
@@ -550,6 +554,7 @@ func testServerWithCustomAgent(t *testing.T, streamFactory func(pending *grpcser
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		Notifier:    notifier,
 	})
 
 	adminToken = registerAndGetAdminToken(t, s)
