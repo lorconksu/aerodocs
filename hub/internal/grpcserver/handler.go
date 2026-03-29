@@ -49,65 +49,15 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		return err
 	}
 
-	// Verify client certificate CN matches the server ID (if TLS peer info is available).
-	if p, ok := peer.FromContext(stream.Context()); ok {
-		if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
-			if len(tlsInfo.State.PeerCertificates) > 0 {
-				certCN := extractServerIDFromCert(tlsInfo.State.PeerCertificates[0])
-				if certCN != serverID {
-					return fmt.Errorf("cert CN %q does not match server ID %q", certCN, serverID)
-				}
-			}
-		}
+	if err := h.verifyCertCN(stream, serverID); err != nil {
+		return err
 	}
 
 	h.connMgr.Register(serverID, stream)
 
-	peerAddr := ""
-	if p, ok := peer.FromContext(stream.Context()); ok {
-		peerAddr = p.Addr.String()
-	}
-	h.store.LogAudit(model.AuditEntry{
-		Action:    model.AuditServerConnected,
-		Target:    &serverID,
-		IPAddress: &peerAddr,
-	})
-	if h.notifier != nil {
-		serverName := serverID
-		if srv, err := h.store.GetServerByID(serverID); err == nil {
-			serverName = srv.Name
-		}
-		h.notifier.Notify(model.NotifyAgentOnline, map[string]string{
-			"server_name": serverName,
-			"server_id":   serverID,
-			"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
-		})
-	}
-	log.Printf("agent connected: %s from %s", serverID, peerAddr)
-
-	defer func() {
-		h.connMgr.Unregister(serverID)
-		if h.hbCoalescer != nil {
-			h.hbCoalescer.Flush(serverID)
-		}
-		_ = h.store.UpdateServerStatus(serverID, "offline")
-		h.store.LogAudit(model.AuditEntry{
-			Action: model.AuditServerDisconnected,
-			Target: &serverID,
-		})
-		if h.notifier != nil {
-			serverName := serverID
-			if srv, err := h.store.GetServerByID(serverID); err == nil {
-				serverName = srv.Name
-			}
-			h.notifier.Notify(model.NotifyAgentOffline, map[string]string{
-				"server_name": serverName,
-				"server_id":   serverID,
-				"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
-			})
-		}
-		log.Printf("agent disconnected: %s", serverID)
-	}()
+	peerAddr := h.peerAddr(stream)
+	h.onAgentConnected(serverID, peerAddr)
+	defer h.onAgentDisconnected(serverID)
 
 	for {
 		msg, err := stream.Recv()
@@ -121,6 +71,79 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 			return err
 		}
 	}
+}
+
+// verifyCertCN checks that the mTLS client certificate CN matches the server ID.
+func (h *Handler) verifyCertCN(stream pb.AgentService_ConnectServer, serverID string) error {
+	p, ok := peer.FromContext(stream.Context())
+	if !ok {
+		return nil
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		return nil
+	}
+	certCN := extractServerIDFromCert(tlsInfo.State.PeerCertificates[0])
+	if certCN != serverID {
+		return fmt.Errorf("cert CN %q does not match server ID %q", certCN, serverID)
+	}
+	return nil
+}
+
+// peerAddr extracts the remote address string from the stream context.
+func (h *Handler) peerAddr(stream pb.AgentService_ConnectServer) string {
+	if p, ok := peer.FromContext(stream.Context()); ok {
+		return p.Addr.String()
+	}
+	return ""
+}
+
+// onAgentConnected logs the audit event and sends the online notification.
+func (h *Handler) onAgentConnected(serverID, peerAddr string) {
+	h.store.LogAudit(model.AuditEntry{
+		Action:    model.AuditServerConnected,
+		Target:    &serverID,
+		IPAddress: &peerAddr,
+	})
+	if h.notifier != nil {
+		serverName := h.resolveServerName(serverID)
+		h.notifier.Notify(model.NotifyAgentOnline, map[string]string{
+			"server_name": serverName,
+			"server_id":   serverID,
+			"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
+		})
+	}
+	log.Printf("agent connected: %s from %s", serverID, peerAddr)
+}
+
+// onAgentDisconnected unregisters the connection, flushes heartbeats, and logs the disconnect event.
+func (h *Handler) onAgentDisconnected(serverID string) {
+	h.connMgr.Unregister(serverID)
+	if h.hbCoalescer != nil {
+		h.hbCoalescer.Flush(serverID)
+	}
+	_ = h.store.UpdateServerStatus(serverID, "offline")
+	h.store.LogAudit(model.AuditEntry{
+		Action: model.AuditServerDisconnected,
+		Target: &serverID,
+	})
+	if h.notifier != nil {
+		serverName := h.resolveServerName(serverID)
+		h.notifier.Notify(model.NotifyAgentOffline, map[string]string{
+			"server_name": serverName,
+			"server_id":   serverID,
+			"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
+		})
+	}
+	log.Printf("agent disconnected: %s", serverID)
+}
+
+// resolveServerName looks up the human-readable server name, falling back to the server ID.
+func (h *Handler) resolveServerName(serverID string) string {
+	if srv, err := h.store.GetServerByID(serverID); err == nil {
+		return srv.Name
+	}
+	return serverID
 }
 
 // performHandshake receives the first message from the agent, handles registration or

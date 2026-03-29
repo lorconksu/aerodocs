@@ -2,36 +2,47 @@ package server
 
 import "net/http"
 
+// csrfExemptPaths lists public auth endpoints that must work before a CSRF cookie exists.
+var csrfExemptPaths = []string{
+	"/api/auth/login",
+	"/api/auth/register",
+	"/api/auth/refresh",
+	"/api/auth/logout",
+	"/api/auth/login/totp",
+}
+
+// isMutationMethod returns true for HTTP methods that modify server state.
+func isMutationMethod(method string) bool {
+	return method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions
+}
+
+// isCSRFExemptPath returns true if the request path is a public auth endpoint
+// that must work before a CSRF cookie exists.
+func isCSRFExemptPath(path string) bool {
+	for _, p := range csrfExemptPaths {
+		if path == p {
+			return true
+		}
+	}
+	return false
+}
+
+// csrfTokensMatch returns true if the cookie and header CSRF tokens are both
+// non-empty and equal.
+func csrfTokensMatch(r *http.Request) bool {
+	cookie := readCSRFCookie(r)
+	header := readCSRFToken(r)
+	return cookie != "" && header != "" && cookie == header
+}
+
 // csrfMiddleware enforces the double-submit cookie pattern for mutating requests.
 // Safe methods (GET, HEAD, OPTIONS) are exempt. Requests using Bearer authentication
 // are also exempt since they originate from non-browser clients.
 func csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Safe methods are exempt.
-		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		if !isMutationMethod(r.Method) || isUsingBearerAuth(r) || isCSRFExemptPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
-		}
-
-		// Bearer auth is exempt (non-browser clients).
-		if isUsingBearerAuth(r) {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Public auth endpoints that must work before a CSRF cookie exists.
-		csrfExemptPaths := []string{
-			"/api/auth/login",
-			"/api/auth/register",
-			"/api/auth/refresh",
-			"/api/auth/logout",
-			"/api/auth/login/totp",
-		}
-		for _, p := range csrfExemptPaths {
-			if r.URL.Path == p {
-				next.ServeHTTP(w, r)
-				return
-			}
 		}
 
 		// No cookie-based session means no CSRF risk.
@@ -43,10 +54,7 @@ func csrfMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Validate CSRF: X-CSRF-Token header must match aerodocs_csrf cookie.
-		cookieToken := readCSRFCookie(r)
-		headerToken := readCSRFToken(r)
-
-		if cookieToken == "" || headerToken == "" || cookieToken != headerToken {
+		if !csrfTokensMatch(r) {
 			respondError(w, http.StatusForbidden, "CSRF validation failed")
 			return
 		}

@@ -159,6 +159,22 @@ func (s *Server) sendChunkToAgent(serverID, requestID, filename string, data []b
 	return nil
 }
 
+// sendFinalChunk sends the terminal "done" marker to the agent.
+func (s *Server) sendFinalChunk(serverID, requestID string) *uploadStreamError {
+	sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
+		Payload: &pb.HubMessage_FileUploadRequest{
+			FileUploadRequest: &pb.FileUploadRequest{
+				RequestId: requestID,
+				Done:      true,
+			},
+		},
+	})
+	if sendErr != nil {
+		return &uploadStreamError{http.StatusBadGateway, "failed to send to agent"}
+	}
+	return nil
+}
+
 // streamFileToAgent sends the file contents to the agent in chunks, followed by a final "done"
 // message. It enforces the maxUploadSize limit by counting bytes as they stream through.
 // It returns the total number of bytes sent, or an uploadStreamError on failure.
@@ -174,18 +190,11 @@ func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io
 			if totalSize > maxUploadSize {
 				return 0, &uploadStreamError{http.StatusRequestEntityTooLarge, "file too large (max 100MB)"}
 			}
-
-			fname := ""
-			if isFirst {
-				fname = filename
-				isFirst = false
-			}
-
+			fname := chunkFilename(filename, &isFirst)
 			if chunkErr := s.sendChunkToAgent(serverID, requestID, fname, buf[:n]); chunkErr != nil {
 				return 0, chunkErr
 			}
 		}
-
 		if readErr == io.EOF {
 			break
 		}
@@ -194,20 +203,20 @@ func (s *Server) streamFileToAgent(serverID, requestID, filename string, file io
 		}
 	}
 
-	// Send final "done" message
-	sendErr := s.connMgr.SendToAgent(serverID, &pb.HubMessage{
-		Payload: &pb.HubMessage_FileUploadRequest{
-			FileUploadRequest: &pb.FileUploadRequest{
-				RequestId: requestID,
-				Done:      true,
-			},
-		},
-	})
-	if sendErr != nil {
-		return 0, &uploadStreamError{http.StatusBadGateway, "failed to send to agent"}
+	if finalErr := s.sendFinalChunk(serverID, requestID); finalErr != nil {
+		return 0, finalErr
 	}
-
 	return totalSize, nil
+}
+
+// chunkFilename returns the filename for the first chunk and an empty string for subsequent chunks.
+// It uses a pointer to track whether the first chunk has been sent.
+func chunkFilename(filename string, isFirst *bool) string {
+	if !*isFirst {
+		return ""
+	}
+	*isFirst = false
+	return filename
 }
 
 func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request) {
