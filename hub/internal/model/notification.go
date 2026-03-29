@@ -1,5 +1,8 @@
 package model
 
+// NotifyTimestampFormat is the standard timestamp layout used in notification context maps.
+const NotifyTimestampFormat = "2006-01-02 15:04:05 UTC"
+
 // Notification event types
 const (
 	NotifyAgentOffline    = "agent.offline"

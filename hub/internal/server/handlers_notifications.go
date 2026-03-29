@@ -8,49 +8,16 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/notify"
 )
 
-// loadSMTPConfig reads SMTP settings from the store's _config table.
-func (s *Server) loadSMTPConfig() model.SMTPConfig {
-	get := func(key string) string {
-		v, _ := s.store.GetConfig(key)
-		return v
-	}
-
-	port := 587
-	if p := get("smtp_port"); p != "" {
-		if parsed, err := strconv.Atoi(p); err == nil {
-			port = parsed
-		}
-	}
-
-	tls := false
-	if t := get("smtp_tls"); t == "true" || t == "1" {
-		tls = true
-	}
-
-	enabled := false
-	if e := get("smtp_enabled"); e == "true" || e == "1" {
-		enabled = true
-	}
-
-	return model.SMTPConfig{
-		Host:     get("smtp_host"),
-		Port:     port,
-		Username: get("smtp_username"),
-		Password: get("smtp_password"),
-		From:     get("smtp_from"),
-		TLS:      tls,
-		Enabled:  enabled,
-	}
-}
+const maskedPassword = "********"
 
 // handleGetSMTPConfig returns the current SMTP configuration.
-// Password is write-only: returns "********" if set, empty string if not.
+// Password is write-only: returns maskedPassword if set, empty string if not.
 func (s *Server) handleGetSMTPConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := s.loadSMTPConfig()
+	cfg := notify.LoadSMTPConfig(s.store)
 
 	// Mask the password
 	if cfg.Password != "" {
-		cfg.Password = "********"
+		cfg.Password = maskedPassword
 	}
 
 	respondJSON(w, http.StatusOK, cfg)
@@ -105,7 +72,7 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Skip password update if it's the placeholder or empty
-	if req.Password != "********" && req.Password != "" {
+	if req.Password != maskedPassword && req.Password != "" {
 		if err := set("smtp_password", req.Password); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to save smtp_password")
 			return
@@ -128,7 +95,7 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := s.loadSMTPConfig()
+	cfg := notify.LoadSMTPConfig(s.store)
 
 	// Force enabled for the test send so SendEmail doesn't skip it
 	cfg.Enabled = true

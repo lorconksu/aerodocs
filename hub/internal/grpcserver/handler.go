@@ -80,7 +80,7 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		h.notifier.Notify(model.NotifyAgentOnline, map[string]string{
 			"server_name": serverName,
 			"server_id":   serverID,
-			"timestamp":   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
 		})
 	}
 	log.Printf("agent connected: %s from %s", serverID, peerAddr)
@@ -103,7 +103,7 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 			h.notifier.Notify(model.NotifyAgentOffline, map[string]string{
 				"server_name": serverName,
 				"server_id":   serverID,
-				"timestamp":   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+				"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
 			})
 		}
 		log.Printf("agent disconnected: %s", serverID)

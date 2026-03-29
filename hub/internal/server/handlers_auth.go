@@ -117,7 +117,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if s.notifier != nil {
 			s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
 				"username": req.Username, "ip": ip,
-				"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+				"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 			})
 		}
 		respondError(w, http.StatusUnauthorized, "invalid credentials")
@@ -133,7 +133,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if s.notifier != nil {
 			s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
 				"username": req.Username, "ip": ip,
-				"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+				"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 			})
 		}
 		respondError(w, http.StatusUnauthorized, "invalid credentials")
@@ -397,7 +397,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyTOTPChanged, map[string]string{
 			"username": user.Username, "detail": "TOTP enabled",
-			"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 		})
 	}
 
@@ -462,7 +462,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyPasswordChanged, map[string]string{
 			"username":  user.Username,
-			"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 		})
 	}
 
@@ -515,7 +515,7 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyTOTPChanged, map[string]string{
 			"username": targetUser.Username, "detail": "TOTP disabled",
-			"timestamp": time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 		})
 	}
 

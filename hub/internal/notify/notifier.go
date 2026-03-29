@@ -50,7 +50,7 @@ func (n *Notifier) Close() {
 // Notify loads SMTP config, resolves recipients, renders emails, and enqueues jobs.
 // Jobs are dropped (non-blocking) if the queue is full.
 func (n *Notifier) Notify(eventType string, context map[string]string) {
-	cfg := n.loadSMTPConfig()
+	cfg := LoadSMTPConfig(n.store)
 	if !cfg.Enabled || cfg.Host == "" {
 		return
 	}
@@ -85,11 +85,11 @@ func (n *Notifier) Notify(eventType string, context map[string]string) {
 // worker processes queued email jobs until the queue channel is closed.
 func (n *Notifier) worker() {
 	defer n.wg.Done()
-	cfg := n.loadSMTPConfig()
+	cfg := LoadSMTPConfig(n.store)
 
 	for job := range n.queue {
 		// Reload config each time so we pick up any changes
-		cfg = n.loadSMTPConfig()
+		cfg = LoadSMTPConfig(n.store)
 
 		err := SendEmail(cfg, job.To, job.Subject, job.Body)
 
@@ -110,10 +110,10 @@ func (n *Notifier) worker() {
 	_ = cfg // suppress unused warning after loop ends
 }
 
-// loadSMTPConfig reads SMTP settings from the store's _config table.
-func (n *Notifier) loadSMTPConfig() model.SMTPConfig {
+// LoadSMTPConfig reads SMTP settings from the store's _config table.
+func LoadSMTPConfig(st *store.Store) model.SMTPConfig {
 	get := func(key string) string {
-		v, _ := n.store.GetConfig(key)
+		v, _ := st.GetConfig(key)
 		return v
 	}
 
