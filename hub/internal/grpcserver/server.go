@@ -11,6 +11,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
@@ -58,6 +59,20 @@ func New(cfg Config) *Server {
 	}
 
 	var opts []grpc.ServerOption
+
+	// Keepalive: ping clients every 30s to keep long-lived streams alive through
+	// reverse proxies (e.g., Traefik's default 60s idle timeout).
+	opts = append(opts,
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    30 * time.Second,
+			Timeout: 10 * time.Second,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             10 * time.Second,
+			PermitWithoutStream: true,
+		}),
+	)
+
 	if cfg.CACert != nil && cfg.CAKey != nil {
 		serverCert, serverKey, err := ca.GenerateServerCert(cfg.CACert, cfg.CAKey, "aerodocs-hub")
 		if err != nil {
