@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/wyiu/aerodocs/agent/internal/certs"
 	"github.com/wyiu/aerodocs/agent/internal/dropzone"
@@ -320,7 +321,13 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	} else {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
-	conn, err := grpc.NewClient(c.hubAddr, creds)
+	conn, err := grpc.NewClient(c.hubAddr, creds,
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                30 * time.Second,
+			Timeout:             10 * time.Second,
+			PermitWithoutStream: true,
+		}),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("dial hub: %w", err)
 	}
