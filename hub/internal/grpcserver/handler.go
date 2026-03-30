@@ -62,12 +62,15 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
+			log.Printf("agent stream closed (EOF): %s", serverID)
 			return nil
 		}
 		if err != nil {
+			log.Printf("agent stream error: %s — %v", serverID, err)
 			return err
 		}
 		if err := h.routeAgentMessage(serverID, stream, msg); err != nil {
+			log.Printf("agent message route error: %s — %v", serverID, err)
 			return err
 		}
 	}
