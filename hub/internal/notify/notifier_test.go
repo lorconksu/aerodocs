@@ -93,14 +93,15 @@ func TestNotifier_SendsWhenConfigured(t *testing.T) {
 		}
 	}
 
-	// NotifyAgentOffline is default-on, so all users receive it without explicit preference.
+	// Use NotifyLoginFailed (not debounced) so the test doesn't need to wait 60s.
+	// Enable it for user1 explicitly since its default is ON.
 	n := New(st)
 	defer n.Close()
 
-	n.Notify(model.NotifyAgentOffline, map[string]string{
-		"server_name": "test-agent",
-		"server_id":   "srv-1",
-		"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
+	n.Notify(model.NotifyLoginFailed, map[string]string{
+		"username":  "admin",
+		"ip":        "1.2.3.4",
+		"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 	})
 
 	// Wait for the mock SMTP server to receive the message
@@ -124,13 +125,13 @@ func TestNotifier_SendsWhenConfigured(t *testing.T) {
 
 	found := false
 	for _, e := range entries {
-		if e.Status == "sent" && e.EventType == model.NotifyAgentOffline {
+		if e.Status == "sent" && e.EventType == model.NotifyLoginFailed {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected a 'sent' log entry for %s, got: %+v", model.NotifyAgentOffline, entries)
+		t.Errorf("expected a 'sent' log entry for %s, got: %+v", model.NotifyLoginFailed, entries)
 	}
 }
 
@@ -155,10 +156,11 @@ func TestNotifier_SendFailure(t *testing.T) {
 	n := New(st)
 	defer n.Close()
 
-	n.Notify(model.NotifyAgentOffline, map[string]string{
-		"server_name": "web-01",
-		"server_id":   "srv-1",
-		"timestamp":   "2026-03-29 12:00:00 UTC",
+	// Use NotifyLoginFailed (not debounced) so the test doesn't need to wait 60s.
+	n.Notify(model.NotifyLoginFailed, map[string]string{
+		"username":  "admin",
+		"ip":        "1.2.3.4",
+		"timestamp": "2026-03-29 12:00:00 UTC",
 	})
 
 	// Wait for worker to process and log the failure
@@ -173,6 +175,79 @@ func TestNotifier_SendFailure(t *testing.T) {
 	}
 	if entries[0].Status != "failed" {
 		t.Fatalf("expected 'failed' status, got %q", entries[0].Status)
+	}
+}
+
+// TestNotifier_DebounceAgentOffline verifies that an agent offline notification
+// is cancelled if the agent reconnects within the debounce window.
+func TestNotifier_DebounceAgentOffline(t *testing.T) {
+	st := testStoreAndUser(t)
+
+	// Set debounce to a short duration for testing
+	origDelay := DebounceDelay
+	DebounceDelay = 200 * time.Millisecond
+	t.Cleanup(func() { DebounceDelay = origDelay })
+
+	// Configure SMTP (even though it won't connect, we need it enabled to pass the check)
+	st.SetConfig("smtp_host", "127.0.0.1")
+	st.SetConfig("smtp_port", "1")
+	st.SetConfig("smtp_from", "test@test.com")
+	st.SetConfig("smtp_enabled", "true")
+
+	n := New(st)
+	defer n.Close()
+
+	// Agent goes offline
+	n.Notify(model.NotifyAgentOffline, map[string]string{
+		"server_name": "web-01", "server_id": "srv-1",
+		"timestamp": "2026-03-30 12:00:00 UTC",
+	})
+
+	// Agent comes back within debounce window
+	time.Sleep(50 * time.Millisecond)
+	n.Notify(model.NotifyAgentOnline, map[string]string{
+		"server_name": "web-01", "server_id": "srv-1",
+		"timestamp": "2026-03-30 12:00:01 UTC",
+	})
+
+	// Wait past debounce window
+	time.Sleep(300 * time.Millisecond)
+
+	// No notification should have been sent (offline was cancelled, online was suppressed)
+	_, total, _ := st.ListNotificationLog(50, 0)
+	if total != 0 {
+		t.Fatalf("expected 0 notifications (debounced), got %d", total)
+	}
+}
+
+// TestNotifier_DebounceExpires verifies that if the agent stays offline past
+// the debounce window, the notification IS sent.
+func TestNotifier_DebounceExpires(t *testing.T) {
+	st := testStoreAndUser(t)
+
+	origDelay := DebounceDelay
+	DebounceDelay = 100 * time.Millisecond
+	t.Cleanup(func() { DebounceDelay = origDelay })
+
+	st.SetConfig("smtp_host", "127.0.0.1")
+	st.SetConfig("smtp_port", "1") // will fail to send, but that's fine
+	st.SetConfig("smtp_from", "test@test.com")
+	st.SetConfig("smtp_enabled", "true")
+
+	n := New(st)
+	defer n.Close()
+
+	n.Notify(model.NotifyAgentOffline, map[string]string{
+		"server_name": "web-01", "server_id": "srv-1",
+		"timestamp": "2026-03-30 12:00:00 UTC",
+	})
+
+	// Wait past debounce window + processing time
+	time.Sleep(400 * time.Millisecond)
+
+	_, total, _ := st.ListNotificationLog(50, 0)
+	if total != 1 {
+		t.Fatalf("expected 1 notification after debounce expired, got %d", total)
 	}
 }
 
