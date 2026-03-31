@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { LayoutDashboard, ScrollText, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -11,18 +12,26 @@ export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [navCollapsed, setNavCollapsed] = useState(false)
-  const [version, setVersion] = useState('')
 
-  useEffect(() => {
-    fetch('/api/auth/status').then(r => r.json()).then((d: AuthStatusResponse) => setVersion(d.version)).catch(() => {})
-  }, [])
+  const { data: versionData } = useQuery({
+    queryKey: ['app-version'],
+    queryFn: () => fetch('/api/auth/status').then(r => r.json()) as Promise<AuthStatusResponse>,
+    staleTime: Infinity,
+  })
+  const version = versionData?.version ?? ''
 
-  const { data: serverData } = useAllServers()
+  const { data: serverData } = useAllServers({ refetchInterval: 30_000 })
 
   const servers = serverData?.servers ?? []
-  const onlineCount = servers.filter((s) => s.status === 'online').length
-  const offlineCount = servers.filter((s) => s.status === 'offline').length
-  const pendingCount = servers.filter((s) => s.status === 'pending').length
+  const { onlineCount, offlineCount, pendingCount } = useMemo(() => {
+    let online = 0, offline = 0, pending = 0
+    for (const s of servers) {
+      if (s.status === 'online') online++
+      else if (s.status === 'offline') offline++
+      else if (s.status === 'pending') pending++
+    }
+    return { onlineCount: online, offlineCount: offline, pendingCount: pending }
+  }, [servers])
 
   const handleLogout = () => {
     logout()
