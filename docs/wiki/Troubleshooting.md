@@ -50,7 +50,7 @@ The agent was previously connected but has lost its connection. Check:
 
 - Is the agent service running? `systemctl status aerodocs-agent`
 - Can the server reach the Hub? Check network connectivity.
-- Is the Hub's gRPC port (9090, or 443 if behind Traefik) reachable from the agent?
+- Is the Hub's gRPC port (9443, or the port configured via `--grpc-external-addr`) reachable from the agent?
 - Restart the agent: `sudo systemctl restart aerodocs-agent`
 
 ### Server status isn't updating
@@ -78,6 +78,10 @@ Binary files or permission-restricted paths are visible in the directory listing
 - Check that the server is online (green status on the Fleet Dashboard).
 - The agent may have disconnected. Wait for reconnection or check the agent service on the remote server.
 - Try navigating away and back to the file.
+
+### A path I expect is not visible
+
+The path may be on the sensitive path blocklist. AeroDocs prevents agents from exposing certain restricted filesystem paths (e.g. `/etc/shadow`, private key directories). If you need access to a blocked path, check the Hub's blocklist configuration. This is a security feature and cannot be overridden from the UI.
 
 ---
 
@@ -113,26 +117,51 @@ The Dropzone tab is only visible to admin users. Viewers cannot upload files. If
 
 ---
 
+## Email Notification Issues
+
+### Notifications are not being sent
+
+- Verify that SMTP is configured in Settings > Notifications.
+- Click **Send Test Email** to check that the SMTP configuration is valid.
+- Check the notification log in Settings > Notifications for delivery errors.
+- Ensure the recipient has enabled the relevant alert in Settings > Alerts.
+
+### Test email succeeds but real notifications fail
+
+- Check that the event type is toggled on in the recipient's Alerts tab.
+- Some SMTP providers rate-limit outbound messages. Check your provider's sending limits.
+- Review the notification log for specific error messages from the SMTP server.
+
+---
+
 ## Agent Issues
 
 ### Install script fails
 
-- Check that `curl` can reach the Hub URL from the target server: `curl - I https://your-hub-url`
+- Check that `curl` can reach the Hub URL from the target server: `curl -I https://your-hub-url`
 - Verify the registration token hasn't expired (tokens are single-use and time-limited).
 - Ensure you are running the install command as root or with `sudo`.
 - Check DNS resolution on the target server.
 
 ### Agent won't connect after install
 
-- Check that the firewall allows outbound connections to the Hub's gRPC port (9090 by default, or 443 if behind Traefik).
+- Check that the firewall allows outbound connections to the Hub's gRPC port (9443 by default, or the port configured via `--grpc-external-addr`).
 - Verify the Hub gRPC address in the agent configuration file (`/etc/aerodocs/agent.conf`).
-- Check agent logs: `journalctl - u aerodocs-agent - f`
+- Check agent logs: `journalctl -u aerodocs-agent -f`
+- If mTLS is enabled, ensure the agent's certificate is valid and not expired.
 
 ### Agent keeps reconnecting
 
-- The Hub may be restarting or under heavy load. Check Hub service logs: `journalctl - u aerodocs - f`
+- The Hub may be restarting or under heavy load. Check Hub service logs: `journalctl -u aerodocs -f`
 - Network instability between the agent and Hub can cause repeated disconnects.
 - Check if the Hub is running out of memory or file descriptors.
+- The agent automatically refreshes its IP on reconnect (as of v1.2.11), so IP changes should be handled transparently.
+
+### mTLS certificate errors
+
+- Verify the agent's certificate has not expired: `openssl x509 -in /etc/aerodocs/agent.crt -noout -dates`
+- Ensure the CA certificate on the Hub matches the one that signed the agent's certificate.
+- Check that the system clock on both the agent and Hub is correct (certificate validation is time-sensitive).
 
 ---
 
@@ -156,6 +185,6 @@ This is by design. You cannot delete your own account - another admin must do it
 
 If none of the above solves your issue:
 
-1. Check the Hub logs: `journalctl - u aerodocs - f`
-2. Check the agent logs on the affected server: `journalctl - u aerodocs-agent - f`
+1. Check the Hub logs: `journalctl -u aerodocs -f`
+2. Check the agent logs on the affected server: `journalctl -u aerodocs-agent -f`
 3. File an issue on GitHub with the relevant log output and a description of what you expected to happen.

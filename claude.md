@@ -1,118 +1,71 @@
 # AeroDocs
 
-A self-hosted infrastructure observability and documentation platform. Full-stack: Go backend (Hub), Go agent, React frontend, SQLite database.
+Self-hosted infrastructure observability platform. Hub-and-Spoke architecture: Go backend + React frontend (Hub) with lightweight Go agents on remote servers. Current version: **v1.2.11**.
 
-## Architecture
+## Project Structure
 
-Hub-and-Spoke model:
-- **Hub**: Central Go server — serves the React frontend, exposes REST/gRPC APIs, manages SQLite database, enforces all auth and permissions.
-- **Agent**: Lightweight Go binary installed on each remote server — takes orders from the Hub only. Agents never talk to each other, users never talk to Agents directly.
-- **Frontend**: React SPA served by the Hub.
+```
+aerodocs/
+├── hub/              # Go backend (REST API, gRPC server, SQLite, auth, embedded frontend)
+│   ├── cmd/aerodocs/ # Main entry point
+│   └── internal/     # Core packages (auth, handlers, store, grpc, email, middleware)
+├── agent/            # Go agent binary (runs on remote servers, connects to Hub via gRPC)
+│   ├── cmd/aerodocs-agent/
+│   └── internal/     # Agent packages (filebrowser, logtailer, uploader)
+├── web/              # React 19 + TypeScript + Vite + Tailwind frontend
+│   └── src/          # Components, hooks, pages, API client
+├── proto/            # Protocol Buffer definitions (gRPC service)
+│   └── aerodocs/v1/  # agent.proto
+├── docs/
+│   ├── engineering/  # Architecture, API reference, deployment, security model, gRPC protocol
+│   └── wiki/         # End-user documentation and screenshots
+├── scripts/          # Build and deployment scripts
+├── Dockerfile        # Multi-stage build (frontend + hub + agent)
+├── docker-compose.yml
+└── Makefile          # Build orchestration
+```
 
-## Product Domain
+## Build Commands
 
-Server fleet management, remote log tailing, markdown documentation rendering, and secure file transfer.
+```bash
+make build            # Full production build (frontend + hub + agent)
+make build-web        # cd web && npm run build
+make build-hub        # cd hub && go build -o ../bin/aerodocs ./cmd/aerodocs/
+make build-agent      # Cross-compile agent for linux/amd64 and linux/arm64
+make proto            # Regenerate protobuf Go code
+make clean            # Remove build artifacts
+```
 
-## Build Order (Sub-projects)
+## Test Commands
 
-Each sub-project gets its own spec → plan → implementation cycle:
+```bash
+make test             # Run all tests (hub + agent)
+make test-hub         # cd hub && go test ./...
+make test-agent       # cd agent && go test ./...
+cd web && npx vitest run  # Frontend unit tests
+```
 
-1. **Foundation & Auth** — Project scaffolding, SQLite schema, Go server skeleton, user auth (login/register/2FA), React app shell with routing
-2. **Fleet Dashboard & Server Management** — Server CRUD API, agent registration protocol, fleet dashboard UI with mass actions
-3. **Agent** — Lightweight Go binary on remote servers, Hub↔Agent communication protocol
-4. **File Tree & Document Viewer** — "Honest" file tree browsing, markdown rendering, file reading via agent
-5. **Live Log Tailing & Grep** — Real-time log streaming, grep/filter, reverse infinite scroll, log rotation resilience
-6. **Quarantined Dropzone** — Drag-and-drop file upload to sandboxed directory
-7. **Audit Logs & Settings** — Global audit log viewer, permissions management, user settings
+## Development
 
-## Tech Stack
+```bash
+make dev-hub          # Run Hub in dev mode (port 8080, hot reload)
+make dev-web          # Run Vite dev server (proxies to Hub)
+```
 
-### Backend
-- **Language**: Go (Golang)
-- **Database**: SQLite (single-file, no external DB server)
-- **API**: REST + gRPC (Hub↔Agent communication)
+## Key Technologies
 
-### Frontend
-- **Framework**: React with TypeScript
-- **Styling**: Tailwind CSS with shadcn/ui (heavily customized — must feel fully bespoke, not a starter kit)
-- **Routing**: React Router
-- **Server state**: TanStack Query
-- **Icons**: lucide-react
-- **Layouts**: react-resizable-panels for multi-pane reading layouts
+- **Backend**: Go 1.26+, SQLite (WAL mode, pure Go via modernc.org/sqlite)
+- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, TanStack Query
+- **Communication**: gRPC bidirectional streaming with mTLS (ECDSA P-256), REST + SSE
+- **Auth**: JWT (httpOnly cookies), TOTP 2FA (mandatory), bcrypt cost 12, CSRF double-submit
 
-### Database Schema (SQLite)
-- `users` — login info, 2FA/TOTP secrets
-- `servers` — inventory of connected machines
-- `permissions` — per-user, per-server folder access maps
-- `audit_logs` — immutable history of all actions
+## Deployment
 
-## Implementation Requirements
+- Docker image: `yiucloud/aerodocs:1.2.11`
+- Ports: 8081 (HTTP), 9090 (gRPC)
+- Frontend is embedded into the Go binary via `go:embed` (single binary, no Node.js runtime needed)
+- Production: LXC 110 on proxmox3, behind Traefik (TLS termination), accessible at aerodocs.yiucloud.com
 
-- DRY coding principles throughout
-- Modular, clean codebase
-- Strong type-safety end to end (strict TypeScript on frontend, strong typing in Go)
-- Prefer reusable primitives, shared helpers, shared layout shells, and domain-specific modules over duplicated logic
-- Break large views into focused components, hooks, and utility files
-- Centralize design tokens, route state helpers, and reusable panel patterns
-- Avoid giant monolithic files
-- Avoid `any` in TypeScript except as an absolute last resort
-- Explicit interfaces for API contracts (Server Node, Log Line, File Node, etc.)
-- Strongly typed UI state, filter state, and connection status (Online, Offline, Reconnecting)
+## Database
 
-## Frontend Design
-
-### Design Goal
-Serious, premium, high-trust interface — enterprise platform engineering command center meets advanced terminal.
-
-### Visual Direction
-- Dark, near-black UI with layered charcoal and graphite surfaces
-- Dense but organized information layout
-- Sharp, technical, operator-focused presentation
-- Desktop-first app shell with workspace-style navigation
-
-### Layout
-- Top global telemetry bar: context-aware actions (Mass Delete, Add Server), global connection health, user profile (with 2FA settings dropdown)
-- Left vertical nav: Fleet Dashboard, Global Audit Logs, Settings
-- Server view: left sidebar becomes the "Honest" File Tree (directories, text files, greyed-out binaries/prohibited symlinks)
-- Main content: split panes with breadcrumbs, file metadata, real-time Grep/Filter input. Main stage toggles between rendered Markdown view and dense monospaced terminal view for log tailing
-
-### Typography
-- Strong, technical heading style
-- Uppercase micro-labels with generous tracking for metadata (file sizes, line counts)
-- Monospace heavily: log streams, IPs, file paths, terminal outputs
-
-### Color System
-- Base: black, charcoal, slate, off-white
-- Green: server online, live-tail connected, success
-- Amber: network blip/buffering, warning
-- Red: server offline, stream disconnected, errors
-- No purple-heavy or trendy SaaS palettes
-
-### Component Style
-- Thin borders, subtle separators, faint grid structure
-- Compact status pills and badges
-- Dense data tables with mass-select checkboxes
-- Log reader: native terminal feel, no excess padding
-- Modals: "Add Server" flow, "Quarantined Dropzone" file uploader
-
-### Interaction Style
-- Fast, restrained, precise
-- Grep bar filters visible lines immediately
-- Subtle hover states on file tree
-- No flashy animation or glassmorphism
-
-### UX Principles
-- High information density with strong hierarchy
-- Prioritize readability of massive log walls
-- Explicit error states (inline break on log rotation, connection drop indicators)
-
-## Critical Edge Cases
-- **Network Breakaway**: 15-second timeout → cut live-tail, show red error
-- **CLI Break-Glass**: Terminal command to reset admin 2FA if phone is lost
-- **Path Sanitization**: Aggressively scrub file paths to prevent traversal attacks (e.g., `../../passwords`)
-
-## Reusable Components to Build
-- Fleet status cards / table rows
-- "Honest" File Tree node (active, directory, disabled/greyed-out states)
-- Log Reading Stage (grep bar + line count telemetry)
-- 2FA/TOTP setup modals
+SQLite with WAL mode. Schema auto-migrates on startup. Tables: `users`, `servers`, `permissions`, `audit_logs`, `notification_settings`, `sessions`.

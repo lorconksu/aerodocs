@@ -2,7 +2,7 @@
 
 The Server Detail page is the per-server workspace in AeroDocs. Open it by clicking a server name on the [[Fleet Dashboard]].
 
-![Server Detail - File Tree](../screenshots/10-server-detail-filetree.png)
+![Server Detail](screenshots/server-detail.png)
 
 > **Admin vs Viewer:** Viewers can browse the file tree and tail logs on servers where they have been granted path access. Only admins can upload files via the Dropzone and manage path access permissions.
 
@@ -13,16 +13,18 @@ The Server Detail page is the per-server workspace in AeroDocs. Open it by click
 The page is divided into three main areas:
 
 1. **Header** - displays the server name, current status, hostname, IP address, OS, and agent version.
-2. **File Tree sidebar** - a collapsible panel on the left for navigating the remote filesystem.
+2. **File Explorer sidebar** - a collapsible panel on the left for navigating the remote filesystem.
 3. **Main panel** - shows the currently viewed file, the Live Tail console, or the Dropzone uploader depending on what you have selected.
 
 An additional **Admin Tools sidebar** is available on the right for admins, providing path access management controls.
 
 ---
 
-## File Tree Browser
+## File Explorer
 
-The File Tree is the left sidebar. It lets you navigate the remote server's filesystem without opening a terminal.
+![File Browser](screenshots/file-browser.png)
+
+The File Explorer is the left sidebar. It lets you navigate the remote server's filesystem without opening a terminal.
 
 ### Navigating Directories
 
@@ -40,17 +42,17 @@ The File Tree is the left sidebar. It lets you navigate the remote server's file
 
 ### Collapsing the Sidebar
 
-Click the **collapse** button (chevron icon) at the top of the File Tree panel to hide the sidebar and give the main panel more space. Click it again to restore the panel.
+Click the **collapse** button (chevron icon) at the top of the File Explorer panel to hide the sidebar and give the main panel more space. Click it again to restore the panel.
 
 ---
 
 ## File Viewer
 
-When you select a file in the File Tree, it opens in the File Viewer in the main panel.
+When you select a file in the File Explorer, it opens in the File Viewer in the main panel.
 
 ### Syntax Highlighting
 
-Source code and configuration files are automatically syntax-highlighted based on their file extension. Supported types include Python, JavaScript/TypeScript, shell scripts, YAML, TOML, JSON, and more.
+Source code and configuration files are automatically syntax-highlighted based on their file extension. Supported types include Python, JavaScript/TypeScript, Go, Rust, shell scripts, YAML, TOML, JSON, Dockerfiles, Makefiles, and more. The viewer uses a dark theme optimised for readability.
 
 ### Markdown Rendering
 
@@ -80,13 +82,13 @@ Press **Ctrl+F** (or **Cmd+F** on Mac) while a file is open in the viewer to ope
 
 ## Live Tail
 
-Live Tail streams log output from a file on the remote server directly into your browser in real time. It is equivalent to running `tail - f` on the server, but without needing SSH access.
+Live Tail streams log output from a file on the remote server directly into your browser in real time. It is equivalent to running `tail -f` on the server, but without needing SSH access.
 
 Both admins and viewers can use Live Tail on paths they have been granted access to.
 
 ### Starting a Tail Session
 
-1. In the File Tree, navigate to the log file you want to monitor (e.g. `/var/log/syslog`).
+1. In the File Explorer, navigate to the log file you want to monitor (e.g. `/var/log/syslog`).
 2. Click the **Tail** button that appears next to the file name, or open the file and click **Start Tailing** in the viewer toolbar.
 3. The main panel switches to the Live Tail console. New log lines appear at the bottom as they are written.
 
@@ -107,8 +109,6 @@ Click **Stop** to end the tail session. The console retains the lines that were 
 
 ## Dropzone
 
-![Dropzone](../screenshots/11-server-detail-dropzone.png)
-
 The Dropzone lets you transfer files from your local machine to the server without SCP, SFTP, or any other external tool.
 
 > **Admin only:** The Dropzone tab is only available to admin users. Viewers will not see this tab.
@@ -121,6 +121,8 @@ The Dropzone lets you transfer files from your local machine to the server witho
 4. Each file shows an upload progress indicator. When complete, a confirmation appears.
 
 Files are uploaded to the path configured by an admin for your account. If no upload path has been set, the Dropzone will display an error - contact an admin.
+
+When a file is uploaded, a notification is sent to users who have email notifications enabled for file upload events.
 
 ### Dropped Files List
 
@@ -146,11 +148,11 @@ Admins can control which filesystem paths each user can see and interact with.
 3. Enter the **path** to grant access to (e.g. `/var/log` or `/home/deploy/app`).
 4. Click **Grant Access**.
 
-The path is added to the user's allowed list for this server. They will immediately see the path appear in their File Tree on next load.
+The path is added to the user's allowed list for this server. They will immediately see the path appear in their File Explorer on next load.
 
 ### Revoking Access
 
-In the Admin Tools panel, find the path in the user's current access list and click **Revoke**. The path is removed. The user will no longer see it in their File Tree.
+In the Admin Tools panel, find the path in the user's current access list and click **Revoke**. The path is removed. The user will no longer see it in their File Explorer.
 
 Both grant and revoke actions are recorded in the [[Audit Logs]] (`path.granted` and `path.revoked`).
 
@@ -158,7 +160,7 @@ Both grant and revoke actions are recorded in the [[Audit Logs]] (`path.granted`
 
 ## Collapsible Sidebars
 
-Both the File Tree (left) and Admin Tools (right) sidebars can be independently collapsed to maximise the working area:
+Both the File Explorer (left) and Admin Tools (right) sidebars can be independently collapsed to maximise the working area:
 
 - Click the **chevron** button on a panel's edge to collapse or expand it.
 - The panels remember their state for the duration of your session.
