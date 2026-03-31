@@ -174,6 +174,57 @@ func TestReadFile_SymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestValidatePath_BlockedPaths(t *testing.T) {
+	tests := []struct {
+		path      string
+		shouldErr bool
+	}{
+		{"/etc/shadow", true},
+		{"/etc/shadow/subpath", true},
+		{"/etc/gshadow", true},
+		{"/etc/sudoers", true},
+		{"/etc/sudoers.d/custom", true},
+		{"/root/.ssh", true},
+		{"/root/.ssh/authorized_keys", true},
+		{"/proc/1/cmdline", true},
+		{"/proc/kcore", true},
+		{"/sys/kernel/security", true},
+		{"/etc/passwd", false},          // not blocked — readable by all
+		{"/var/log/syslog", false},       // normal path
+		{"/etc/shadowbackup", false},     // not a prefix match
+		{"/proc", false},                 // /proc itself is not blocked, only /proc/*
+	}
+	for _, tt := range tests {
+		err := validatePath(tt.path)
+		if tt.shouldErr && err == nil {
+			t.Errorf("validatePath(%q) should have returned error", tt.path)
+		}
+		if !tt.shouldErr && err != nil {
+			t.Errorf("validatePath(%q) unexpected error: %v", tt.path, err)
+		}
+	}
+}
+
+func TestListDir_BlockedPath(t *testing.T) {
+	resp, err := ListDir("/etc/shadow")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected blocked path error")
+	}
+}
+
+func TestReadFile_BlockedPath(t *testing.T) {
+	resp, err := ReadFile("/etc/shadow", 0, 1048576)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Error == "" {
+		t.Fatal("expected blocked path error")
+	}
+}
+
 func TestDetectMIME(t *testing.T) {
 	tests := map[string]string{
 		"file.txt":    "text/plain",

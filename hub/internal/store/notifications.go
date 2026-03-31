@@ -60,10 +60,18 @@ func (s *Store) SetNotificationPreference(userID, eventType string, enabled bool
 	return nil
 }
 
+// NotificationRecipient holds the minimal fields needed for sending notifications.
+// This avoids loading sensitive fields (password_hash, totp_secret) into memory.
+type NotificationRecipient struct {
+	ID    string
+	Email string
+}
+
 // GetEnabledRecipients returns the users who should receive notifications for the given event type.
 // For default-on events: all users EXCEPT those who explicitly disabled it.
 // For default-off events: only users who explicitly enabled it.
-func (s *Store) GetEnabledRecipients(eventType string) ([]model.User, error) {
+// Only returns id and email — no sensitive fields are loaded.
+func (s *Store) GetEnabledRecipients(eventType string) ([]NotificationRecipient, error) {
 	// Look up the default state for this event
 	defaultOn := false
 	for _, def := range model.AllNotifyEvents {
@@ -80,8 +88,7 @@ func (s *Store) GetEnabledRecipients(eventType string) ([]model.User, error) {
 
 	if defaultOn {
 		// All users EXCEPT those who explicitly disabled
-		query = `SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, avatar, created_at, updated_at
-		         FROM users
+		query = `SELECT id, email FROM users
 		         WHERE id NOT IN (
 		             SELECT user_id FROM notification_preferences
 		             WHERE event_type = ? AND enabled = 0
@@ -90,8 +97,7 @@ func (s *Store) GetEnabledRecipients(eventType string) ([]model.User, error) {
 		args = []interface{}{eventType}
 	} else {
 		// Only users who explicitly enabled
-		query = `SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, avatar, created_at, updated_at
-		         FROM users
+		query = `SELECT id, email FROM users
 		         WHERE id IN (
 		             SELECT user_id FROM notification_preferences
 		             WHERE event_type = ? AND enabled = 1
@@ -106,15 +112,15 @@ func (s *Store) GetEnabledRecipients(eventType string) ([]model.User, error) {
 	}
 	defer rows.Close()
 
-	var users []model.User
+	var recipients []NotificationRecipient
 	for rows.Next() {
-		u, err := s.scanUserRow(rows)
-		if err != nil {
-			return nil, err
+		var r NotificationRecipient
+		if err := rows.Scan(&r.ID, &r.Email); err != nil {
+			return nil, fmt.Errorf("scan notification recipient: %w", err)
 		}
-		users = append(users, *u)
+		recipients = append(recipients, r)
 	}
-	return users, rows.Err()
+	return recipients, rows.Err()
 }
 
 // LogNotification inserts a notification delivery log entry.
