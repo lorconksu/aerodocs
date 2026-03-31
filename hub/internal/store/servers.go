@@ -224,6 +224,17 @@ func (s *Store) UpdateServerStatus(id, status string) error {
 	return nil
 }
 
+func (s *Store) UpdateServerIP(id, ip string) error {
+	_, err := s.db.Exec(
+		"UPDATE servers SET ip_address = ?, updated_at = datetime('now') WHERE id = ?",
+		ip, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update server ip: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) UpdateServerLastSeen(id string, systemInfo *model.SystemInfo) error {
 	now := time.Now().UTC().Format(sqliteTimeFormat)
 	result, err := s.db.Exec(
