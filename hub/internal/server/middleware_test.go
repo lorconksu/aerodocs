@@ -316,14 +316,25 @@ func TestLoggingMiddleware(t *testing.T) {
 	}
 }
 
-func TestClientIP_IgnoresXForwardedFor(t *testing.T) {
+func TestClientIP_UsesXForwardedFor(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "10.0.0.1:54321"
 	req.Header.Set("X-Forwarded-For", "203.0.113.1, 10.0.0.1")
 
 	ip := clientIP(req)
+	if ip != "203.0.113.1" {
+		t.Fatalf("expected '203.0.113.1' (first X-Forwarded-For), got '%s'", ip)
+	}
+}
+
+func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:54321"
+	// No X-Forwarded-For header
+
+	ip := clientIP(req)
 	if ip != "10.0.0.1" {
-		t.Fatalf("expected '10.0.0.1' (RemoteAddr), got '%s'", ip)
+		t.Fatalf("expected '10.0.0.1' (RemoteAddr fallback), got '%s'", ip)
 	}
 }
 
