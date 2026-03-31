@@ -3,6 +3,7 @@ package notify
 import (
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,15 @@ import (
 )
 
 const queueSize = 100
+
+// securityEvents are notification types that must not be silently dropped
+// when the queue is full. They get a dedicated overflow slot.
+var securityEvents = map[string]bool{
+	model.NotifyLoginFailed:     true,
+	model.NotifyUserCreated:     true,
+	model.NotifyTOTPChanged:     true,
+	model.NotifyPasswordChanged: true,
+}
 
 type emailJob struct {
 	To        string
@@ -27,21 +37,23 @@ var DebounceDelay = 60 * time.Second
 
 // Notifier dispatches email notifications asynchronously via a background worker.
 type Notifier struct {
-	store    *store.Store
-	queue    chan emailJob
-	done     chan struct{}
-	wg       sync.WaitGroup
-	mu       sync.Mutex
-	debounce map[string]*time.Timer // keyed by "eventType:serverID"
+	store         *store.Store
+	queue         chan emailJob
+	priorityQueue chan emailJob // overflow for security-critical notifications
+	done          chan struct{}
+	wg            sync.WaitGroup
+	mu            sync.Mutex
+	debounce      map[string]*time.Timer // keyed by "eventType:serverID"
 }
 
 // New creates a Notifier and starts the background worker goroutine.
 func New(st *store.Store) *Notifier {
 	n := &Notifier{
-		store:    st,
-		queue:    make(chan emailJob, queueSize),
-		done:     make(chan struct{}),
-		debounce: make(map[string]*time.Timer),
+		store:         st,
+		queue:         make(chan emailJob, queueSize),
+		priorityQueue: make(chan emailJob, queueSize),
+		done:          make(chan struct{}),
+		debounce:      make(map[string]*time.Timer),
 	}
 	n.wg.Add(1)
 	go n.worker()
@@ -58,8 +70,30 @@ func (n *Notifier) Close() {
 	}
 	n.mu.Unlock()
 	close(n.queue)
+	close(n.priorityQueue)
 	n.wg.Wait()
 	close(n.done)
+}
+
+// enqueueJob attempts to send a job to the main queue. For security-critical
+// events, if the main queue is full, it falls back to the priority queue so
+// that security notifications are never silently dropped.
+func (n *Notifier) enqueueJob(job emailJob) bool {
+	select {
+	case n.queue <- job:
+		return true
+	default:
+		if securityEvents[job.EventType] {
+			select {
+			case n.priorityQueue <- job:
+				log.Printf("notify: main queue full, security event %s routed to priority queue", job.EventType)
+				return true
+			default:
+				return false
+			}
+		}
+		return false
+	}
 }
 
 // Notify loads SMTP config, resolves recipients, renders emails, and enqueues jobs.
@@ -139,48 +173,102 @@ func (n *Notifier) enqueueNotification(eventType string, context map[string]stri
 
 	subject, body := RenderEmail(eventType, context)
 
-	for _, u := range recipients {
-		if u.Email == "" {
+	for _, r := range recipients {
+		if r.Email == "" {
 			continue
 		}
 		job := emailJob{
-			To:        u.Email,
-			UserID:    u.ID,
+			To:        r.Email,
+			UserID:    r.ID,
 			EventType: eventType,
 			Subject:   subject,
 			Body:      body,
 		}
-		select {
-		case n.queue <- job:
-		default:
-			log.Printf("notify: queue full, dropping notification for user %s event %s", u.ID, eventType)
+		if !n.enqueueJob(job) {
+			log.Printf("notify: queue full, dropping notification for user %s event %s", r.ID, eventType)
 		}
 	}
 }
 
-// worker processes queued email jobs until the queue channel is closed.
+// worker processes queued email jobs until both queue channels are closed.
+// Priority queue is checked first on each iteration to ensure security-critical
+// notifications are processed ahead of normal ones.
 func (n *Notifier) worker() {
 	defer n.wg.Done()
 
-	for job := range n.queue {
-		// Reload config each time so we pick up any changes
-		cfg := LoadSMTPConfig(n.store)
+	for {
+		var job emailJob
+		var ok bool
 
-		err := SendEmail(cfg, job.To, job.Subject, job.Body)
-
-		id := uuid.New().String()
-		status := "sent"
-		var errMsg *string
-		if err != nil {
-			status = "failed"
-			msg := err.Error()
-			errMsg = &msg
-			log.Printf("notify: send email to %s failed: %v", job.To, err)
+		// Priority queue takes precedence
+		select {
+		case job, ok = <-n.priorityQueue:
+			if !ok {
+				// Priority queue closed — drain main queue
+				for job := range n.queue {
+					n.processJob(job)
+				}
+				return
+			}
+		default:
+			// No priority jobs — check both queues
+			select {
+			case job, ok = <-n.priorityQueue:
+				if !ok {
+					for job := range n.queue {
+						n.processJob(job)
+					}
+					return
+				}
+			case job, ok = <-n.queue:
+				if !ok {
+					// Main queue closed — drain priority queue
+					for job := range n.priorityQueue {
+						n.processJob(job)
+					}
+					return
+				}
+			}
 		}
 
-		if logErr := n.store.LogNotification(id, job.UserID, job.EventType, job.Subject, status, errMsg); logErr != nil {
-			log.Printf("notify: log notification: %v", logErr)
+		n.processJob(job)
+	}
+}
+
+// sanitizeErrorForLog returns a generic error message for storage in the
+// notification log, stripping internal details like hostnames and credentials
+// that SMTP servers may include in error responses.
+func sanitizeErrorForLog(err error) string {
+	msg := err.Error()
+	// Keep the high-level error category (e.g., "smtp auth:", "smtp tls dial:")
+	// but strip server-specific details after the first colon pair
+	if strings.Contains(msg, ": ") {
+		parts := strings.SplitN(msg, ": ", 3)
+		if len(parts) >= 2 {
+			return parts[0] + ": " + parts[1]
 		}
+	}
+	return "email delivery failed"
+}
+
+func (n *Notifier) processJob(job emailJob) {
+	cfg := LoadSMTPConfig(n.store)
+
+	err := SendEmail(cfg, job.To, job.Subject, job.Body)
+
+	id := uuid.New().String()
+	status := "sent"
+	var errMsg *string
+	if err != nil {
+		status = "failed"
+		sanitized := sanitizeErrorForLog(err)
+		errMsg = &sanitized
+		// Full error logged server-side for debugging
+		log.Printf("notify: send email to %s failed: %v", job.To, err)
+	}
+
+	if logErr := n.store.LogNotification(id, job.UserID, job.EventType, job.Subject, status, errMsg); logErr != nil {
+		log.Printf("notify: log notification: %v", logErr)
 	}
 }
 

@@ -26,6 +26,25 @@ const MaxReadSize = 1048576 // 1MB
 
 const errCannotReadFile = "cannot read file"
 
+// blockedPaths are sensitive system paths that the file browser must never expose.
+// Checked against the cleaned path prefix — blocks the path itself and all children.
+var blockedPaths = []string{
+	"/etc/shadow",
+	"/etc/gshadow",
+	"/etc/sudoers",
+	"/etc/sudoers.d",
+	"/root/.ssh",
+	"/proc/self",
+	"/proc/kcore",
+	"/sys/firmware",
+}
+
+// blockedPrefixes are path prefixes whose entire subtree is blocked.
+var blockedPrefixes = []string{
+	"/proc/",
+	"/sys/kernel/",
+}
+
 func validatePath(path string) error {
 	// Reject paths that contain ".." components before cleaning
 	if strings.Contains(path, "..") {
@@ -35,6 +54,19 @@ func validatePath(path string) error {
 	if !filepath.IsAbs(cleaned) {
 		return fmt.Errorf("path must be absolute")
 	}
+
+	// Check against blocklist of sensitive paths
+	for _, blocked := range blockedPaths {
+		if cleaned == blocked || strings.HasPrefix(cleaned, blocked+"/") {
+			return fmt.Errorf("access to this path is restricted")
+		}
+	}
+	for _, prefix := range blockedPrefixes {
+		if strings.HasPrefix(cleaned, prefix) {
+			return fmt.Errorf("access to this path is restricted")
+		}
+	}
+
 	return nil
 }
 
