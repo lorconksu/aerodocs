@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	hub "github.com/wyiu/aerodocs/hub"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
@@ -102,7 +103,9 @@ func runServer() error {
 		fmt.Println("\nShutting down...")
 		close(stopHeartbeat)
 		grpcSrv.Stop()
-		srv.Shutdown(context.Background())
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		srv.Shutdown(shutdownCtx)
 	}()
 
 	return srv.Start()

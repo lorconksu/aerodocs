@@ -111,6 +111,12 @@ func (s *Server) spaHandler() http.Handler {
 
 	fileServer := http.FileServer(http.FS(sub))
 
+	// Pre-read index.html once at startup instead of on every fallback request
+	indexHTML, err := fs.ReadFile(sub, "index.html")
+	if err != nil {
+		panic("spaHandler: index.html not found in embedded FS: " + err.Error())
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Try to open the requested file.
 		f, openErr := sub.Open(r.URL.Path[1:]) // strip leading /
@@ -120,15 +126,10 @@ func (s *Server) spaHandler() http.Handler {
 			return
 		}
 
-		// File not found — serve index.html for client-side routing.
-		index, readErr := fs.ReadFile(sub, "index.html")
-		if readErr != nil {
-			http.Error(w, "index.html not found in embedded FS", http.StatusInternalServerError)
-			return
-		}
+		// File not found — serve cached index.html for client-side routing.
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write(index)
+		w.Write(indexHTML)
 	})
 }
 

@@ -50,6 +50,9 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Wait for ack
+	uploadTimer := time.NewTimer(uploadTimeout)
+	defer uploadTimer.Stop()
+
 	select {
 	case msg := <-ch:
 		ack, ok := msg.(*pb.FileUploadAck)
@@ -90,7 +93,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 			Filename: filename,
 			Size:     totalSize,
 		})
-	case <-time.After(uploadTimeout):
+	case <-uploadTimer.C:
 		respondError(w, http.StatusGatewayTimeout, "upload timeout")
 	}
 }
