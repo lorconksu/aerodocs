@@ -434,6 +434,7 @@ type Heartbeat struct {
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	Timestamp     int64                  `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	SystemInfo    *SystemInfo            `protobuf:"bytes,3,opt,name=system_info,json=systemInfo,proto3" json:"system_info,omitempty"`
+	IpAddress     string                 `protobuf:"bytes,4,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -487,6 +488,13 @@ func (x *Heartbeat) GetSystemInfo() *SystemInfo {
 		return x.SystemInfo
 	}
 	return nil
+}
+
+func (x *Heartbeat) GetIpAddress() string {
+	if x != nil {
+		return x.IpAddress
+	}
+	return ""
 }
 
 type HeartbeatAck struct {
@@ -1749,12 +1757,14 @@ const file_proto_aerodocs_v1_agent_proto_rawDesc = "" +
 	"\x13file_delete_request\x18\x0f \x01(\v2\x1e.aerodocs.v1.FileDeleteRequestH\x00R\x11fileDeleteRequest\x12O\n" +
 	"\x12unregister_request\x18\x10 \x01(\v2\x1e.aerodocs.v1.UnregisterRequestH\x00R\x11unregisterRequest\x12P\n" +
 	"\x13cert_renew_response\x18\x11 \x01(\v2\x1e.aerodocs.v1.CertRenewResponseH\x00R\x11certRenewResponseB\t\n" +
-	"\apayload\"\x80\x01\n" +
+	"\apayload\"\x9f\x01\n" +
 	"\tHeartbeat\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x128\n" +
 	"\vsystem_info\x18\x03 \x01(\v2\x17.aerodocs.v1.SystemInfoR\n" +
-	"systemInfo\",\n" +
+	"systemInfo\x12\x1d\n" +
+	"\n" +
+	"ip_address\x18\x04 \x01(\tR\tipAddress\",\n" +
 	"\fHeartbeatAck\x12\x1c\n" +
 	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\"\xa7\x01\n" +
 	"\rRegisterAgent\x12\x14\n" +

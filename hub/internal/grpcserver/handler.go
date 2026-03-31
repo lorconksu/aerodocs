@@ -57,8 +57,12 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 
 	h.connMgr.Register(serverID, stream)
 
-	peerAddr := h.peerAddr(stream)
-	h.onAgentConnected(serverID, peerAddr)
+	// Use stored IP (set during handshake with agent-reported IP) for logging
+	agentIP := h.peerAddr(stream)
+	if srv, err := h.store.GetServerByID(serverID); err == nil && srv.IPAddress != nil && *srv.IPAddress != "" {
+		agentIP = *srv.IPAddress
+	}
+	h.onAgentConnected(serverID, agentIP)
 	defer h.onAgentDisconnected(serverID)
 
 	for {
@@ -186,7 +190,7 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 	case *pb.AgentMessage_Register:
 		return h.performRegisterHandshake(stream, p.Register, peerIP)
 	case *pb.AgentMessage_Heartbeat:
-		return h.performHeartbeatHandshake(stream, p.Heartbeat.ServerId, peerIP)
+		return h.performHeartbeatHandshake(stream, p.Heartbeat, peerIP)
 	default:
 		return "", status.Errorf(codes.InvalidArgument, "first message must be Register or Heartbeat")
 	}
@@ -226,7 +230,8 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 	return serverID, nil
 }
 
-func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, serverID, peerIP string) (string, error) {
+func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, hb *pb.Heartbeat, peerIP string) (string, error) {
+	serverID := hb.ServerId
 	if err := h.handleHeartbeat(serverID); err != nil {
 		return "", status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
 	}
@@ -238,9 +243,13 @@ func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer
 		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
 	}
 
-	// Refresh stored IP on reconnect (may have changed or been wrong initially)
-	if peerIP != "" {
-		_ = h.store.UpdateServerIP(serverID, peerIP)
+	// Prefer agent-reported IP (accurate behind TCP proxies), fall back to peer IP
+	ip := hb.IpAddress
+	if ip == "" {
+		ip = peerIP
+	}
+	if ip != "" {
+		_ = h.store.UpdateServerIP(serverID, ip)
 	}
 
 	return serverID, nil
