@@ -42,6 +42,10 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("DELETE /api/users/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteUser)))))
 	mux.Handle("GET /api/audit-logs", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListAuditLogs)))))
 
+	// Hub configuration endpoints
+	mux.Handle("GET /api/settings/hub", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleGetHubConfig)))))
+	mux.Handle("PUT /api/settings/hub", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateHubConfig)))))
+
 	// Notification endpoints
 	mux.Handle("GET /api/settings/smtp", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleGetSMTPConfig)))))
 	mux.Handle("PUT /api/settings/smtp", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateSMTPConfig)))))

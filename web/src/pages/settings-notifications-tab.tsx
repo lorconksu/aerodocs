@@ -251,7 +251,10 @@ export function NotificationsTab() {
         </div>
       </div>
 
-      {/* Section 2: Notification Log */}
+      {/* Section 2: Hub Configuration */}
+      <HubConfigSection />
+
+      {/* Section 3: Notification Log */}
       <div>
         <h3 className="text-sm font-semibold text-text-primary mb-3">Notification Log</h3>
         <div className="border border-border rounded overflow-hidden">
@@ -294,6 +297,77 @@ export function NotificationsTab() {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function HubConfigSection() {
+  const queryClient = useQueryClient()
+  const [grpcAddr, setGrpcAddr] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['hub-config'],
+    queryFn: () => apiFetch<{ grpc_external_addr: string }>('/settings/hub'),
+  })
+
+  useEffect(() => {
+    if (data) setGrpcAddr(data.grpc_external_addr)
+  }, [data])
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiFetch('/settings/hub', {
+        method: 'PUT',
+        body: JSON.stringify({ grpc_external_addr: grpcAddr }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hub-config'] })
+      setSuccess('Hub configuration saved.')
+      setTimeout(() => setSuccess(''), 3000)
+    },
+  })
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-3">Hub Configuration</h3>
+      <div className="bg-surface border border-border rounded p-4">
+        {isLoading ? (
+          <div className="text-text-muted text-sm py-4 text-center">Loading...</div>
+        ) : (
+          <div className="space-y-3 max-w-lg">
+            {success && (
+              <div className="bg-status-online/10 border border-status-online/20 text-status-online text-xs rounded px-3 py-2">
+                {success}
+              </div>
+            )}
+            <div>
+              <label htmlFor="grpc-external-addr" className="block text-xs text-text-muted mb-1">
+                gRPC External Address
+              </label>
+              <input
+                id="grpc-external-addr"
+                type="text"
+                placeholder="hub.example.com:9443"
+                value={grpcAddr}
+                onChange={e => setGrpcAddr(e.target.value)}
+                className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
+              />
+              <p className="text-[10px] text-text-faint mt-1">
+                The address agents use for gRPC connections. Used in the install command when adding new servers.
+                Leave empty to use the default (hostname:9443).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => saveMutation.mutate()}
+              className="bg-accent hover:bg-accent-hover text-white text-sm font-semibold rounded px-4 py-2 transition-colors"
+            >
+              Save
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
