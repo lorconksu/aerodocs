@@ -8,10 +8,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
@@ -93,9 +95,24 @@ func (h *Handler) verifyCertCN(stream pb.AgentService_ConnectServer, serverID st
 	return nil
 }
 
-// peerAddr extracts the remote address string from the stream context.
+// peerAddr extracts the real client IP from the stream context.
+// Checks X-Forwarded-For metadata first (set by Traefik), then falls
+// back to the gRPC peer address.
 func (h *Handler) peerAddr(stream pb.AgentService_ConnectServer) string {
+	if md, ok := metadata.FromIncomingContext(stream.Context()); ok {
+		if xff := md.Get("x-forwarded-for"); len(xff) > 0 {
+			// First IP in the chain is the original client
+			ip := xff[0]
+			if idx := strings.Index(ip, ","); idx != -1 {
+				ip = strings.TrimSpace(ip[:idx])
+			}
+			return strings.TrimSpace(ip)
+		}
+	}
 	if p, ok := peer.FromContext(stream.Context()); ok {
+		if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
+			return host
+		}
 		return p.Addr.String()
 	}
 	return ""
@@ -152,15 +169,8 @@ func (h *Handler) resolveServerName(serverID string) string {
 // performHandshake receives the first message from the agent, handles registration or
 // reconnect-via-heartbeat, sends the appropriate ack, and returns the server ID.
 func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string, error) {
-	// Extract peer IP from gRPC context for use in registration
-	peerIP := ""
-	if p, ok := peer.FromContext(stream.Context()); ok {
-		if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
-			peerIP = host
-		} else {
-			peerIP = p.Addr.String()
-		}
-	}
+	// Extract real client IP — check X-Forwarded-For first (Traefik), then peer address
+	peerIP := h.peerAddr(stream)
 
 	msg, err := stream.Recv()
 	if err != nil {
