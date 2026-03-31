@@ -1,6 +1,7 @@
 package sysinfo
 
 import (
+	"net"
 	"os"
 	"runtime"
 	"time"
@@ -105,4 +106,16 @@ func Hostname() string {
 
 func OSInfo() string {
 	return runtime.GOOS + "/" + runtime.GOARCH
+}
+
+// OutboundIP returns the preferred outbound IP address by dialing a
+// non-routable address. No actual connection is made.
+func OutboundIP() string {
+	conn, err := net.Dial("udp", "1.1.1.1:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	addr := conn.LocalAddr().(*net.UDPAddr)
+	return addr.IP.String()
 }
