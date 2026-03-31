@@ -42,7 +42,7 @@ func TestRenderEmail_AllEventTypes(t *testing.T) {
 		},
 		{
 			eventType: model.NotifyFileUploaded,
-			context:   map[string]string{"filename": "report.pdf", "server_name": "files-01", "uploader": "eve"},
+			context:   map[string]string{"filename": "report.pdf", "server_name": "files-01", "username": "eve"},
 		},
 	}
 
