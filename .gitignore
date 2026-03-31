@@ -30,3 +30,6 @@ hub/web/dist/
 # Coverage
 coverage-*.out
 web/coverage/
+
+# Internal documentation (stored in Confluence)
+docs-internal/
