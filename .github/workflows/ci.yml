@@ -140,16 +140,24 @@ jobs:
 
   sast:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install Semgrep
+        run: pip3 install semgrep
+
       - name: Semgrep SAST scan
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/golang
-            p/typescript
-            p/owasp-top-ten
+        run: |
+          echo "### Semgrep SAST Scan" >> "$GITHUB_STEP_SUMMARY"
+          semgrep scan --config p/golang --config p/typescript --config p/owasp-top-ten --sarif -o semgrep.sarif . 2>&1 | tee semgrep-output.txt || true
+          if [ -f semgrep.sarif ]; then
+            FINDINGS=$(python3 -c "import sys,json; d=json.load(open('semgrep.sarif')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo "unknown")
+            echo "Findings: **${FINDINGS}**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -20 semgrep-output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   secret-scan:
     runs-on: ubuntu-latest

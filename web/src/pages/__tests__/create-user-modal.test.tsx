@@ -88,8 +88,10 @@ describe('CreateUserModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText('User Created')).toBeInTheDocument()
-      expect(screen.getByText('TempPass123!@#')).toBeInTheDocument()
     })
+    // Password is masked by default — click reveal toggle
+    fireEvent.click(screen.getByTitle('Show password'))
+    expect(screen.getByText('TempPass123!@#')).toBeInTheDocument()
   })
 
   it('Copy button copies temporary password', async () => {
@@ -100,7 +102,9 @@ describe('CreateUserModal', () => {
     fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'new@b.com' } })
     fireEvent.submit(screen.getByRole('button', { name: /create user/i }).closest('form')!)
 
-    await waitFor(() => expect(screen.getByText('TempPass123!@#')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('User Created')).toBeInTheDocument())
+    // Password is masked by default — click reveal toggle
+    fireEvent.click(screen.getByTitle('Show password'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
     await waitFor(() => {
@@ -116,7 +120,8 @@ describe('CreateUserModal', () => {
     fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'new@b.com' } })
     fireEvent.submit(screen.getByRole('button', { name: /create user/i }).closest('form')!)
 
-    await waitFor(() => expect(screen.getByText('TempPass123!@#')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('User Created')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Show password'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
     await waitFor(() => expect(screen.getByText('Copied!')).toBeInTheDocument())
