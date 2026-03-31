@@ -112,16 +112,26 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, host)
 
-	// gRPC target: in production, use the hostname with port 9443 (Traefik TCP passthrough).
+	// gRPC target priority: DB setting > CLI flag > default (hostname:9443).
 	// In dev mode, use the raw gRPC listen address.
 	grpcTarget := s.grpcAddr
 	if !s.isDev {
-		// Strip port from Host header to get just the hostname
+		// Default: derive from Host header with port 9443
 		hostname := host
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			hostname = h
 		}
 		grpcTarget = hostname + ":9443"
+
+		// CLI flag override
+		if s.grpcExternalAddr != "" {
+			grpcTarget = s.grpcExternalAddr
+		}
+
+		// DB setting override (admin UI)
+		if dbAddr, err := s.store.GetConfig("grpc_external_addr"); err == nil && dbAddr != "" {
+			grpcTarget = dbAddr
+		}
 	}
 
 	installCmd := fmt.Sprintf(

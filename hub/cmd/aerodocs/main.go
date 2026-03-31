@@ -37,6 +37,7 @@ func runServer() error {
 	dbPath := flag.String("db", "aerodocs.db", "SQLite database path")
 	dev := flag.Bool("dev", false, "enable development mode (CORS)")
 	grpcAddr := flag.String("grpc-addr", ":9090", "gRPC listen address")
+	grpcExternalAddr := flag.String("grpc-external-addr", "", "external gRPC address for agent install commands (e.g. aerodocs.yiucloud.com:9443)")
 	agentBinDir := flag.String("agent-bin-dir", "./bin", "directory containing agent binaries")
 	flag.Parse()
 
@@ -65,7 +66,8 @@ func runServer() error {
 		IsDev:       *dev,
 		FrontendFS:  &hub.FrontendFS,
 		AgentBinDir: *agentBinDir,
-		GRPCAddr:    *grpcAddr,
+		GRPCAddr:         *grpcAddr,
+		GRPCExternalAddr: *grpcExternalAddr,
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,

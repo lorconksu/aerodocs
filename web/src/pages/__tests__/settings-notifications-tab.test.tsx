@@ -58,9 +58,12 @@ function renderTab() {
 describe('NotificationsTab', () => {
   beforeEach(() => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: mockLogEntries, total: 2 })
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url === '/settings/smtp') return Promise.resolve(mockSMTPConfig)
+      if (url === '/notifications/log') return Promise.resolve({ entries: mockLogEntries, total: 2 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
   })
 
   it('renders SMTP Configuration heading', () => {
@@ -98,10 +101,13 @@ describe('NotificationsTab', () => {
 
   it('calls PUT /settings/smtp on save', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
-      .mockResolvedValueOnce(mockSMTPConfig) // PUT response
+    mockApiFetch.mockImplementation((url: string, opts?: any) => {
+      if (url === '/settings/smtp' && !opts?.method) return Promise.resolve(mockSMTPConfig)
+      if (url === '/settings/smtp' && opts?.method === 'PUT') return Promise.resolve(mockSMTPConfig)
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
     renderTab()
 
     await waitFor(() => {
@@ -120,10 +126,13 @@ describe('NotificationsTab', () => {
 
   it('shows success message after save', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
-      .mockResolvedValueOnce(mockSMTPConfig)
+    mockApiFetch.mockImplementation((url: string, opts?: any) => {
+      if (url === '/settings/smtp' && !opts?.method) return Promise.resolve(mockSMTPConfig)
+      if (url === '/settings/smtp' && opts?.method === 'PUT') return Promise.resolve(mockSMTPConfig)
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
 
     renderTab()
     await waitFor(() => {
@@ -148,10 +157,13 @@ describe('NotificationsTab', () => {
 
   it('calls POST /settings/smtp/test on send test', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
-      .mockResolvedValueOnce({ status: 'sent' })
+    mockApiFetch.mockImplementation((url: string, opts?: any) => {
+      if (url === '/settings/smtp' && !opts?.method) return Promise.resolve(mockSMTPConfig)
+      if (url === '/settings/smtp/test' && opts?.method === 'POST') return Promise.resolve({ status: 'sent' })
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
 
     renderTab()
     await waitFor(() => {
@@ -173,10 +185,13 @@ describe('NotificationsTab', () => {
 
   it('shows test email success', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
-      .mockResolvedValueOnce({ status: 'sent' })
+    mockApiFetch.mockImplementation((url: string, opts?: any) => {
+      if (url === '/settings/smtp' && !opts?.method) return Promise.resolve(mockSMTPConfig)
+      if (url === '/settings/smtp/test' && opts?.method === 'POST') return Promise.resolve({ status: 'sent' })
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
 
     renderTab()
     await waitFor(() => {
@@ -195,10 +210,13 @@ describe('NotificationsTab', () => {
 
   it('shows test email error on failure', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
-      .mockRejectedValueOnce(new Error('Connection refused'))
+    mockApiFetch.mockImplementation((url: string, opts?: any) => {
+      if (url === '/settings/smtp' && !opts?.method) return Promise.resolve(mockSMTPConfig)
+      if (url === '/settings/smtp/test' && opts?.method === 'POST') return Promise.reject(new Error('Connection refused'))
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
 
     renderTab()
     await waitFor(() => {
@@ -256,9 +274,12 @@ describe('NotificationsTab', () => {
 
   it('shows empty state when no entries', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url === '/settings/smtp') return Promise.resolve(mockSMTPConfig)
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
 
     renderTab()
     await waitFor(() => {
@@ -330,10 +351,13 @@ describe('NotificationsTab', () => {
 
   it('shows save error when SMTP save fails', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce(mockSMTPConfig)
-      .mockResolvedValueOnce({ entries: [], total: 0 })
-      .mockRejectedValueOnce(new Error('SMTP save failed'))
+    mockApiFetch.mockImplementation((url: string, opts?: any) => {
+      if (url === '/settings/smtp' && !opts?.method) return Promise.resolve(mockSMTPConfig)
+      if (url === '/settings/smtp' && opts?.method === 'PUT') return Promise.reject(new Error('SMTP save failed'))
+      if (url === '/notifications/log') return Promise.resolve({ entries: [], total: 0 })
+      if (url === '/settings/hub') return Promise.resolve({ grpc_external_addr: '' })
+      return Promise.resolve({})
+    })
 
     renderTab()
     await waitFor(() => {
