@@ -807,6 +807,8 @@ function LiveTail({
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const grepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingLinesRef = useRef<string[]>([])
+  const rafIdRef = useRef<number | null>(null)
 
   // Auto-scroll effect
   useEffect(() => {
@@ -824,21 +826,34 @@ function LiveTail({
     }, 500)
   }, [])
 
-  // Cleanup grep timer
+  // Cleanup grep timer and RAF
   useEffect(() => {
     return () => {
       if (grepTimerRef.current) clearTimeout(grepTimerRef.current)
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current)
     }
   }, [])
 
-  // Appends new log lines into state, capped at MAX_LINES.
-  const appendLogLines = useCallback((newLogLines: string[]) => {
+  // Flush pending lines into state (called via requestAnimationFrame).
+  const flushPendingLines = useCallback(() => {
+    rafIdRef.current = null
+    const batch = pendingLinesRef.current
+    if (batch.length === 0) return
+    pendingLinesRef.current = []
     setLines((prev) => {
-      const newEntries = newLogLines.map((text) => ({ id: lineCounterRef.current++, text }))
+      const newEntries = batch.map((text) => ({ id: lineCounterRef.current++, text }))
       const combined = [...prev, ...newEntries]
       return combined.length > MAX_LINES ? combined.slice(-MAX_LINES) : combined
     })
   }, [])
+
+  // Appends new log lines into a pending buffer, flushed at most once per frame.
+  const appendLogLines = useCallback((newLogLines: string[]) => {
+    pendingLinesRef.current.push(...newLogLines)
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(flushPendingLines)
+    }
+  }, [flushPendingLines])
 
   // Reads an SSE stream and forwards parsed log lines via appendLogLines.
   const readStream = useCallback(async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
@@ -1379,6 +1394,8 @@ export function ServerDetailPage() {
 
   // File tree state
   const [treeState, setTreeState] = useState<Record<string, TreeNodeState>>({})
+  const treeStateRef = useRef(treeState)
+  treeStateRef.current = treeState
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [markdownView, setMarkdownView] = useState<'raw' | 'rendered'>('rendered')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -1486,10 +1503,10 @@ export function ServerDetailPage() {
     }
   }, [decodedContent, selectedFile])
 
-  // Toggle directory expansion
+  // Toggle directory expansion — reads current state from ref to avoid treeState dependency
   const handleToggleDir = useCallback(
     async (dirPath: string) => {
-      const current = treeState[dirPath]
+      const current = treeStateRef.current[dirPath]
       if (current?.expanded) {
         // Collapse
         setTreeState((prev) => ({
@@ -1535,7 +1552,7 @@ export function ServerDetailPage() {
         }))
       }
     },
-    [serverId, treeState],
+    [serverId],
   )
 
   const handleSelectFile = useCallback((node: FileNode) => {

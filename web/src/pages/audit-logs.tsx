@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
 import type { AuditLogResponse, User } from '@/types/api'
@@ -83,11 +83,20 @@ export function AuditLogsPage() {
     })
   }
 
-  const getUsernameById = (userId: string | null) => {
+  const userMap = useMemo(() => {
+    const map = new Map<string, string>()
+    if (users) {
+      for (const u of users) {
+        map.set(u.id, u.username)
+      }
+    }
+    return map
+  }, [users])
+
+  const getUsernameById = useCallback((userId: string | null) => {
     if (!userId) return 'System'
-    const user = users?.find(u => u.id === userId)
-    return user?.username ?? userId
-  }
+    return userMap.get(userId) ?? userId
+  }, [userMap])
 
   const total = data?.total ?? 0
   const entries = data?.entries ?? []
