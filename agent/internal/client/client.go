@@ -120,11 +120,25 @@ func (c *Client) SelfUnregister(ctx context.Context) error {
 }
 
 func (c *Client) Run(ctx context.Context) error {
+	regFailures := 0
 	for {
 		err := c.connectAndStream(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+
+		// Track consecutive registration failures — exit if the server
+		// has been unregistered (avoids infinite reconnect loop).
+		if err != nil && strings.Contains(err.Error(), "registration") {
+			regFailures++
+			if regFailures >= 3 {
+				log.Printf("server appears unregistered after %d consecutive failures — exiting", regFailures)
+				return fmt.Errorf("server unregistered: %w", err)
+			}
+		} else {
+			regFailures = 0
+		}
+
 		wait := c.nextBackoff()
 		log.Printf("connection lost: %v — reconnecting in %v", err, wait)
 		select {
@@ -520,24 +534,23 @@ func (c *Client) selfCleanup() {
 	scriptPath := filepath.Join(tmpDir, "cleanup.sh")
 	script := fmt.Sprintf(`#!/bin/bash
 # AeroDocs Agent self-cleanup script
-# Stop the service first
-systemctl stop aerodocs-agent 2>/dev/null || true
+# Remove files FIRST (while agent process may still be running under systemd)
+rm -f /usr/local/bin/aerodocs-agent 2>/dev/null || true
+rm -rf /etc/aerodocs/ 2>/dev/null || true
+rm -rf /tmp/aerodocs-dropzone 2>/dev/null || true
+
+# Disable and remove the systemd service
 systemctl disable aerodocs-agent 2>/dev/null || true
-
-# Kill any remaining agent processes (not this script)
-pkill -9 -f "aerodocs-agent" 2>/dev/null || true
-sleep 1
-
-# Remove files with retries (binary may be briefly locked)
-for i in 1 2 3; do
-  rm -f /usr/local/bin/aerodocs-agent 2>/dev/null && break
-  sleep 1
-done
-
-rm -f /etc/systemd/system/aerodocs-agent.service
-rm -f /etc/aerodocs/agent.conf
-rm -rf /tmp/aerodocs-dropzone
+rm -f /etc/systemd/system/aerodocs-agent.service 2>/dev/null || true
 systemctl daemon-reload 2>/dev/null || true
+
+# Stop the service LAST — this kills the agent process
+systemctl stop aerodocs-agent 2>/dev/null || true
+
+# Kill any remaining agent processes
+pkill -9 -f "aerodocs-agent" 2>/dev/null || true
+
+# Clean up this script
 rm -rf %s
 `, tmpDir)
 	if err := os.WriteFile(scriptPath, []byte(script), 0700); err != nil {
