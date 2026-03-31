@@ -13,5 +13,10 @@
 - [[Audit Logs]]
 - [[Settings]]
 
+**Setup & Deployment**
+- [[Deployment]]
+- [[Development]]
+- [[API Reference]]
+
 **Help**
 - [[Troubleshooting]]
