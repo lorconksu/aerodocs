@@ -214,6 +214,11 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Disconnect the agent if it's currently connected
+	if s.connMgr != nil {
+		s.connMgr.Unregister(id)
+	}
+
 	adminID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
 	s.store.LogAudit(model.AuditEntry{
@@ -243,6 +248,13 @@ func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request
 	if err := s.store.DeleteServers(req.IDs); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to delete servers")
 		return
+	}
+
+	// Disconnect any agents that were connected
+	if s.connMgr != nil {
+		for _, id := range req.IDs {
+			s.connMgr.Unregister(id)
+		}
 	}
 
 	adminID := UserIDFromContext(r.Context())
