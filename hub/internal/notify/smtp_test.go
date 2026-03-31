@@ -379,3 +379,41 @@ func TestSendEmail_TLS_Success(t *testing.T) {
 		t.Error("timeout waiting for TLS SMTP server to receive data")
 	}
 }
+
+func TestStripCRLF_Header(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"clean string", "hello@example.com", "hello@example.com"},
+		{"CRLF injection", "victim@example.com\r\nBcc: attacker@evil.com", "victim@example.comBcc: attacker@evil.com"},
+		{"LF only", "test\nBcc: bad", "testBcc: bad"},
+		{"CR only", "test\rBcc: bad", "testBcc: bad"},
+		{"multiple CRLF", "a\r\nb\r\nc", "abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripCRLF(tt.input)
+			if result != tt.expected {
+				t.Errorf("stripCRLF(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBuildMessage_CRLFInjection(t *testing.T) {
+	msg := buildMessage(
+		"noreply@example.com\r\nBcc: spy@evil.com",
+		"victim@example.com",
+		"Normal Subject\r\nBcc: spy2@evil.com",
+		"body",
+	)
+	// The injected Bcc headers must NOT appear as separate header lines
+	lines := strings.Split(msg, "\r\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.ToLower(line), "bcc:") {
+			t.Errorf("CRLF injection succeeded — found injected header: %q", line)
+		}
+	}
+}

@@ -4,6 +4,7 @@
 hub/aerodocs
 agent/aerodocs-agent
 bin/
+*.test
 
 # Node
 web/node_modules/

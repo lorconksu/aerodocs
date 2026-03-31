@@ -144,14 +144,26 @@ func (rl *rateLimiter) allow(ip string) bool {
 		return false
 	}
 
-	// Cap total tracked IPs to prevent memory exhaustion from IP rotation attacks
+	// Cap total tracked IPs to prevent memory exhaustion from IP rotation attacks.
+	// Evict the entry with the oldest last attempt to avoid removing active attackers.
+	// Skip the current IP to prevent resetting its rate limit history.
 	if len(rl.attempts) >= maxTrackedIPs {
-		// Evict oldest entries when at capacity
-		for k := range rl.attempts {
-			delete(rl.attempts, k)
-			if len(rl.attempts) < maxTrackedIPs {
-				break
+		var oldestKey string
+		var oldestTime time.Time
+		first := true
+		for k, attempts := range rl.attempts {
+			if k == ip {
+				continue
 			}
+			last := attempts[len(attempts)-1]
+			if first || last.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = last
+				first = false
+			}
+		}
+		if oldestKey != "" {
+			delete(rl.attempts, oldestKey)
 		}
 	}
 

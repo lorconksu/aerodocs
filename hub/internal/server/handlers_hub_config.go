@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"regexp"
 )
 
 type hubConfigResponse struct {
@@ -25,10 +26,18 @@ func (s *Server) handleGetHubConfig(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, cfg)
 }
 
+// grpcAddrPattern allows hostnames, IPs, and ports — no shell metacharacters.
+var grpcAddrPattern = regexp.MustCompile(`^[a-zA-Z0-9._:\-\[\]]+$`)
+
 func (s *Server) handleUpdateHubConfig(w http.ResponseWriter, r *http.Request) {
 	var req hubConfigRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	if req.GRPCExternalAddr != "" && !grpcAddrPattern.MatchString(req.GRPCExternalAddr) {
+		respondError(w, http.StatusBadRequest, "invalid gRPC address format")
 		return
 	}
 

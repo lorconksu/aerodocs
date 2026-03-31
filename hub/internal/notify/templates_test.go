@@ -126,3 +126,30 @@ func TestRenderEmail_UnknownEventFallbackWithContext(t *testing.T) {
 		t.Errorf("subject has unreplaced placeholders: %q", subject)
 	}
 }
+
+func TestRenderEmail_CRLFInContextValues(t *testing.T) {
+	// A malicious server name with CRLF should not inject email headers
+	subject, _ := RenderEmail(model.NotifyAgentOffline, map[string]string{
+		"server_name": "web-01\r\nBcc: spy@evil.com",
+	})
+	if strings.Contains(subject, "\r") || strings.Contains(subject, "\n") {
+		t.Errorf("CRLF injection in subject via context value: %q", subject)
+	}
+}
+
+func TestStripCRLF_Context(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"clean value", "clean value"},
+		{"with\r\nnewlines", "withnewlines"},
+		{"with\nnewline", "withnewline"},
+	}
+	for _, tt := range tests {
+		result := stripCRLF(tt.input)
+		if result != tt.expected {
+			t.Errorf("stripCRLF(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}

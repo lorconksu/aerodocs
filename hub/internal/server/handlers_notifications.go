@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -74,7 +75,8 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 	cfg.Enabled = true
 
 	if err := notify.SendEmail(cfg, req.Recipient, "AeroDocs SMTP Test", "This is a test email from AeroDocs. Your SMTP configuration is working correctly."); err != nil {
-		respondError(w, http.StatusBadGateway, "failed to send test email: "+err.Error())
+		log.Printf("SMTP test send failed: %v", err)
+		respondError(w, http.StatusBadGateway, "failed to send test email — check SMTP settings and server logs")
 		return
 	}
 
@@ -104,7 +106,17 @@ func (s *Server) handleUpdateNotificationPreferences(w http.ResponseWriter, r *h
 
 	userID := UserIDFromContext(r.Context())
 
+	// Build a set of valid event types for O(1) lookup
+	validEvents := make(map[string]bool, len(model.AllNotifyEvents))
+	for _, e := range model.AllNotifyEvents {
+		validEvents[e.Type] = true
+	}
+
 	for _, pref := range req.Preferences {
+		if !validEvents[pref.EventType] {
+			respondError(w, http.StatusBadRequest, "unknown event type: "+pref.EventType)
+			return
+		}
 		if err := s.store.SetNotificationPreference(userID, pref.EventType, pref.Enabled); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to update preference for "+pref.EventType)
 			return

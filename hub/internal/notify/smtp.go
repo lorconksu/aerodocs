@@ -83,9 +83,9 @@ var tlsDialer = func(network, addr string, cfg *tls.Config) (*tls.Conn, error) {
 // buildMessage constructs a minimal RFC 2822 email message.
 func buildMessage(from, to, subject, body string) string {
 	var sb strings.Builder
-	sb.WriteString("From: " + from + "\r\n")
-	sb.WriteString("To: " + to + "\r\n")
-	sb.WriteString("Subject: " + subject + "\r\n")
+	sb.WriteString("From: " + stripCRLF(from) + "\r\n")
+	sb.WriteString("To: " + stripCRLF(to) + "\r\n")
+	sb.WriteString("Subject: " + stripCRLF(subject) + "\r\n")
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	sb.WriteString("\r\n")
