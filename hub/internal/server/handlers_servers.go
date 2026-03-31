@@ -112,7 +112,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, host)
 
-	// gRPC target: in production, use the hostname (Traefik proxies gRPC on 443).
+	// gRPC target: in production, use the hostname with port 9443 (Traefik TCP passthrough).
 	// In dev mode, use the raw gRPC listen address.
 	grpcTarget := s.grpcAddr
 	if !s.isDev {
@@ -121,7 +121,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			hostname = h
 		}
-		grpcTarget = hostname + ":443"
+		grpcTarget = hostname + ":9443"
 	}
 
 	installCmd := fmt.Sprintf(
