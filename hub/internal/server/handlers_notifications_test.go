@@ -601,3 +601,19 @@ func TestUpdateNotificationPreferences_InvalidBody(t *testing.T) {
 		t.Fatalf("expected 400 for invalid body, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestUpdateNotificationPreferences_UnknownEventType verifies unknown event types are rejected.
+func TestUpdateNotificationPreferences_UnknownEventType(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	body := bytes.NewBufferString(`{"preferences":[{"event_type":"fake.event","enabled":true}]}`)
+	req := httptest.NewRequest("PUT", "/api/notifications/preferences", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown event type, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

@@ -87,10 +87,16 @@ func RenderEmail(eventType string, context map[string]string) (subject, body str
 	return subject, body
 }
 
+// stripCRLF removes CR and LF characters to prevent SMTP header injection.
+// Used by both email header construction (smtp.go) and template substitution.
+func stripCRLF(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
+}
+
 // substitute replaces all {{key}} occurrences in s with values from the context map.
 func substitute(s string, context map[string]string) string {
 	for k, v := range context {
-		s = strings.ReplaceAll(s, "{{"+k+"}}", v)
+		s = strings.ReplaceAll(s, "{{"+k+"}}", stripCRLF(v))
 	}
 	return s
 }

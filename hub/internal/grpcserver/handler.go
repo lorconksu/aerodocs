@@ -79,13 +79,18 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 }
 
 // verifyCertCN checks that the mTLS client certificate CN matches the server ID.
+// If a client certificate is presented, the CN must match. If no certificate is
+// presented, the connection is allowed for backward compatibility with agents that
+// have not yet obtained mTLS certs (e.g., during initial registration).
 func (h *Handler) verifyCertCN(stream pb.AgentService_ConnectServer, serverID string) error {
 	p, ok := peer.FromContext(stream.Context())
 	if !ok {
+		log.Printf("warning: no peer info for agent %s — allowing without cert verification", serverID)
 		return nil
 	}
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		log.Printf("warning: agent %s connected without client certificate", serverID)
 		return nil
 	}
 	certCN := extractServerIDFromCert(tlsInfo.State.PeerCertificates[0])

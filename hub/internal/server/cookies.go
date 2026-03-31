@@ -15,10 +15,8 @@ const (
 )
 
 // setAuthCookies sets the access, refresh, and CSRF cookies on the response.
-// setAuthCookies sets the access, refresh, and CSRF cookies on the response.
-// The Secure flag is NOT set because the hub never serves HTTPS directly —
-// TLS is terminated at the reverse proxy (Traefik). SameSite=Strict provides
-// equivalent cross-site protection. The proxy adds Secure via its own headers.
+// Secure is set because the app is always accessed over HTTPS (TLS terminated
+// at Traefik). This tells browsers to never send cookies over plain HTTP.
 func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieAccess,
@@ -26,6 +24,7 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 		Path:     "/",
 		MaxAge:   900, // 15 minutes
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -35,6 +34,7 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 		Path:     "/api/auth/refresh",
 		MaxAge:   604800, // 7 days
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -45,6 +45,7 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 		Path:     "/",
 		MaxAge:   604800, // 7 days
 		HttpOnly: false,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -52,19 +53,25 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 // clearAuthCookies clears all auth cookies by setting MaxAge to -1.
 func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:   cookieAccess,
-		Path:   "/",
-		MaxAge: -1,
+		Name:     cookieAccess,
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
-		Name:   cookieRefresh,
-		Path:   "/api/auth/refresh",
-		MaxAge: -1,
+		Name:     cookieRefresh,
+		Path:     "/api/auth/refresh",
+		MaxAge:   -1,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
-		Name:   cookieCSRF,
-		Path:   "/",
-		MaxAge: -1,
+		Name:     cookieCSRF,
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 
