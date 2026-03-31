@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 const (
@@ -21,20 +22,21 @@ const (
 
 type Claims struct {
 	jwt.RegisteredClaims
-	Role      string `json:"role"`
-	TokenType string `json:"type"`
+	Role            string `json:"role"`
+	TokenType       string `json:"type"`
+	TokenGeneration int    `json:"gen,omitempty"`
 }
 
 // No local TokenPair type — use model.TokenPair for JSON serialization.
 // GenerateTokenPair returns raw strings to avoid a duplicate type.
 
-func GenerateTokenPair(secret, userID, role string) (accessToken, refreshToken string, err error) {
-	accessToken, err = GenerateTokenWithExpiry(secret, userID, role, TokenTypeAccess, AccessTokenExpiry)
+func GenerateTokenPair(secret, userID, role string, tokenGen int) (accessToken, refreshToken string, err error) {
+	accessToken, err = GenerateTokenWithExpiry(secret, userID, role, TokenTypeAccess, AccessTokenExpiry, tokenGen)
 	if err != nil {
 		return "", "", fmt.Errorf("generate access token: %w", err)
 	}
 
-	refreshToken, err = GenerateTokenWithExpiry(secret, userID, role, TokenTypeRefresh, RefreshTokenExpiry)
+	refreshToken, err = GenerateTokenWithExpiry(secret, userID, role, TokenTypeRefresh, RefreshTokenExpiry, tokenGen)
 	if err != nil {
 		return "", "", fmt.Errorf("generate refresh token: %w", err)
 	}
@@ -50,16 +52,21 @@ func GenerateTOTPToken(secret, userID, role string) (string, error) {
 	return GenerateTokenWithExpiry(secret, userID, role, TokenTypeTOTP, TOTPTokenExpiry)
 }
 
-func GenerateTokenWithExpiry(secret, userID, role, tokenType string, expiry time.Duration) (string, error) {
+func GenerateTokenWithExpiry(secret, userID, role, tokenType string, expiry time.Duration, tokenGen ...int) (string, error) {
 	now := time.Now()
+	jti := uuid.NewString()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiry)),
 		},
 		Role:      role,
 		TokenType: tokenType,
+	}
+	if len(tokenGen) > 0 {
+		claims.TokenGeneration = tokenGen[0]
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

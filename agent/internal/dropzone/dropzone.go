@@ -19,8 +19,9 @@ const MaxConcurrentUploads = 10
 
 // uploadState tracks an in-progress upload's file handle and byte count.
 type uploadState struct {
-	file  *os.File
-	bytes int64
+	file      *os.File
+	bytes     int64
+	finalName string
 }
 
 // Dropzone manages file uploads to a staging directory.
@@ -33,10 +34,16 @@ type Dropzone struct {
 // New creates a Dropzone that writes files to dir.
 func New(dir string) *Dropzone {
 	os.MkdirAll(dir, 0700)
+	os.Chmod(dir, 0700)
 	return &Dropzone{
 		dir:     dir,
 		uploads: make(map[string]*uploadState),
 	}
+}
+
+// Dir returns the dropzone directory path.
+func (d *Dropzone) Dir() string {
+	return d.dir
 }
 
 // HandleChunk processes a file upload chunk.
@@ -75,8 +82,9 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 			}
 		}
 
-		path := filepath.Join(d.dir, safe)
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+		// Write to a temp file, rename on completion
+		tmpPath := filepath.Join(d.dir, ".upload-"+requestID)
+		f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
 			log.Printf("dropzone create error: %v", err)
 			return &pb.FileUploadAck{
@@ -85,7 +93,7 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 				Error:     "file operation failed",
 			}
 		}
-		state = &uploadState{file: f}
+		state = &uploadState{file: f, finalName: safe}
 		d.uploads[requestID] = state
 	}
 
@@ -115,9 +123,21 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 		state.bytes += int64(len(data))
 	}
 
-	// Final chunk — close file
+	// Final chunk — close temp file and rename to final name
 	if done {
+		tmpPath := state.file.Name()
 		state.file.Close()
+		finalPath := filepath.Join(d.dir, state.finalName)
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			log.Printf("dropzone rename error: %v", err)
+			os.Remove(tmpPath)
+			delete(d.uploads, requestID)
+			return &pb.FileUploadAck{
+				RequestId: requestID,
+				Success:   false,
+				Error:     "file operation failed",
+			}
+		}
 		delete(d.uploads, requestID)
 		return &pb.FileUploadAck{
 			RequestId: requestID,
@@ -133,7 +153,9 @@ func (d *Dropzone) Cleanup() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for id, state := range d.uploads {
+		tmpPath := state.file.Name()
 		state.file.Close()
+		os.Remove(tmpPath)
 		delete(d.uploads, id)
 	}
 }

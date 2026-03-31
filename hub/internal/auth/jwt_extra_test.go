@@ -33,7 +33,7 @@ func TestValidateToken_EmptyToken(t *testing.T) {
 func TestGenerateTokenPair_ReturnsNonEmptyTokens(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 
-	access, refresh, err := auth.GenerateTokenPair(secret, "user-123", "viewer")
+	access, refresh, err := auth.GenerateTokenPair(secret, "user-123", "viewer", 0)
 	if err != nil {
 		t.Fatalf("generate token pair: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestValidateToken_TOTPTokenHasCorrectType(t *testing.T) {
 func TestValidateToken_TruncatedToken(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin")
+	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
 	truncated := access[:len(access)/2]
 
 	_, err := auth.ValidateToken(secret, truncated)
@@ -125,7 +125,7 @@ func TestGenerateTokenWithExpiry_MultipleRoles(t *testing.T) {
 func TestValidateToken_ModifiedPayload(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin")
+	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
 
 	// Modify the middle section (payload)
 	parts := strings.Split(access, ".")

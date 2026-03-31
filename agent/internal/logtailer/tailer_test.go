@@ -197,7 +197,7 @@ func TestValidateLogPath_BlockedPaths(t *testing.T) {
 		{"/var/log/auth.log", false},
 	}
 	for _, tt := range tests {
-		err := validateLogPath(tt.path)
+		_, err := validateLogPath(tt.path)
 		if tt.shouldErr && err == nil {
 			t.Errorf("validateLogPath(%q) should have returned error", tt.path)
 		}

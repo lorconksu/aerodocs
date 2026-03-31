@@ -1,6 +1,7 @@
 package store
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -8,10 +9,19 @@ import (
 )
 
 func (s *Store) LogAudit(entry model.AuditEntry) error {
+	// Compute integrity hash chain: SHA-256(prev_hash + current entry fields)
+	var prevHash string
+	_ = s.db.QueryRow("SELECT prev_hash FROM audit_logs ORDER BY rowid DESC LIMIT 1").Scan(&prevHash)
+
+	hashInput := fmt.Sprintf("%s|%s|%v|%s|%v|%v|%v",
+		prevHash, entry.ID, entry.UserID, entry.Action, entry.Target, entry.Detail, entry.IPAddress)
+	hash := sha256.Sum256([]byte(hashInput))
+	entry.PrevHash = fmt.Sprintf("%x", hash[:])
+
 	_, err := s.db.Exec(
-		`INSERT INTO audit_logs (id, user_id, action, target, detail, ip_address)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		entry.ID, entry.UserID, entry.Action, entry.Target, entry.Detail, entry.IPAddress,
+		`INSERT INTO audit_logs (id, user_id, action, target, detail, ip_address, prev_hash)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		entry.ID, entry.UserID, entry.Action, entry.Target, entry.Detail, entry.IPAddress, entry.PrevHash,
 	)
 	if err != nil {
 		return fmt.Errorf("log audit: %w", err)
@@ -20,7 +30,7 @@ func (s *Store) LogAudit(entry model.AuditEntry) error {
 }
 
 func (s *Store) ListAuditLogs(filter model.AuditFilter) ([]model.AuditEntry, int, error) {
-	qb := newQueryBuilder("SELECT id, user_id, action, target, detail, ip_address, created_at FROM audit_logs")
+	qb := newQueryBuilder("SELECT id, user_id, action, target, detail, ip_address, prev_hash, created_at FROM audit_logs")
 
 	if filter.UserID != nil {
 		qb.Where("user_id = ?", *filter.UserID)
@@ -71,7 +81,7 @@ func scanAuditRows(rows interface{ Next() bool; Scan(...interface{}) error; Err(
 	for rows.Next() {
 		var e model.AuditEntry
 		var createdAt string
-		if err := rows.Scan(&e.ID, &e.UserID, &e.Action, &e.Target, &e.Detail, &e.IPAddress, &createdAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.UserID, &e.Action, &e.Target, &e.Detail, &e.IPAddress, &e.PrevHash, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan audit entry: %w", err)
 		}
 		e.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)

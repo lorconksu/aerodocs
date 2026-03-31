@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -52,6 +51,8 @@ func (qb *queryBuilder) Offset(n int) {
 
 func (qb *queryBuilder) Build() (string, []interface{}) {
 	q := qb.base
+	args := make([]interface{}, len(qb.args))
+	copy(args, qb.args)
 	if len(qb.wheres) > 0 {
 		q += sqlWhere + strings.Join(qb.wheres, " AND ")
 	}
@@ -59,12 +60,14 @@ func (qb *queryBuilder) Build() (string, []interface{}) {
 		q += " ORDER BY " + qb.orderBy
 	}
 	if qb.hasLimit {
-		q += fmt.Sprintf(" LIMIT %d", qb.limit)
+		q += " LIMIT ?"
+		args = append(args, qb.limit)
 	}
 	if qb.hasOff {
-		q += fmt.Sprintf(" OFFSET %d", qb.offset)
+		q += " OFFSET ?"
+		args = append(args, qb.offset)
 	}
-	return q, qb.args
+	return q, args
 }
 
 func (qb *queryBuilder) CountQuery(table string) (string, []interface{}) {

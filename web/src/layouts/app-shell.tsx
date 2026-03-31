@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LayoutDashboard, ScrollText, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -11,6 +11,7 @@ import type { AuthStatusResponse } from '@/types/api'
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [navCollapsed, setNavCollapsed] = useState(false)
 
   const { data: versionData } = useQuery({
@@ -34,13 +35,14 @@ export function AppShell() {
   }, [servers])
 
   const handleLogout = () => {
+    queryClient.clear()
     logout()
     navigate('/login')
   }
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Fleet Dashboard' },
-    { to: '/audit-logs', icon: ScrollText, label: 'Audit Logs' },
+    ...(user?.role === 'admin' ? [{ to: '/audit-logs', icon: ScrollText, label: 'Audit Logs' }] : []),
     { to: '/settings', icon: Settings, label: 'Settings' },
   ]
 

@@ -160,7 +160,13 @@ func (s *Server) isPathAllowed(userID, serverID, requestedPath string) (bool, er
 	cleanedReq := filepath.Clean(requestedPath)
 	for _, allowed := range paths {
 		cleanedAllowed := filepath.Clean(allowed)
-		if cleanedReq == cleanedAllowed || strings.HasPrefix(cleanedReq, cleanedAllowed+"/") {
+		rel, err := filepath.Rel(cleanedAllowed, cleanedReq)
+		if err != nil {
+			continue
+		}
+		// rel must not escape the allowed root — "." means exact match,
+		// anything starting with ".." means the path is outside the root.
+		if rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..") {
 			return true, nil
 		}
 	}

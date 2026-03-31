@@ -50,6 +50,12 @@ func (s *Server) authMiddleware(requiredType string, next http.Handler) http.Han
 			return
 		}
 
+		// Check token blacklist (revoked tokens)
+		if claims.ID != "" && s.tokenBlacklist != nil && s.tokenBlacklist.IsBlacklisted(claims.ID) {
+			respondError(w, http.StatusUnauthorized, "token has been revoked")
+			return
+		}
+
 		if claims.TokenType != requiredType {
 			respondError(w, http.StatusForbidden, "invalid token type for this endpoint")
 			return
@@ -108,7 +114,7 @@ type rateLimiter struct {
 	window   time.Duration
 }
 
-const maxTrackedIPs = 10000
+const maxTrackedIPs = 100000
 
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	return &rateLimiter{

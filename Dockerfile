@@ -29,6 +29,8 @@ RUN cd hub && CGO_ENABLED=1 go build -ldflags="-s -w -X github.com/wyiu/aerodocs
 COPY agent/ agent/
 RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/aerodocs-agent-linux-amd64 ./cmd/aerodocs-agent/
 RUN cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o /out/aerodocs-agent-linux-arm64 ./cmd/aerodocs-agent/
+RUN sha256sum /out/aerodocs-agent-linux-amd64 | awk '{print $1}' > /out/aerodocs-agent-linux-amd64.sha256
+RUN sha256sum /out/aerodocs-agent-linux-arm64 | awk '{print $1}' > /out/aerodocs-agent-linux-arm64.sha256
 
 # Stage 3: Minimal runtime (Wolfi — glibc-based, fast CVE patching, no systemd/ncurses/tar)
 FROM cgr.dev/chainguard/wolfi-base:latest
@@ -41,6 +43,8 @@ WORKDIR /app
 COPY --from=backend /out/aerodocs /app/aerodocs
 COPY --from=backend /out/aerodocs-agent-linux-amd64 /app/aerodocs-agent-linux-amd64
 COPY --from=backend /out/aerodocs-agent-linux-arm64 /app/aerodocs-agent-linux-arm64
+COPY --from=backend /out/aerodocs-agent-linux-amd64.sha256 /app/aerodocs-agent-linux-amd64.sha256
+COPY --from=backend /out/aerodocs-agent-linux-arm64.sha256 /app/aerodocs-agent-linux-arm64.sha256
 COPY hub/static/install.sh /app/static/install.sh
 
 RUN chown -R aerodocs:aerodocs /app

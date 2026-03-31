@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wyiu/aerodocs/agent/internal/certs"
 	"github.com/wyiu/aerodocs/agent/internal/dropzone"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
@@ -82,31 +83,23 @@ func TestServerID(t *testing.T) {
 }
 
 func TestUseTLS(t *testing.T) {
-	tests := []struct {
-		addr    string
-		wantTLS bool
-	}{
-		{"localhost:9090", false},         // localhost — not a domain
-		{"192.168.1.1:9090", false},       // IP address
-		{"hub.example.com:443", true},     // domain with 443
-		{"hub.example.com", true},         // domain without port
-		{"hub.example.com:9090", true},    // domain with non-443 port (has dot)
-		{"10.0.0.1:443", false},           // IP with 443 — still insecure
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.addr, func(t *testing.T) {
-			c := &Client{hubAddr: tt.addr}
-			got := c.useTLS()
-			if got != tt.wantTLS {
-				t.Fatalf("useTLS(%q) = %v, want %v", tt.addr, got, tt.wantTLS)
-			}
-		})
-	}
+	// useTLS now defaults to true, false only when insecure flag is set
+	t.Run("default_true", func(t *testing.T) {
+		c := &Client{hubAddr: "localhost:9090"}
+		if !c.useTLS() {
+			t.Fatal("useTLS should default to true")
+		}
+	})
+	t.Run("insecure_false", func(t *testing.T) {
+		c := &Client{hubAddr: "localhost:9090", insecure: true}
+		if c.useTLS() {
+			t.Fatal("useTLS should be false when insecure=true")
+		}
+	})
 }
 
 func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {
-	c := &Client{tailSessions: make(map[string]chan struct{})}
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: dropzone.New(t.TempDir())}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{
@@ -135,7 +128,7 @@ func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {
 }
 
 func TestHandleFileDeleteRequest_NonexistentFile(t *testing.T) {
-	c := &Client{tailSessions: make(map[string]chan struct{})}
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: dropzone.New("/tmp/aerodocs-dropzone")}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{
@@ -161,11 +154,6 @@ func TestHandleFileDeleteRequest_NonexistentFile(t *testing.T) {
 }
 
 func TestHandleFileDeleteRequest_Success(t *testing.T) {
-	// Create a temp file in a dropzone-like dir
-	dir := t.TempDir()
-	// We need the path to start with /tmp/aerodocs-dropzone/ but for tests
-	// we use a fake dropzone check by temporarily creating a real file
-
 	// Create the file using the actual dropzone path pattern
 	dropzoneDir := "/tmp/aerodocs-dropzone"
 	if err := os.MkdirAll(dropzoneDir, 0755); err != nil {
@@ -176,9 +164,8 @@ func TestHandleFileDeleteRequest_Success(t *testing.T) {
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		t.Fatalf("create test file: %v", err)
 	}
-	_ = dir
 
-	c := &Client{tailSessions: make(map[string]chan struct{})}
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: dropzone.New(dropzoneDir)}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{
@@ -236,11 +223,12 @@ func TestHandleLogStreamStop_NonexistentSession(t *testing.T) {
 	c.handleLogStreamStop(msg)
 }
 
-func TestHandleUnregisterRequest(t *testing.T) {
+func TestHandleUnregisterRequest_NoCert(t *testing.T) {
 	c := &Client{
 		tailSessions: make(map[string]chan struct{}),
 		hubAddr:      "localhost:9090",
 		serverID:     "srv-1",
+		certStore:    certs.NewMemoryStore(),
 	}
 	sendCh := make(chan *pb.AgentMessage, 2)
 
@@ -255,11 +243,9 @@ func TestHandleUnregisterRequest(t *testing.T) {
 		if ack == nil {
 			t.Fatal("expected UnregisterAck")
 		}
-		if !ack.Success {
-			t.Fatal("expected success")
-		}
-		if ack.RequestId != "req-unreg" {
-			t.Fatalf("expected 'req-unreg', got '%s'", ack.RequestId)
+		// Without mTLS cert, unregister should be rejected
+		if ack.Success {
+			t.Fatal("expected rejection without mTLS cert")
 		}
 	default:
 		t.Fatal("expected ack on sendCh")
@@ -434,7 +420,7 @@ func TestHandleMessage_FileList(t *testing.T) {
 }
 
 func TestHandleMessage_FileDelete(t *testing.T) {
-	c := &Client{tailSessions: make(map[string]chan struct{})}
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: dropzone.New(t.TempDir())}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage{
@@ -480,6 +466,7 @@ func TestHandleMessage_Unregister(t *testing.T) {
 	c := &Client{
 		tailSessions: make(map[string]chan struct{}),
 		hubAddr:      "localhost:9090",
+		certStore:    certs.NewMemoryStore(),
 	}
 	sendCh := make(chan *pb.AgentMessage, 2)
 
@@ -492,7 +479,7 @@ func TestHandleMessage_Unregister(t *testing.T) {
 
 	select {
 	case <-sendCh:
-		// got ack
+		// got ack (rejected without cert, but ack is still sent)
 	default:
 		t.Fatal("expected ack on sendCh")
 	}

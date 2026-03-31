@@ -11,13 +11,15 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	loginLimiter := newRateLimiter(10, 60*time.Second)
+	totpLimiter := newRateLimiter(3, 60*time.Second)
 	refreshLimiter := newRateLimiter(30, 60*time.Second)
+	fileOpsLimiter := newRateLimiter(60, 60*time.Second)
 
 	// Public auth endpoints (rate-limited)
 	mux.Handle("GET /api/auth/status", loggingMiddleware(http.HandlerFunc(s.handleAuthStatus)))
 	mux.Handle("POST /api/auth/register", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleRegister))))
 	mux.Handle("POST /api/auth/login", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLogin))))
-	mux.Handle("POST /api/auth/login/totp", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLoginTOTP))))
+	mux.Handle("POST /api/auth/login/totp", loggingMiddleware(totpLimiter.middleware(http.HandlerFunc(s.handleLoginTOTP))))
 
 	// Refresh endpoint (separate, higher-limit rate limiter)
 	mux.Handle("POST /api/auth/refresh", loggingMiddleware(refreshLimiter.middleware(http.HandlerFunc(s.handleRefresh))))
@@ -71,16 +73,16 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /api/servers/{id}/my-paths", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleGetUserPaths))))
 
 	// File browsing endpoints (any authenticated user, permission-checked in handler)
-	mux.Handle("GET /api/servers/{id}/files", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleListFiles))))
-	mux.Handle("GET /api/servers/{id}/files/read", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleReadFile))))
+	mux.Handle("GET /api/servers/{id}/files", loggingMiddleware(fileOpsLimiter.middleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleListFiles)))))
+	mux.Handle("GET /api/servers/{id}/files/read", loggingMiddleware(fileOpsLimiter.middleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleReadFile)))))
 
 	// Log tailing SSE endpoint (any authenticated user, permission-checked in handler)
-	mux.Handle("GET /api/servers/{id}/logs/tail", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleTailLog))))
+	mux.Handle("GET /api/servers/{id}/logs/tail", loggingMiddleware(fileOpsLimiter.middleware(s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(s.handleTailLog)))))
 
 	// Dropzone endpoints (admin only)
-	mux.Handle("POST /api/servers/{id}/upload", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUploadFile)))))
-	mux.Handle("GET /api/servers/{id}/dropzone", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListDropzone)))))
-	mux.Handle("DELETE /api/servers/{id}/dropzone", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteDropzoneFile)))))
+	mux.Handle("POST /api/servers/{id}/upload", loggingMiddleware(fileOpsLimiter.middleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUploadFile))))))
+	mux.Handle("GET /api/servers/{id}/dropzone", loggingMiddleware(fileOpsLimiter.middleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListDropzone))))))
+	mux.Handle("DELETE /api/servers/{id}/dropzone", loggingMiddleware(fileOpsLimiter.middleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteDropzoneFile))))))
 
 	// Server unregister (admin only)
 	mux.Handle("DELETE /api/servers/{id}/unregister", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUnregisterServer)))))
@@ -88,6 +90,7 @@ func (s *Server) routes() http.Handler {
 	// Public endpoints (no auth required)
 	mux.Handle("GET /install.sh", loggingMiddleware(http.HandlerFunc(s.handleInstallScript)))
 	mux.Handle("GET /install/{os}/{arch}", loggingMiddleware(http.HandlerFunc(s.handleAgentBinary)))
+	mux.Handle("GET /install/{os}/{arch}/sha256", loggingMiddleware(http.HandlerFunc(s.handleAgentBinaryChecksum)))
 	mux.Handle("DELETE /api/servers/{id}/self-unregister", loggingMiddleware(http.HandlerFunc(s.handleSelfUnregister)))
 
 	// SPA catch-all — serves embedded frontend, falls back to index.html

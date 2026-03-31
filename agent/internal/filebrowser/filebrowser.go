@@ -37,6 +37,7 @@ var blockedPaths = []string{
 	"/etc/gshadow",
 	"/etc/sudoers",
 	"/etc/sudoers.d",
+	"/etc/aerodocs",
 	"/root/.ssh",
 	"/proc/self",
 	"/proc/kcore",
@@ -81,6 +82,10 @@ func resolveAndValidateSymlink(path string) (string, string) {
 	if err != nil {
 		log.Printf("resolveAndValidateSymlink: cannot resolve path %q: %v", path, err)
 		return "", "cannot access path"
+	}
+	// Re-validate the resolved path against the blocklist
+	if err := validatePath(resolved); err != nil {
+		return "", "access to this path is restricted"
 	}
 	cleanPath := filepath.Clean(path)
 	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {

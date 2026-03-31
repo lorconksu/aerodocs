@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
+	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
 	"github.com/wyiu/aerodocs/hub/internal/model"
@@ -56,6 +57,13 @@ func StartHarness(t *testing.T) *TestHarness {
 		t.Fatalf("init jwt secret: %v", err)
 	}
 
+	// Initialize CA
+	caCert, caKey, err := ca.InitCA(st, jwtSecret)
+	if err != nil {
+		st.Close()
+		t.Fatalf("init CA: %v", err)
+	}
+
 	cm := connmgr.New()
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
@@ -74,6 +82,8 @@ func StartHarness(t *testing.T) *TestHarness {
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		CACert:      caCert,
+		CAKey:       caKey,
 	})
 
 	grpcErrCh := make(chan error, 1)

@@ -72,6 +72,32 @@ func (s *Store) GetUserPathsForServer(userID, serverID string) ([]string, error)
 	return paths, rows.Err()
 }
 
+// GetExclusiveServerAccess returns server IDs where the given user is the ONLY user with permissions.
+func (s *Store) GetExclusiveServerAccess(userID string) ([]string, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT p1.server_id
+		FROM permissions p1
+		WHERE p1.user_id = ?
+		AND NOT EXISTS (
+			SELECT 1 FROM permissions p2
+			WHERE p2.server_id = p1.server_id AND p2.user_id != ?
+		)`, userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get exclusive server access: %w", err)
+	}
+	defer rows.Close()
+
+	var serverIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		serverIDs = append(serverIDs, id)
+	}
+	return serverIDs, rows.Err()
+}
+
 func (s *Store) DeletePermission(id string) error {
 	result, err := s.db.Exec("DELETE FROM permissions WHERE id = ?", id)
 	if err != nil {

@@ -7,10 +7,95 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"math/big"
 	"time"
+
+	"github.com/wyiu/aerodocs/hub/internal/auth"
+	"github.com/wyiu/aerodocs/hub/internal/store"
 )
+
+// InitCA loads or creates the CA certificate and private key, storing them in the database.
+// The CA key is encrypted with AES-256-GCM using a key derived from the JWT secret.
+// Returns the CA certificate and private key for use by the gRPC server.
+func InitCA(st *store.Store, jwtSecret string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+	encKey := auth.DeriveKey(jwtSecret)
+
+	// Try to load existing CA from database
+	certHex, certErr := st.GetConfig("ca_cert")
+	keyHex, keyErr := st.GetConfig("ca_key")
+
+	if certErr == nil && keyErr == nil && certHex != "" && keyHex != "" {
+		certDER, err := hex.DecodeString(certHex)
+		if err != nil {
+			return nil, nil, fmt.Errorf("decode CA cert hex: %w", err)
+		}
+		cert, err := x509.ParseCertificate(certDER)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse CA cert: %w", err)
+		}
+
+		keyDER, err := hex.DecodeString(keyHex)
+		if err != nil {
+			return nil, nil, fmt.Errorf("decode CA key hex: %w", err)
+		}
+
+		// Try to decrypt first (encrypted key), fall back to raw DER (backward compat)
+		var key *ecdsa.PrivateKey
+		decrypted, decErr := auth.Decrypt(keyDER, encKey)
+		if decErr == nil {
+			pk, parseErr := x509.ParseECPrivateKey(decrypted)
+			if parseErr == nil {
+				key = pk
+			}
+		}
+		if key == nil {
+			// Fall back to raw DER (pre-encryption migration)
+			pk, parseErr := x509.ParseECPrivateKey(keyDER)
+			if parseErr != nil {
+				return nil, nil, fmt.Errorf("parse CA key: %w", parseErr)
+			}
+			key = pk
+			// Re-save encrypted
+			encrypted, err := auth.Encrypt(keyDER, encKey)
+			if err == nil {
+				_ = st.SetConfig("ca_key", hex.EncodeToString(encrypted))
+				log.Println("CA key migrated to encrypted storage")
+			}
+		}
+
+		return cert, key, nil
+	}
+
+	// Generate new CA
+	cert, key, err := GenerateCA()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate CA: %w", err)
+	}
+
+	// Store cert as hex-encoded DER
+	if err := st.SetConfig("ca_cert", hex.EncodeToString(cert.Raw)); err != nil {
+		return nil, nil, fmt.Errorf("store CA cert: %w", err)
+	}
+
+	// Encrypt and store key
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal CA key: %w", err)
+	}
+	encrypted, err := auth.Encrypt(keyDER, encKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encrypt CA key: %w", err)
+	}
+	if err := st.SetConfig("ca_key", hex.EncodeToString(encrypted)); err != nil {
+		return nil, nil, fmt.Errorf("store CA key: %w", err)
+	}
+
+	log.Println("Generated new CA certificate and key")
+	return cert, key, nil
+}
 
 // GenerateCA creates an ECDSA P-256 CA keypair with a self-signed certificate.
 // The certificate has a 10-year validity, CN="AeroDocs CA", IsCA=true,

@@ -9,6 +9,7 @@ export function LoginTOTPPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { login } = useAuth()
+  // Security: TOTP token is passed via React Router state (in-memory only, not in URL)
   const totpToken = (location.state as { totpToken?: string })?.totpToken
 
   const [error, setError] = useState('')

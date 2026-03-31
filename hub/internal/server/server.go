@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -30,8 +32,9 @@ type Server struct {
 	connMgr          *connmgr.ConnManager
 	pending     *grpcserver.PendingRequests
 	logSessions *grpcserver.LogSessions
-	totpCache   *auth.TOTPUsedCodes
-	notifier    *notify.Notifier
+	totpCache      *auth.TOTPUsedCodes
+	tokenBlacklist *auth.TokenBlacklist
+	notifier       *notify.Notifier
 }
 
 type Config struct {
@@ -61,8 +64,9 @@ func New(cfg Config) *Server {
 		connMgr:     cfg.ConnMgr,
 		pending:     cfg.Pending,
 		logSessions: cfg.LogSessions,
-		totpCache:   auth.NewTOTPUsedCodes(),
-		notifier:    cfg.Notifier,
+		totpCache:      auth.NewTOTPUsedCodes(),
+		tokenBlacklist: auth.NewTokenBlacklist(),
+		notifier:       cfg.Notifier,
 	}
 
 	mux := s.routes()
@@ -91,6 +95,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // Intended for use in tests where the same TOTP code may be reused across steps.
 func (s *Server) ClearTOTPCache() {
 	s.totpCache.Clear()
+}
+
+// DecryptTOTPSecret decrypts an encrypted TOTP secret (with "enc:" prefix).
+// Returns the raw secret for test use. If the secret is not encrypted, returns it as-is.
+func (s *Server) DecryptTOTPSecret(encrypted string) (string, error) {
+	return s.decryptTOTPSecret(encrypted)
 }
 
 // spaHandler serves the embedded frontend SPA. In dev mode, it returns a
@@ -137,15 +147,26 @@ func (s *Server) spaHandler() http.Handler {
 // or retrieves the existing one from the database.
 func InitJWTSecret(st *store.Store) (string, error) {
 	secret, err := st.GetConfig("jwt_signing_key")
-	if err == nil {
+	if err == nil && secret != "" {
 		return secret, nil
 	}
 
-	// Generate new 256-bit key
-	secret = auth.GenerateTemporaryPassword() + auth.GenerateTemporaryPassword()
+	// Generate new 256-bit key using crypto/rand
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("generate random key: %w", err)
+	}
+	secret = hex.EncodeToString(key)
+
 	if err := st.SetConfig("jwt_signing_key", secret); err != nil {
 		return "", fmt.Errorf("store jwt key: %w", err)
 	}
 
-	return secret, nil
+	// Re-read to protect against TOCTOU race
+	stored, err := st.GetConfig("jwt_signing_key")
+	if err != nil {
+		return "", fmt.Errorf("re-read jwt key: %w", err)
+	}
+
+	return stored, nil
 }

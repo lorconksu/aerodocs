@@ -86,7 +86,8 @@ func TestTOTPDisable_NonExistentUser(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 
 	adminUser, _ := s.store.GetUserByUsername("admin")
-	adminCode, _ := auth.GenerateValidCode(*adminUser.TOTPSecret)
+	rawAdminTOTP, _ := s.DecryptTOTPSecret(*adminUser.TOTPSecret)
+	adminCode, _ := auth.GenerateValidCode(rawAdminTOTP)
 
 	disableBody, _ := json.Marshal(model.TOTPDisableRequest{
 		UserID:        "nonexistent-user-id",

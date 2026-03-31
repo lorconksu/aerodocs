@@ -33,7 +33,7 @@ func TestRefresh_DeletedUser_Returns401(t *testing.T) {
 	victimID := createResp.User.ID
 
 	// Generate a valid refresh token for this user
-	_, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, victimID, string(model.RoleViewer))
+	_, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, victimID, string(model.RoleViewer), 0)
 	if err != nil {
 		t.Fatalf("generate token pair: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestRefresh_DemotedUser_GetsCurrentRole(t *testing.T) {
 	userID := createResp.User.ID
 
 	// Generate a refresh token with admin role
-	_, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, userID, string(model.RoleAdmin))
+	_, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, userID, string(model.RoleAdmin), 0)
 	if err != nil {
 		t.Fatalf("generate token pair: %v", err)
 	}

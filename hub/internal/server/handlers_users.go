@@ -75,6 +75,19 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if user has exclusive access to any servers (no other user has access)
+	force := r.URL.Query().Get("force") == "true"
+	if !force {
+		exclusiveServers, err := s.store.GetExclusiveServerAccess(targetID)
+		if err == nil && len(exclusiveServers) > 0 {
+			respondJSON(w, http.StatusConflict, map[string]interface{}{
+				"error":             "user has exclusive access to servers — add ?force=true to confirm",
+				"exclusive_servers": exclusiveServers,
+			})
+			return
+		}
+	}
+
 	if err := s.store.DeleteUser(targetID); err != nil {
 		respondError(w, http.StatusNotFound, "user not found")
 		return

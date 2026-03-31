@@ -49,7 +49,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -79,7 +78,7 @@ jobs:
         uses: docker/scout-action@v1
         with:
           command: cves
-          image: yiucloud/aerodocs:latest
+          image: yiucloud/aerodocs:${{ github.ref_name }}
           summary: true
 
       - name: Docker Scout quickview
@@ -87,12 +86,53 @@ jobs:
         uses: docker/scout-action@v1
         with:
           command: quickview
-          image: yiucloud/aerodocs:latest
+          image: yiucloud/aerodocs:${{ github.ref_name }}
 
       - name: Grype container scan
         uses: anchore/scan-action@v6
         with:
-          image: yiucloud/aerodocs:latest
+          image: yiucloud/aerodocs:${{ github.ref_name }}
           fail-build: false
           severity-cutoff: high
           output-format: table
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          image: yiucloud/aerodocs:${{ github.ref_name }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  malware-scan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull yiucloud/aerodocs:${{ github.ref_name }}
+
+      - name: Export image filesystem
+        run: |
+          docker create --name aerodocs-scan yiucloud/aerodocs:${{ github.ref_name }}
+          docker export aerodocs-scan -o image-fs.tar
+          docker rm aerodocs-scan
+
+      - name: Install ClamAV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav
+          sudo freshclam
+
+      - name: Run ClamAV scan
+        run: clamscan --infected --recursive image-fs.tar

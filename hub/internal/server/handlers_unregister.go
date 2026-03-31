@@ -1,7 +1,9 @@
 package server
 
 import (
-	"net"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -9,6 +11,13 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
+
+// selfUnregisterToken computes the HMAC-SHA256 token for a server's self-unregister endpoint.
+func (s *Server) selfUnregisterToken(serverID string) string {
+	mac := hmac.New(sha256.New, []byte(s.jwtSecret))
+	mac.Write([]byte("self-unregister:" + serverID))
+	return hex.EncodeToString(mac.Sum(nil))
+}
 
 func (s *Server) handleUnregisterServer(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
@@ -68,19 +77,17 @@ func (s *Server) handleSelfUnregister(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 
 	// Verify the server actually exists
-	srv, err := s.store.GetServerByID(serverID)
+	_, err := s.store.GetServerByID(serverID)
 	if err != nil {
 		// Already gone — that's fine
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	// Use RemoteAddr directly - never trust X-Forwarded-For for security checks
-	reqIP, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if reqIP == "" {
-		reqIP = r.RemoteAddr
-	}
-	if srv.IPAddress == nil || *srv.IPAddress != reqIP {
+	// Validate HMAC-SHA256 unregister token
+	token := r.Header.Get("X-Unregister-Token")
+	expected := s.selfUnregisterToken(serverID)
+	if !hmac.Equal([]byte(token), []byte(expected)) {
 		respondError(w, http.StatusForbidden, "unauthorized")
 		return
 	}

@@ -18,6 +18,7 @@ type Config struct {
 	IPAddress    string
 	OS           string
 	AgentVersion string
+	Insecure     bool
 }
 
 // Client wraps the internal agent client.
@@ -36,6 +37,7 @@ func New(cfg Config) *Client {
 			IPAddress:    cfg.IPAddress,
 			OS:           cfg.OS,
 			AgentVersion: cfg.AgentVersion,
+			Insecure:     cfg.Insecure,
 		}),
 	}
 }
