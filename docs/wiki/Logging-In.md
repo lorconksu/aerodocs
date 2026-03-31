@@ -10,7 +10,7 @@
 
 Navigate to the AeroDocs URL and you will see the login page.
 
-![Login Page](../screenshots/03-login-page.png)
+![Login Page](screenshots/login.png)
 
 Enter your username and password, then click **Sign In**.
 
@@ -22,13 +22,25 @@ If the username or password is wrong, you will see an error message. After 5 fai
 
 After a correct password, AeroDocs will ask for your two-factor authentication code.
 
-![TOTP Login](../screenshots/04-totp-login.png)
+![TOTP Verification](screenshots/totp.png)
 
 Open your authenticator app and find the AeroDocs entry. Enter the current 6-digit code shown in the app.
 
 The code changes every 30 seconds. If the code is rejected, check that the time on your phone is correct (TOTP codes are time-based) and try the next code when the timer resets.
 
 Click **Verify** to complete login.
+
+---
+
+## The 2FA Flow
+
+AeroDocs enforces two-factor authentication (2FA) for every account with no exceptions. The flow works as follows:
+
+1. **Password verification** - You submit your username and password. If correct, the server issues a short-lived session token that is only valid for the TOTP step.
+2. **TOTP verification** - You enter the 6-digit code from your authenticator app. The server verifies the code against your stored TOTP secret.
+3. **Session issued** - Once both factors are verified, the server issues a full session cookie. You are redirected to the Fleet Dashboard.
+
+If either step fails, no session is created. The two-step process ensures that a compromised password alone is not enough to gain access.
 
 ---
 

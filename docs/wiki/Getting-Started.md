@@ -10,13 +10,47 @@ This guide walks you through the initial setup of AeroDocs for the first time. T
 
 ---
 
+## Deploying the Hub
+
+AeroDocs Hub is distributed as a Docker image. Pull the latest release:
+
+```bash
+docker pull ghcr.io/your-org/aerodocs-hub:v1.2.11
+```
+
+A minimal `docker-compose.yml` example:
+
+```yaml
+version: "3.8"
+services:
+  aerodocs-hub:
+    image: ghcr.io/your-org/aerodocs-hub:v1.2.11
+    ports:
+      - "3000:3000"   # Web UI
+      - "9443:9443"   # gRPC (agent connections)
+    volumes:
+      - ./data:/data
+    environment:
+      - AERODOCS_DB_PATH=/data/aerodocs.db
+      - AERODOCS_GRPC_EXTERNAL_ADDR=grpc.aerodocs.example.com:9443
+    restart: unless-stopped
+```
+
+Start the Hub:
+
+```bash
+docker compose up -d
+```
+
+> **Note:** The gRPC port (9443) must be reachable by your agents. If running behind a reverse proxy like Traefik, configure TLS passthrough or TCP routing for the gRPC port.
+
+---
+
 ## Step 1: Open AeroDocs in Your Browser
 
 Navigate to the AeroDocs URL your administrator provided (for example, `https://aerodocs.example.com`).
 
 If no accounts have been created yet, you will see the setup page instead of the login screen.
-
-![Setup Page](../screenshots/01-setup-page.png)
 
 > **Note:** This setup page is only available once. After the first admin account is created, it is permanently disabled. Additional accounts must be created by an admin through the Settings page.
 
@@ -37,8 +71,6 @@ Click **Create Admin Account** to continue.
 ## Step 3: Set Up Two-Factor Authentication
 
 After creating your account, you will be taken directly to the TOTP (two-factor authentication) setup screen. This step is mandatory - you cannot skip it.
-
-![TOTP Setup](../screenshots/02-totp-setup.png)
 
 **Using an authenticator app (recommended):**
 
@@ -61,10 +93,10 @@ Below the QR code there is a manual entry key (a long string of letters and numb
 
 After verifying your TOTP code, you will be taken to the Fleet Dashboard.
 
-![Fleet Dashboard](../screenshots/05-fleet-dashboard.png)
+![Fleet Dashboard](screenshots/dashboard.png)
 
 From here you can start adding servers, creating user accounts, and exploring the rest of AeroDocs.
 
 **Next steps:**
 - [[Fleet Dashboard]] - Add your first server
-- [[Settings]] - Create accounts for your team
+- [[Settings]] - Create accounts for your team, configure email notifications
