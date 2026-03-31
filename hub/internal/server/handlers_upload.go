@@ -75,9 +75,13 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 			IPAddress: &ip,
 		})
 		if s.notifier != nil {
+			uploaderName := userID
+			if u, err := s.store.GetUserByID(userID); err == nil {
+				uploaderName = u.Username
+			}
 			s.notifier.Notify(model.NotifyFileUploaded, map[string]string{
 				"filename": filename, "server_name": serverID,
-				"server_id": serverID, "username": userID,
+				"server_id": serverID, "username": uploaderName,
 				"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
 			})
 		}
