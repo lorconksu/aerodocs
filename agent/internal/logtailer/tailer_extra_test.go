@@ -143,7 +143,7 @@ func TestReadNewData_NoChange(t *testing.T) {
 
 	// Start at end — no new data
 	sendCh := make(chan *pb.AgentMessage, 5)
-	newOffset := readNewData(f, path, int64(len(content)), "", sendCh, "req-1")
+	_, newOffset := readNewData(f, path, int64(len(content)), "", sendCh, "req-1")
 
 	if newOffset != int64(len(content)) {
 		t.Fatalf("expected offset %d (unchanged), got %d", len(content), newOffset)
@@ -174,7 +174,7 @@ func TestReadNewData_NewContent(t *testing.T) {
 	fAppend.WriteString("second line\n")
 	fAppend.Close()
 
-	newOffset := readNewData(f, path, int64(len(initial)), "", sendCh, "req-1")
+	_, newOffset := readNewData(f, path, int64(len(initial)), "", sendCh, "req-1")
 
 	if newOffset <= int64(len(initial)) {
 		t.Fatalf("expected offset to advance past %d, got %d", len(initial), newOffset)
@@ -206,7 +206,7 @@ func TestReadNewData_MissingFile(t *testing.T) {
 	os.Remove(path)
 
 	sendCh := make(chan *pb.AgentMessage, 5)
-	newOffset := readNewData(f, path, 100, "", sendCh, "req-1")
+	_, newOffset := readNewData(f, path, 100, "", sendCh, "req-1")
 
 	// Should return same offset or handle gracefully
 	_ = newOffset

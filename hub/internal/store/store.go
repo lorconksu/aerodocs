@@ -18,14 +18,20 @@ func New(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	// Enable WAL mode and foreign keys
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("set WAL mode: %w", err)
+	// SQLite performance and safety PRAGMAs
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA foreign_keys=ON",
+		"PRAGMA synchronous=NORMAL",   // safe with WAL; reduces fsync from every write to checkpoint
+		"PRAGMA busy_timeout=5000",    // wait up to 5s on lock contention instead of immediate BUSY error
+		"PRAGMA cache_size=-20000",    // 20MB page cache (negative = KB)
+		"PRAGMA mmap_size=268435456",  // 256MB memory-mapped I/O for read performance
 	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("exec %s: %w", p, err)
+		}
 	}
 
 	// Run migrations

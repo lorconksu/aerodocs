@@ -13,18 +13,32 @@ import (
 var startTime = time.Now()
 
 func Collect() *pb.SystemInfo {
+	// Call unix.Sysinfo once and share the result across helpers.
+	var info unix.Sysinfo_t
+	var sysInfoOK bool
+	if err := unix.Sysinfo(&info); err == nil {
+		sysInfoOK = true
+	}
+
 	return &pb.SystemInfo{
 		CpuPercent:    cpuPercent(),
-		MemoryPercent: memoryPercent(),
+		MemoryPercent: memoryPercentFrom(&info, sysInfoOK),
 		DiskPercent:   diskPercent(),
-		UptimeSeconds: uptimeSeconds(),
+		UptimeSeconds: uptimeSecondsFrom(&info, sysInfoOK),
 	}
 }
 
+// uptimeSeconds is a convenience wrapper for callers outside Collect().
 func uptimeSeconds() int64 {
-	// Try system uptime first via unix.Sysinfo (always > 0 on a running system)
 	var info unix.Sysinfo_t
-	if err := unix.Sysinfo(&info); err == nil && info.Uptime > 0 {
+	if err := unix.Sysinfo(&info); err == nil {
+		return uptimeSecondsFrom(&info, true)
+	}
+	return uptimeSecondsFrom(&info, false)
+}
+
+func uptimeSecondsFrom(info *unix.Sysinfo_t, ok bool) int64 {
+	if ok && info.Uptime > 0 {
 		return info.Uptime
 	}
 	// Fall back to process uptime, minimum 1 second
@@ -45,11 +59,17 @@ func cpuPercent() float64 {
 	return pct
 }
 
+// memoryPercent is a convenience wrapper for callers outside Collect().
 func memoryPercent() float64 {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
 	var info unix.Sysinfo_t
 	if err := unix.Sysinfo(&info); err != nil {
+		return 0
+	}
+	return memoryPercentFrom(&info, true)
+}
+
+func memoryPercentFrom(info *unix.Sysinfo_t, ok bool) float64 {
+	if !ok {
 		return 0
 	}
 	totalBytes := info.Totalram * uint64(info.Unit)

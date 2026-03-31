@@ -37,16 +37,17 @@ func NewHeartbeatCoalescer(st *store.Store, interval time.Duration) *HeartbeatCo
 // was performed.
 func (hc *HeartbeatCoalescer) RecordHeartbeat(serverID string) bool {
 	hc.mu.Lock()
-	defer hc.mu.Unlock()
-
 	now := hc.nowFunc()
 	last, ok := hc.lastWritten[serverID]
 	if ok && now.Sub(last) < hc.interval {
+		hc.mu.Unlock()
 		return false // coalesced — skip DB write
 	}
-
-	_ = hc.store.UpdateServerLastSeen(serverID, nil)
 	hc.lastWritten[serverID] = now
+	hc.mu.Unlock()
+
+	// DB write outside the lock — allows concurrent heartbeats from other agents
+	_ = hc.store.UpdateServerLastSeen(serverID, nil)
 	return true
 }
 
@@ -54,29 +55,33 @@ func (hc *HeartbeatCoalescer) RecordHeartbeat(serverID string) bool {
 // heartbeats, status transitions, and disconnect flushes.
 func (hc *HeartbeatCoalescer) ForceWrite(serverID string) {
 	hc.mu.Lock()
-	defer hc.mu.Unlock()
+	hc.lastWritten[serverID] = hc.nowFunc()
+	hc.mu.Unlock()
 
 	_ = hc.store.UpdateServerLastSeen(serverID, nil)
-	hc.lastWritten[serverID] = hc.nowFunc()
 }
 
 // Flush writes last_seen_at for a specific server (used on disconnect).
 // It also cleans up the tracking entry.
 func (hc *HeartbeatCoalescer) Flush(serverID string) {
 	hc.mu.Lock()
-	defer hc.mu.Unlock()
+	delete(hc.lastWritten, serverID)
+	hc.mu.Unlock()
 
 	_ = hc.store.UpdateServerLastSeen(serverID, nil)
-	delete(hc.lastWritten, serverID)
 }
 
 // FlushAll writes last_seen_at for all tracked servers (used on graceful shutdown).
 func (hc *HeartbeatCoalescer) FlushAll() {
 	hc.mu.Lock()
-	defer hc.mu.Unlock()
-
-	for serverID := range hc.lastWritten {
-		_ = hc.store.UpdateServerLastSeen(serverID, nil)
+	ids := make([]string, 0, len(hc.lastWritten))
+	for id := range hc.lastWritten {
+		ids = append(ids, id)
 	}
 	hc.lastWritten = make(map[string]time.Time)
+	hc.mu.Unlock()
+
+	for _, id := range ids {
+		_ = hc.store.UpdateServerLastSeen(id, nil)
+	}
 }

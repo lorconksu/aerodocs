@@ -35,6 +35,9 @@ type emailJob struct {
 // If the agent reconnects within this window, the offline notification is cancelled.
 var DebounceDelay = 60 * time.Second
 
+// smtpConfigCacheTTL is how long the SMTP config is cached before re-reading from DB.
+const smtpConfigCacheTTL = 60 * time.Second
+
 // Notifier dispatches email notifications asynchronously via a background worker.
 type Notifier struct {
 	store         *store.Store
@@ -44,6 +47,11 @@ type Notifier struct {
 	wg            sync.WaitGroup
 	mu            sync.Mutex
 	debounce      map[string]*time.Timer // keyed by "eventType:serverID"
+
+	// SMTP config cache — avoids 7 DB reads per email send
+	smtpMu      sync.RWMutex
+	smtpCfg     model.SMTPConfig
+	smtpCfgTime time.Time
 }
 
 // New creates a Notifier and starts the background worker goroutine.
@@ -251,8 +259,33 @@ func sanitizeErrorForLog(err error) string {
 	return "email delivery failed"
 }
 
-func (n *Notifier) processJob(job emailJob) {
+// cachedSMTPConfig returns the SMTP config, re-reading from DB only if the cache is stale.
+func (n *Notifier) cachedSMTPConfig() model.SMTPConfig {
+	n.smtpMu.RLock()
+	if time.Since(n.smtpCfgTime) < smtpConfigCacheTTL {
+		cfg := n.smtpCfg
+		n.smtpMu.RUnlock()
+		return cfg
+	}
+	n.smtpMu.RUnlock()
+
 	cfg := LoadSMTPConfig(n.store)
+	n.smtpMu.Lock()
+	n.smtpCfg = cfg
+	n.smtpCfgTime = time.Now()
+	n.smtpMu.Unlock()
+	return cfg
+}
+
+// InvalidateSMTPCache forces the next config read to hit the DB.
+func (n *Notifier) InvalidateSMTPCache() {
+	n.smtpMu.Lock()
+	n.smtpCfgTime = time.Time{}
+	n.smtpMu.Unlock()
+}
+
+func (n *Notifier) processJob(job emailJob) {
+	cfg := n.cachedSMTPConfig()
 
 	err := SendEmail(cfg, job.To, job.Subject, job.Body)
 

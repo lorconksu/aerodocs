@@ -14,6 +14,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// isRoot is true when the agent runs as uid 0; checked once at init to skip
+// per-entry unix.Access calls (root can read everything).
+var isRoot = os.Getuid() == 0
+
 // readBufPool reuses 1MB byte slices to reduce allocations in ReadFile.
 var readBufPool = sync.Pool{
 	New: func() interface{} {
@@ -102,9 +106,13 @@ func buildFileNode(e os.DirEntry, basePath, resolvedPath string) *pb.FileNode {
 		IsDir: e.IsDir(),
 		Size:  info.Size(),
 	}
-	entryPath := filepath.Join(resolvedPath, e.Name())
-	if unix.Access(entryPath, unix.R_OK) == nil {
+	if isRoot {
 		node.Readable = true
+	} else {
+		entryPath := filepath.Join(resolvedPath, e.Name())
+		if unix.Access(entryPath, unix.R_OK) == nil {
+			node.Readable = true
+		}
 	}
 	return node
 }
@@ -206,7 +214,14 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 		return &pb.FileReadResponse{Error: errMsg}, nil
 	}
 
-	info, err := os.Stat(resolved)
+	f, err := os.Open(resolved)
+	if err != nil {
+		log.Printf("ReadFile: cannot open file %q: %v", resolved, err)
+		return &pb.FileReadResponse{Error: errCannotReadFile}, nil
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
 	if err != nil {
 		log.Printf("ReadFile: cannot stat file %q: %v", resolved, err)
 		return &pb.FileReadResponse{Error: errCannotReadFile}, nil
@@ -217,13 +232,6 @@ func ReadFile(path string, offset, limit int64) (*pb.FileReadResponse, error) {
 
 	totalSize := info.Size()
 	offset = computeTailOffset(offset, limit, totalSize)
-
-	f, err := os.Open(resolved)
-	if err != nil {
-		log.Printf("ReadFile: cannot open file %q: %v", resolved, err)
-		return &pb.FileReadResponse{Error: errCannotReadFile}, nil
-	}
-	defer f.Close()
 
 	if offset > 0 {
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {

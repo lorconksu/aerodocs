@@ -2,6 +2,7 @@ package logtailer
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -117,15 +118,23 @@ func StartTail(path string, grep string, offset int64, sendCh chan<- *pb.AgentMe
 		case <-stop:
 			return
 		case <-ticker.C:
-			offset = readNewData(f, path, offset, grepLower, sendCh, requestID)
+			var newF *os.File
+			newF, offset = readNewData(f, path, offset, grepLower, sendCh, requestID)
+			if newF != nil {
+				f.Close()
+				f = newF
+			}
 		}
 	}
 }
 
-func readNewData(f *os.File, path string, lastOffset int64, grepLower string, sendCh chan<- *pb.AgentMessage, requestID string) int64 {
+// readNewData checks for new data in the file and sends it through sendCh.
+// Returns a new *os.File (non-nil) when file rotation is detected so the caller
+// can replace the old handle, plus the updated offset.
+func readNewData(f *os.File, path string, lastOffset int64, grepLower string, sendCh chan<- *pb.AgentMessage, requestID string) (*os.File, int64) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return lastOffset
+		return nil, lastOffset
 	}
 
 	currentSize := info.Size()
@@ -135,22 +144,21 @@ func readNewData(f *os.File, path string, lastOffset int64, grepLower string, se
 		// Reopen file (it may have been replaced)
 		newF, err := os.Open(path)
 		if err != nil {
-			return lastOffset
+			return nil, lastOffset
 		}
 		// Read from beginning of new file, capped to 1MB to prevent memory exhaustion.
 		data, err := io.ReadAll(io.LimitReader(newF, 1<<20))
-		newF.Close()
 		if err != nil {
-			return lastOffset
+			newF.Close()
+			return nil, lastOffset
 		}
 		sendFiltered(data, currentSize, grepLower, sendCh, requestID)
-		// Re-seek the original file handle
-		f.Seek(0, io.SeekEnd)
-		return currentSize
+		// Return new file handle to the caller so it replaces the old one
+		return newF, currentSize
 	}
 
 	if currentSize == lastOffset {
-		return lastOffset // No new data
+		return nil, lastOffset // No new data
 	}
 
 	// Seek to last position and read new data (cap at 1MB per poll)
@@ -162,17 +170,17 @@ func readNewData(f *os.File, path string, lastOffset int64, grepLower string, se
 	data := make([]byte, readSize)
 	n, err := f.Read(data)
 	if err != nil && err != io.EOF {
-		return lastOffset
+		return nil, lastOffset
 	}
 	if n == 0 {
-		return lastOffset
+		return nil, lastOffset
 	}
 
 	data = data[:n]
 	newOffset := lastOffset + int64(n)
 
 	sendFiltered(data, newOffset, grepLower, sendCh, requestID)
-	return newOffset
+	return nil, newOffset
 }
 
 func sendFiltered(data []byte, offset int64, grepLower string, sendCh chan<- *pb.AgentMessage, requestID string) {
@@ -181,19 +189,20 @@ func sendFiltered(data []byte, offset int64, grepLower string, sendCh chan<- *pb
 	if grepLower == "" {
 		outData = data
 	} else {
-		// Filter lines
-		scanner := bufio.NewScanner(strings.NewReader(string(data)))
-		var filtered []string
+		// Filter lines using bytes.NewReader to avoid string conversions
+		scanner := bufio.NewScanner(bytes.NewReader(data))
+		var buf bytes.Buffer
 		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.Contains(strings.ToLower(line), grepLower) {
-				filtered = append(filtered, line)
+			line := scanner.Bytes()
+			if strings.Contains(strings.ToLower(string(line)), grepLower) {
+				buf.Write(line)
+				buf.WriteByte('\n')
 			}
 		}
-		if len(filtered) == 0 {
+		if buf.Len() == 0 {
 			return
 		}
-		outData = []byte(strings.Join(filtered, "\n") + "\n")
+		outData = buf.Bytes()
 	}
 
 	if len(outData) == 0 {

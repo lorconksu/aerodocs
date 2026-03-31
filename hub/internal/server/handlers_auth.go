@@ -251,14 +251,6 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID:        uuid.NewString(),
-		UserID:    &user.ID,
-		Action:    "user.token_refreshed",
-		IPAddress: &ip,
-	})
-
 	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.TokenPair{
 		AccessToken:  accessToken,

@@ -30,10 +30,11 @@ func (s *Server) handleUnregisterServer(w http.ResponseWriter, r *http.Request) 
 			})
 			if err == nil {
 				// Wait for ack (10s timeout) — don't fail if timeout, still delete from DB
+				ackTimer := time.NewTimer(10 * time.Second)
 				select {
 				case <-ch:
-					// Got ack, agent is cleaning up
-				case <-time.After(10 * time.Second):
+					ackTimer.Stop()
+				case <-ackTimer.C:
 					// Timeout — proceed with DB deletion anyway
 				}
 			}
