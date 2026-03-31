@@ -59,7 +59,7 @@ var templates = map[string]emailTemplate{
 		body: "A file has been uploaded.\n\n" +
 			"File: {{filename}}\n" +
 			"Server: {{server_name}}\n" +
-			"Uploaded by: {{uploader}}\n",
+			"Uploaded by: {{username}}\n",
 	},
 }
 
