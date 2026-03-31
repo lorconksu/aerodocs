@@ -68,10 +68,13 @@ func (n *Notifier) Close() {
 func (n *Notifier) Notify(eventType string, context map[string]string) {
 	serverID := context["server_id"]
 
-	// Agent online: cancel any pending offline notification for this server
+	// Agent online: cancel any pending offline notification for this server.
+	// Only suppress the online notification if we actually cancelled a pending offline.
 	if eventType == model.NotifyAgentOnline && serverID != "" {
-		n.cancelDebounce(model.NotifyAgentOffline + ":" + serverID)
-		return // Suppress the online notification if offline was debounced
+		if n.cancelDebounce(model.NotifyAgentOffline + ":" + serverID) {
+			return // Suppress — this was just a brief disconnect/reconnect cycle
+		}
+		// No pending offline — this is a genuine new connection, send the notification
 	}
 
 	// Agent offline: debounce — only send if agent stays offline for DebounceDelay
@@ -107,7 +110,8 @@ func (n *Notifier) scheduleDebounced(eventType string, context map[string]string
 }
 
 // cancelDebounce stops a pending debounced notification.
-func (n *Notifier) cancelDebounce(key string) {
+// Returns true if a pending notification was actually cancelled.
+func (n *Notifier) cancelDebounce(key string) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -115,7 +119,9 @@ func (n *Notifier) cancelDebounce(key string) {
 		timer.Stop()
 		delete(n.debounce, key)
 		log.Printf("notify: cancelled debounced notification for %s (agent reconnected)", key)
+		return true
 	}
+	return false
 }
 
 // enqueueNotification resolves recipients and enqueues email jobs.
