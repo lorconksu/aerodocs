@@ -25,8 +25,9 @@ type Server struct {
 	isDev       bool
 	frontendFS  *embed.FS
 	agentBinDir string
-	grpcAddr    string
-	connMgr     *connmgr.ConnManager
+	grpcAddr         string
+	grpcExternalAddr string
+	connMgr          *connmgr.ConnManager
 	pending     *grpcserver.PendingRequests
 	logSessions *grpcserver.LogSessions
 	totpCache   *auth.TOTPUsedCodes
@@ -40,8 +41,9 @@ type Config struct {
 	IsDev       bool
 	FrontendFS  *embed.FS
 	AgentBinDir string
-	GRPCAddr    string
-	ConnMgr     *connmgr.ConnManager
+	GRPCAddr         string
+	GRPCExternalAddr string
+	ConnMgr          *connmgr.ConnManager
 	Pending     *grpcserver.PendingRequests
 	LogSessions *grpcserver.LogSessions
 	Notifier    *notify.Notifier
@@ -54,7 +56,8 @@ func New(cfg Config) *Server {
 		isDev:       cfg.IsDev,
 		frontendFS:  cfg.FrontendFS,
 		agentBinDir: cfg.AgentBinDir,
-		grpcAddr:    cfg.GRPCAddr,
+		grpcAddr:         cfg.GRPCAddr,
+		grpcExternalAddr: cfg.GRPCExternalAddr,
 		connMgr:     cfg.ConnMgr,
 		pending:     cfg.Pending,
 		logSessions: cfg.LogSessions,
