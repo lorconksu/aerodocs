@@ -76,16 +76,21 @@ func (s *Store) UpdateUserTOTP(userID string, secret *string, enabled bool) erro
 }
 
 func (s *Store) DeleteUser(userID string) error {
-	// Nullify audit log references before deleting (belt-and-suspenders with ON DELETE SET NULL migration)
-	if _, err := s.db.Exec("UPDATE audit_logs SET user_id = NULL WHERE user_id = ?", userID); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin delete user tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Nullify audit log references (belt-and-suspenders with ON DELETE SET NULL migration)
+	if _, err := tx.Exec("UPDATE audit_logs SET user_id = NULL WHERE user_id = ?", userID); err != nil {
 		return fmt.Errorf("nullify audit logs: %w", err)
 	}
-	// Remove notification preferences
-	if _, err := s.db.Exec("DELETE FROM notification_preferences WHERE user_id = ?", userID); err != nil {
+	if _, err := tx.Exec("DELETE FROM notification_preferences WHERE user_id = ?", userID); err != nil {
 		return fmt.Errorf("delete notification preferences: %w", err)
 	}
 
-	result, err := s.db.Exec("DELETE FROM users WHERE id = ?", userID)
+	result, err := tx.Exec("DELETE FROM users WHERE id = ?", userID)
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -96,7 +101,7 @@ func (s *Store) DeleteUser(userID string) error {
 	if rows == 0 {
 		return fmt.Errorf(errUserNotFound)
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *Store) UpdateUserRole(userID string, role model.Role) error {

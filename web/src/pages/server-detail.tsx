@@ -784,7 +784,7 @@ const STATUS_LABELS: Record<LiveTailStatus, string> = {
   disconnected: 'Disconnected',
 }
 
-const MAX_LINES = 10_000
+const MAX_LINES = 2_000
 
 interface LiveTailProps {
   serverId: string

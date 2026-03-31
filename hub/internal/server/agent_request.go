@@ -37,10 +37,13 @@ func (s *Server) sendAgentRequest(w http.ResponseWriter, serverID string, buildM
 		return nil
 	}
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case resp := <-ch:
 		return resp
-	case <-time.After(timeout):
+	case <-timer.C:
 		respondError(w, http.StatusGatewayTimeout, "agent timeout")
 		return nil
 	}

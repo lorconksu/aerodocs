@@ -46,11 +46,26 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 		configs["smtp_password"] = req.Password
 	}
 
+	tx, err := s.store.DB().Begin()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to begin transaction")
+		return
+	}
 	for key, value := range configs {
-		if err := s.store.SetConfig(key, value); err != nil {
+		if _, err := tx.Exec("INSERT INTO _config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value); err != nil {
+			tx.Rollback()
 			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save %s", key))
 			return
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to commit config")
+		return
+	}
+
+	// Invalidate cached SMTP config so the notifier picks up changes immediately
+	if s.notifier != nil {
+		s.notifier.InvalidateSMTPCache()
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})

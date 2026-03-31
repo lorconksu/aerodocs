@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, X, Search } from 'lucide-react'
@@ -42,20 +42,27 @@ export function DashboardPage() {
 
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAddModal, setShowAddModal] = useState(false)
 
-  const hasFilters = !!statusFilter || !!searchTerm
+  // Debounce search term by 300ms to avoid API call on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  const hasFilters = !!statusFilter || !!debouncedSearchTerm
 
   // Use shared query when unfiltered; separate query when filters are active
   const allServersQuery = useAllServers()
 
   const filteredQuery = useQuery({
-    queryKey: ['servers', 'filtered', statusFilter, searchTerm],
+    queryKey: ['servers', 'filtered', statusFilter, debouncedSearchTerm],
     queryFn: () => {
       const params = new URLSearchParams()
       if (statusFilter) params.set('status', statusFilter)
-      if (searchTerm) params.set('search', searchTerm)
+      if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
       return apiFetch<ServerListResponse>(`/servers?${params.toString()}`)
     },
     refetchInterval: 10_000,

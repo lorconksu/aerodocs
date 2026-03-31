@@ -14,6 +14,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+var hostPattern = regexp.MustCompile(`^[a-zA-Z0-9._:\-]+$`)
+
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -106,7 +108,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	host := r.Host
 	// Sanitize host - only allow alphanumeric, dots, colons, hyphens
-	if !regexp.MustCompile(`^[a-zA-Z0-9._:\-]+$`).MatchString(host) {
+	if !hostPattern.MatchString(host) {
 		respondError(w, http.StatusBadRequest, "invalid host header")
 		return
 	}
