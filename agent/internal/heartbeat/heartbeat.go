@@ -14,6 +14,7 @@ func BuildMessage(serverID string) *pb.AgentMessage {
 				ServerId:   serverID,
 				Timestamp:  time.Now().Unix(),
 				SystemInfo: sysinfo.Collect(),
+				IpAddress:  sysinfo.OutboundIP(),
 			},
 		},
 	}
