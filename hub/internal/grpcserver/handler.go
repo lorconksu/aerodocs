@@ -195,6 +195,19 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 	}); err != nil {
 		return "", status.Errorf(codes.Internal, "failed to send register ack: %v", err)
 	}
+
+	if h.notifier != nil {
+		serverName := reg.Hostname
+		if serverName == "" {
+			serverName = serverID
+		}
+		h.notifier.Notify(model.NotifyAgentRegistered, map[string]string{
+			"server_name": serverName,
+			"server_id":   serverID,
+			"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
+		})
+	}
+
 	return serverID, nil
 }
 
