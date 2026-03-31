@@ -70,8 +70,10 @@ hub/
 ├── embed.go              # go:embed directive for web/dist
 └── internal/
     ├── auth/             # JWT generation/validation, bcrypt, TOTP
+    ├── ca/               # Hub Certificate Authority for mTLS (ECDSA P-256)
     ├── migrate/          # Schema migration runner + SQL migration files
     ├── model/            # Shared request/response structs and constants
+    ├── notify/           # Email notification system (SMTP, templates, debounce, priority queue)
     ├── server/           # HTTP server, routing, handlers, middleware
     └── store/            # SQLite data access layer
 ```
@@ -85,6 +87,8 @@ hub/
 | `model` | Plain Go structs for all domain types (`User`, `Server`, `AuditEntry`) and all HTTP request/response bodies. No business logic. |
 | `server` | `Server` struct, route registration, all HTTP handlers, auth middleware, rate limiter, SPA handler |
 | `store` | `Store` struct wrapping `*sql.DB`. All SQL queries. Returns model types. No HTTP awareness. |
+| `notify` | Email notification system: SMTP client, HTML templates, debounce logic, priority queue, per-user preferences |
+| `ca` | Hub Certificate Authority for mTLS: ECDSA P-256 CA keypair generation, agent client certificate issuance |
 
 ---
 
@@ -248,7 +252,20 @@ The middleware enforces token type - passing a refresh token to a protected endp
 
 ## Database Schema
 
-AeroDocs uses SQLite with WAL mode and foreign key enforcement. Migrations run automatically on startup via the `migrate` package.
+AeroDocs uses SQLite with WAL mode, foreign key enforcement, and performance-tuned PRAGMAs. Migrations run automatically on startup via the `migrate` package.
+
+### Performance PRAGMAs
+
+The following PRAGMAs are set at connection time in `store/store.go`:
+
+| PRAGMA | Value | Purpose |
+|--------|-------|---------|
+| `journal_mode` | `WAL` | Write-Ahead Logging for crash safety and concurrent readers |
+| `foreign_keys` | `ON` | Enforce referential integrity (CASCADE deletes) |
+| `synchronous` | `NORMAL` | Safe with WAL; reduces fsync overhead from every write to checkpoint only |
+| `busy_timeout` | `5000` | Wait up to 5 seconds on lock contention instead of immediate BUSY error |
+| `cache_size` | `-20000` | 20 MB page cache (negative value = kilobytes) |
+| `mmap_size` | `268435456` | 256 MB memory-mapped I/O for read performance |
 
 ### `users`
 Stores all Hub user accounts.
@@ -332,6 +349,32 @@ Per-user, per-server, per-path access grants for Viewer role scoping.
 
 Unique constraint on `(user_id, server_id, path)`.
 
+### `notification_preferences`
+Per-user notification preferences. Controls which email alert types each user receives.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `user_id` | TEXT PK | FK to `users(id)` CASCADE |
+| `event_type` | TEXT PK | One of the 8 alert types (e.g. `agent.offline`) |
+| `enabled` | INTEGER | 0 or 1 |
+
+Composite primary key on `(user_id, event_type)`.
+
+### `notification_log`
+Immutable record of every notification delivery attempt.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | TEXT PK | UUID |
+| `user_id` | TEXT FK | References `users(id)` CASCADE |
+| `event_type` | TEXT | Alert type |
+| `subject` | TEXT | Email subject line |
+| `status` | TEXT | `sent` or `failed` (CHECK constraint) |
+| `error` | TEXT | Nullable; error message on failure |
+| `created_at` | TEXT | ISO 8601 |
+
+Indexed on `created_at` and `user_id`.
+
 ### `_migrations`
 Internal migration tracking table. Managed by the `migrate` package.
 
@@ -340,6 +383,77 @@ Internal migration tracking table. Managed by the `migrate` package.
 | `id` | INTEGER PK AUTOINCREMENT |
 | `filename` | TEXT UNIQUE |
 | `applied_at` | TEXT |
+
+---
+
+## HeartbeatCoalescer
+
+The `grpcserver` package includes a **HeartbeatCoalescer** that rate-limits `last_seen_at` database writes. Without coalescing, every 15-second heartbeat from every connected agent would result in a DB write -- at scale, this creates unnecessary write pressure on SQLite.
+
+The coalescer batches heartbeat timestamps and writes to the database at most once per coalesce interval per server. Status transitions (online/offline) and the initial handshake heartbeat bypass coalescing and always write immediately. On agent disconnect or Hub shutdown, pending timestamps are flushed.
+
+Source: `hub/internal/grpcserver/heartbeat_coalescer.go`
+
+---
+
+## Email Notification System
+
+AeroDocs includes an email notification system (added in v1.2) that alerts administrators to important events via SMTP.
+
+### Notification Architecture
+
+```mermaid
+flowchart LR
+    subgraph Hub
+        Handlers["HTTP / gRPC\nHandlers"]
+        Notifier["Notifier\n(debounce + queue)"]
+        SMTP["SMTP Client"]
+        DB["SQLite\n(preferences + log)"]
+    end
+    subgraph External
+        MailServer["SMTP Server"]
+    end
+
+    Handlers -->|"Emit(eventType, ctx)"| Notifier
+    Notifier -->|"priority queue"| SMTP
+    SMTP -->|"TLS / STARTTLS"| MailServer
+    Notifier -->|"read prefs, write log"| DB
+```
+
+### Alert Types
+
+The system supports **8 notification event types** across three categories:
+
+| Category | Event Type | Description | Default |
+|----------|-----------|-------------|---------|
+| Agent | `agent.offline` | Agent went offline | On |
+| Agent | `agent.online` | Agent came online | Off |
+| Agent | `agent.registered` | New agent enrolled | On |
+| Security | `security.login_failed` | Failed login attempt | On |
+| Security | `security.user_created` | New user created | On |
+| Security | `security.totp_changed` | 2FA configuration changed | On |
+| Security | `security.password_changed` | Password changed | Off |
+| System | `system.file_uploaded` | File uploaded | Off |
+
+### Key Design Decisions
+
+- **Debounce for agent offline**: Agent offline notifications are delayed by 60 seconds. If the agent reconnects within that window, the notification is cancelled. This prevents notification spam from brief network hiccups.
+- **Priority queue**: Security-critical events (login failures, TOTP changes) use a separate priority queue channel. If the main notification queue is full, security events overflow to the priority queue to guarantee delivery.
+- **SMTP config caching**: SMTP configuration is cached for 60 seconds with explicit cache invalidation when settings are updated, avoiding repeated DB reads per email send.
+- **Per-user preferences**: Each user can enable/disable individual event types. Preferences are stored in the `notification_preferences` table with FK cascade on user delete.
+- **Notification log**: Every notification attempt (success or failure) is recorded in the `notification_log` table for auditability.
+
+Source: `hub/internal/notify/`
+
+---
+
+## Frontend Architecture
+
+The frontend is a React SPA built with Vite, using TypeScript and TanStack Query for server state management.
+
+### Route-Level Code Splitting
+
+The frontend uses `React.lazy()` for route-level code splitting in `web/src/App.tsx`. Each page is loaded on demand, reducing the initial bundle size. The router wraps lazy-loaded pages in a `Suspense` boundary with a loading fallback.
 
 ---
 
@@ -375,6 +489,19 @@ Internal migration tracking table. Managed by the `migrate` package.
 | Method | Path | Auth required | Description |
 |--------|------|--------------|-------------|
 | GET | `/api/audit-logs` | `access` + admin | List audit log entries (filterable by user, action, date range) |
+
+### Settings and notification endpoints
+
+| Method | Path | Auth required | Description |
+|--------|------|--------------|-------------|
+| GET | `/api/settings/hub` | `access` + admin | Get hub configuration (gRPC external address) |
+| PUT | `/api/settings/hub` | `access` + admin | Update hub configuration |
+| GET | `/api/settings/smtp` | `access` + admin | Get SMTP configuration |
+| PUT | `/api/settings/smtp` | `access` + admin | Update SMTP configuration |
+| POST | `/api/settings/smtp/test` | `access` + admin | Send a test email |
+| GET | `/api/notifications/preferences` | `access` | Get current user's notification preferences |
+| PUT | `/api/notifications/preferences` | `access` | Update current user's notification preferences |
+| GET | `/api/notifications/log` | `access` + admin | List notification delivery log |
 
 ### Server endpoints
 

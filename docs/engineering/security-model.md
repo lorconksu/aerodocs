@@ -546,6 +546,75 @@ Setting `--require-mtls=true` rejects any gRPC connection that does not present 
 
 ---
 
+## 11. Security Hardening (v1.2.7 -- v1.2.9)
+
+A **4-pass security review** was completed across v1.2.7 through v1.2.9, addressing attack surface across the Hub, Agent, and notification system. The following hardening measures were applied:
+
+### SMTP Header Injection Prevention
+
+All email header fields (From, To, Subject) are sanitized with `stripCRLF()` before inclusion in the SMTP message. This prevents CRLF injection attacks where a malicious server name or context value could inject additional email headers (e.g., `Bcc:`).
+
+Source: `hub/internal/notify/smtp.go`, `hub/internal/notify/templates.go`
+
+### Cookie Secure Flag
+
+The `Secure` flag is enforced on all authentication cookies (`access_token`, `refresh_token`, `csrf_token`), ensuring cookies are only transmitted over HTTPS connections.
+
+### gRPC Address Validation
+
+The Hub configuration endpoint (`PUT /api/settings/hub`) validates the `grpc_external_addr` field against a strict regex pattern (`^[a-zA-Z0-9._:\-\[\]]+$`) to prevent shell metacharacter injection.
+
+Source: `hub/internal/server/handlers_hub_config.go`
+
+### Event Type Validation
+
+Notification preference updates validate each `event_type` against the canonical list of known event types (`model.AllNotifyEvents`). Unknown event types are rejected with a `400 Bad Request`.
+
+Source: `hub/internal/server/handlers_notifications.go`
+
+### Rate Limiter LRU Eviction
+
+The login rate limiter caps tracked IPs at 10,000 entries (`maxTrackedIPs`). When the limit is reached, the entry with the oldest last attempt is evicted. This prevents memory exhaustion from IP rotation attacks while preserving rate limit state for active attackers.
+
+Source: `hub/internal/server/middleware.go`
+
+### Agent Path Blocklists
+
+Both the **file browser** and **log tailer** on the Agent enforce path blocklists that prevent access to sensitive system files. Blocked paths include:
+
+- `/etc/shadow`, `/etc/gshadow`
+- `/proc/*` pseudo-filesystem entries
+- Private key files and SSH host keys
+- Other security-sensitive paths
+
+These blocklists are enforced on the Agent side, so even a compromised Hub cannot read these files through the gRPC channel.
+
+Source: `agent/internal/filebrowser/filebrowser.go`, `agent/internal/logtailer/tailer.go`
+
+### Dropzone Size Limits
+
+File uploads to the Agent dropzone enforce size limits. Uploads exceeding the configured maximum are rejected with an error and the partial file is cleaned up.
+
+Source: `agent/internal/dropzone/dropzone.go`
+
+### Audit Log FK Cascade
+
+The `audit_logs` table's `user_id` foreign key uses `ON DELETE CASCADE` (via the `notification_preferences` and `notification_log` tables), ensuring that when a user is deleted, their associated notification records are cleaned up without leaving orphaned rows.
+
+### Notification Priority Queue
+
+Security-critical notification events (login failures, TOTP changes) use a priority queue that takes precedence over the main notification queue. If the main queue is saturated, security events overflow to the priority channel to guarantee delivery.
+
+### Error Sanitization
+
+Internal error messages from the database or SMTP layer are not exposed directly in API responses. Handlers return generic error messages (e.g., "internal server error") while logging the detailed error server-side.
+
+### SMTP Config Caching with Invalidation
+
+SMTP configuration is cached in memory for 60 seconds to avoid repeated DB reads per email send. The cache is explicitly invalidated when the admin updates SMTP settings via `PUT /api/settings/smtp`, ensuring configuration changes take effect immediately.
+
+---
+
 ## Known Limitations
 
 ### Rate Limiter State

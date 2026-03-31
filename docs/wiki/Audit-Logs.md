@@ -14,7 +14,7 @@ The audit log is only visible to admins.
 
 Navigate to **Audit Logs** in the sidebar.
 
-![Audit Logs](../screenshots/07-audit-logs.png)
+![Audit Logs](screenshots/audit-logs.png)
 
 Each entry shows:
 
@@ -33,9 +33,20 @@ Use the filters at the top of the page to narrow down the log:
 
 - **Date range** - Show entries between a start and end date/time
 - **User** - Filter to actions by a specific user
-- **Action type** - Filter to a specific category of action
+- **Action type** - Filter to a specific category of action (e.g. `user.*`, `server.*`, `file.*`)
 
 You can combine filters. Click **Clear** to reset them.
+
+---
+
+## Pagination
+
+The audit log displays entries in pages. Use the navigation controls at the bottom of the log table to move between pages:
+
+- **Previous / Next** - Move one page forward or back
+- **Page indicator** - Shows which page you are on and the total number of pages
+
+The log is sorted with the most recent entries first. Filters are preserved as you navigate between pages.
 
 ---
 
@@ -102,3 +113,10 @@ Actions follow a `resource.action` naming pattern.
 | Action | What it means |
 |--------|--------------|
 | `log.tail_started` | A user started a live log tail session on a server |
+
+### Notification actions
+
+| Action | What it means |
+|--------|--------------|
+| `notification.sent` | An email notification was sent to one or more recipients |
+| `notification.failed` | An email notification failed to send |

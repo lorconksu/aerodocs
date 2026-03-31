@@ -2,7 +2,7 @@
 
 The Fleet Dashboard is the main screen of AeroDocs. It shows all the servers that have been registered with your Hub.
 
-![Fleet Dashboard](../screenshots/05-fleet-dashboard.png)
+![Fleet Dashboard](screenshots/dashboard.png)
 
 > **Admin vs Viewer:** All users can view the Fleet Dashboard, search/filter servers, and click into server details. Only admins can add, edit, or unregister servers.
 
@@ -34,22 +34,40 @@ A server stays in "pending" state until you run the install command on that mach
 
 ---
 
+## Status Filters
+
+Use the status filter buttons at the top of the dashboard to quickly narrow the view:
+
+- **All** - Shows every server regardless of status
+- **Online** - Shows only servers with an active agent connection
+- **Offline** - Shows only servers that have lost their agent connection
+- **Pending** - Shows only servers awaiting agent registration
+
+The active filter is highlighted. The count next to each filter label updates in real time.
+
+---
+
+## Searching
+
+The search bar at the top of the dashboard filters servers by name as you type. The search is **debounced** - there is a short delay after you stop typing before results update. This keeps the interface responsive when you have a large fleet.
+
+You can combine the search bar with the status filters. For example, type "prod" and select "Online" to find all online servers with "prod" in their name.
+
+---
+
 ## Adding a Server
 
 Only admins can add servers.
 
 1. Click the **Add Server** button in the top-right corner of the dashboard.
 2. The Add Server modal will appear.
-
-![Add Server Modal](../screenshots/06-add-server-modal.png)
-
 3. Enter a **Name** for the server (this is just a label - it does not have to match the actual hostname).
 4. Optionally add **Labels** to help you organise servers (e.g. `env:production`, `region:eu-west`).
 5. Click **Add Server**.
 6. AeroDocs creates the server record and generates a one-time install command. It will look something like:
 
    ```
-   curl - fsSL https://aerodocs.example.com/install.sh | bash - s -- --token <token>
+   curl -fsSL https://aerodocs.example.com/install.sh | bash -s -- --token <token>
    ```
 
 7. Copy the command and run it on the target server as root (or with `sudo`). The script downloads and installs the AeroDocs agent, then registers the server with the Hub using the embedded token.
@@ -71,15 +89,15 @@ Click a **server name** (or anywhere on the server card body) to open the [[Serv
 
 ---
 
-## Filtering and Searching
+## Batch Operations
 
-Use the search bar at the top of the dashboard to filter servers by name. You can also filter by status using the status dropdown (All / Online / Offline / Pending).
+### Selecting Multiple Servers
 
----
+Click the checkbox on any server card to select it. A toolbar will appear at the bottom of the screen showing how many servers are selected and offering bulk actions:
 
-## Selecting Multiple Servers
+- **Unregister Selected** - Removes all selected servers from the Hub (admin only). You will be asked to confirm before proceeding.
 
-Click the checkbox on any server card to select it. A toolbar will appear at the bottom of the screen showing how many servers are selected and offering bulk actions.
+Select the top-level checkbox (in the toolbar header) to select or deselect all visible servers at once.
 
 ---
 

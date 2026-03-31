@@ -1,6 +1,7 @@
 **AeroDocs User Guide**
 
 **Getting Started**
+- [[Home]]
 - [[Getting Started]]
 - [[Logging In]]
 

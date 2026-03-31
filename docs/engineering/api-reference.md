@@ -1,7 +1,7 @@
 # AeroDocs Hub API Reference
 
 > **TL;DR**
-> - **What:** 28+ REST API endpoints covering auth, user management, server operations, audit logs, and agent installation
+> - **What:** 40+ REST API endpoints covering auth, user management, server operations, audit logs, notifications, SMTP config, hub settings, and agent installation
 > - **Who:** Frontend developers, integration builders, and anyone automating AeroDocs
 > - **Why:** Complete reference for every HTTP endpoint with request/response schemas
 > - **Where:** All endpoints served by the Hub on the HTTP port (default :8081)
@@ -23,6 +23,8 @@
 9. [Agent Operation Endpoints](#agent-operation-endpoints)
 10. [Installation Endpoints](#installation-endpoints)
 11. [Server Removal Endpoints](#server-removal-endpoints)
+12. [Hub Settings Endpoints](#hub-settings-endpoints)
+13. [SMTP and Notification Endpoints](#smtp-and-notification-endpoints)
 
 ---
 
@@ -1581,4 +1583,312 @@ If the server has already been deleted, also returns `204 No Content`.
 
 ```bash
 curl - X DELETE https://hub.example.com/api/servers/SERVER_UUID/self-unregister
+```
+
+---
+
+## Hub Settings Endpoints
+
+### 37. GET /api/settings/hub
+
+Get the Hub configuration (currently the gRPC external address).
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer), admin only |
+
+**Response (200):**
+
+```json
+{
+  "grpc_external_addr": "aerodocs.example.com:9443"
+}
+```
+
+**cURL:**
+
+```bash
+curl https://hub.example.com/api/settings/hub \
+  - H 'Authorization: Bearer <access_token>'
+```
+
+---
+
+### 38. PUT /api/settings/hub
+
+Update the Hub configuration.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer), admin only |
+
+**Request Body:**
+
+```json
+{
+  "grpc_external_addr": "aerodocs.example.com:9443"
+}
+```
+
+**Validation:**
+- `grpc_external_addr` must match `^[a-zA-Z0-9._:\-\[\]]+$` (hostnames, IPs, and ports only -- no shell metacharacters)
+
+**Response (200):**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+**Error Cases:**
+- `400` - Invalid gRPC address format
+
+**cURL:**
+
+```bash
+curl - X PUT https://hub.example.com/api/settings/hub \
+  - H 'Authorization: Bearer <access_token>' \
+  - H 'Content-Type: application/json' \
+  - d '{"grpc_external_addr":"aerodocs.example.com:9443"}'
+```
+
+---
+
+## SMTP and Notification Endpoints
+
+### 39. GET /api/settings/smtp
+
+Get the current SMTP configuration. The password field is omitted from the response for security.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer), admin only |
+
+**Response (200):**
+
+```json
+{
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "notifications@example.com",
+  "from": "AeroDocs <notifications@example.com>",
+  "tls": true,
+  "enabled": true
+}
+```
+
+**cURL:**
+
+```bash
+curl https://hub.example.com/api/settings/smtp \
+  - H 'Authorization: Bearer <access_token>'
+```
+
+---
+
+### 40. PUT /api/settings/smtp
+
+Update the SMTP configuration. Invalidates the cached SMTP config immediately.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer), admin only |
+
+**Request Body:**
+
+```json
+{
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "notifications@example.com",
+  "password": "smtp-password",
+  "from": "AeroDocs <notifications@example.com>",
+  "tls": true,
+  "enabled": true
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+**cURL:**
+
+```bash
+curl - X PUT https://hub.example.com/api/settings/smtp \
+  - H 'Authorization: Bearer <access_token>' \
+  - H 'Content-Type: application/json' \
+  - d '{"host":"smtp.example.com","port":587,"username":"user","password":"pass","from":"AeroDocs <user@example.com>","tls":true,"enabled":true}'
+```
+
+---
+
+### 41. POST /api/settings/smtp/test
+
+Send a test email to verify SMTP configuration. Requires SMTP settings to be saved first.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer), admin only |
+
+**Request Body:**
+
+```json
+{
+  "recipient": "admin@example.com"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+**Error Cases:**
+- `400` - Invalid request body, missing recipient, or SMTP not configured
+- `500` - SMTP send failure (error details logged server-side)
+
+**cURL:**
+
+```bash
+curl - X POST https://hub.example.com/api/settings/smtp/test \
+  - H 'Authorization: Bearer <access_token>' \
+  - H 'Content-Type: application/json' \
+  - d '{"recipient":"admin@example.com"}'
+```
+
+---
+
+### 42. GET /api/notifications/preferences
+
+Get the current user's notification preferences. Returns all 8 event types with their enabled/disabled state.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer) |
+
+**Response (200):**
+
+```json
+{
+  "preferences": [
+    {
+      "event_type": "agent.offline",
+      "label": "Agent went offline",
+      "category": "Agent",
+      "enabled": true
+    },
+    {
+      "event_type": "security.login_failed",
+      "label": "Failed login attempt",
+      "category": "Security",
+      "enabled": true
+    }
+  ]
+}
+```
+
+**cURL:**
+
+```bash
+curl https://hub.example.com/api/notifications/preferences \
+  - H 'Authorization: Bearer <access_token>'
+```
+
+---
+
+### 43. PUT /api/notifications/preferences
+
+Update the current user's notification preferences.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer) |
+
+**Request Body:**
+
+```json
+{
+  "preferences": [
+    { "event_type": "agent.offline", "enabled": true },
+    { "event_type": "security.login_failed", "enabled": false }
+  ]
+}
+```
+
+**Validation:**
+- Each `event_type` must be one of the 8 known event types. Unknown types return `400`.
+
+**Response (200):**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+**Error Cases:**
+- `400` - Invalid request body or unknown event type
+
+**cURL:**
+
+```bash
+curl - X PUT https://hub.example.com/api/notifications/preferences \
+  - H 'Authorization: Bearer <access_token>' \
+  - H 'Content-Type: application/json' \
+  - d '{"preferences":[{"event_type":"agent.offline","enabled":true}]}'
+```
+
+---
+
+### 44. GET /api/notifications/log
+
+List notification delivery log entries. Supports pagination.
+
+| Property | Value |
+|---|---|
+| Auth | Access token (Bearer), admin only |
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `limit` | int | Max entries to return (default 50) |
+| `offset` | int | Number of entries to skip (default 0) |
+
+**Response (200):**
+
+```json
+{
+  "entries": [
+    {
+      "id": "uuid",
+      "user_id": "user-uuid",
+      "username": "admin",
+      "event_type": "agent.offline",
+      "subject": "Agent web-prod-1 went offline",
+      "status": "sent",
+      "error": null,
+      "created_at": "2025-06-15T10:30:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**cURL:**
+
+```bash
+curl 'https://hub.example.com/api/notifications/log?limit=20' \
+  - H 'Authorization: Bearer <access_token>'
 ```

@@ -56,7 +56,7 @@ volumes:
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| Image | `yiucloud/aerodocs:latest` | Pin to a specific tag (e.g. `yiucloud/aerodocs:1.0.0`) for reproducible deployments |
+| Image | `yiucloud/aerodocs:latest` | Pin to a specific tag (e.g. `yiucloud/aerodocs:v1.2.11`) for reproducible deployments |
 | HTTP port | `8081` | Web UI and REST API |
 | gRPC port | `9090` | Agent connections - must be reachable by agents |
 | Data volume | `aerodocs-data` mounted at `/data` | Contains the SQLite database (`/data/aerodocs.db`) and all persistent state |
@@ -67,7 +67,7 @@ volumes:
 Replace `latest` with a specific version tag to avoid unexpected upgrades:
 
 ```yaml
-image: yiucloud/aerodocs:1.0.0
+image: yiucloud/aerodocs:v1.2.11
 ```
 
 ---
@@ -339,6 +339,52 @@ No action is required from operators. The cookie auth is active by default when 
 
 ---
 
+## LXC Container Deployment
+
+AeroDocs can be deployed in a Proxmox LXC container as a lightweight alternative to a full VM. This is useful for home lab and small-team deployments.
+
+### Setup steps
+
+1. **Create an unprivileged LXC container** (Debian/Ubuntu) with at least 512 MB RAM and 4 GB disk.
+2. **Install Docker** inside the container (requires the `keyctl` and `nesting` features enabled on the LXC).
+3. **Deploy with Docker Compose** using the same `docker-compose.yml` as any other deployment.
+4. **Configure Traefik** on the host or a separate LXC to reverse-proxy HTTPS traffic to the container's IP.
+
+### Example: Proxmox LXC with Traefik
+
+If Traefik runs on a separate LXC (e.g., LXC 101) and AeroDocs runs on LXC 110 at `10.10.1.96`:
+
+```yaml
+# /etc/traefik/dynamic/aerodocs.yml on the Traefik LXC
+http:
+  routers:
+    aerodocs:
+      rule: "Host(`aerodocs.example.com`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+      service: aerodocs
+    aerodocs-grpc:
+      rule: "Host(`aerodocs.example.com`) && PathPrefix(`/aerodocs.v1.`)"
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+      service: aerodocs-grpc
+  services:
+    aerodocs:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.1.96:8081"
+    aerodocs-grpc:
+      loadBalancer:
+        servers:
+          - url: "h2c://10.10.1.96:9090"
+```
+
+In the AeroDocs container, bind the HTTP and gRPC ports to `0.0.0.0` so Traefik can reach them across the LXC network.
+
+---
+
 ## DNS Setup
 
 Point your domain's A record (and AAAA for IPv6) to the public IP of the server running Traefik.
@@ -471,6 +517,7 @@ The output is a single self-contained binary at `bin/aerodocs`. No Node.js, no s
 | `--db` | `aerodocs.db` | Path to the SQLite database file |
 | `--agent-bin-dir` | `` | Directory containing agent binaries served via `/install/{os}/{arch}` |
 | `--require-mtls` | `false` | Require agents to present valid mTLS certificates (v1.1+) |
+| `--grpc-external-addr` | `` | External gRPC address shown in install commands (e.g. `aerodocs.example.com:9443`). Overridable from the admin UI. |
 | `--dev` | `false` | Enable development mode (permissive CORS, no embedded frontend served) |
 
 **Example:**

@@ -4,7 +4,7 @@ AeroDocs is a web-based control panel for managing your servers. Instead of open
 
 Everything you do in AeroDocs is tracked. There is a permanent record of who logged in, who added or removed servers, and who changed account settings. This makes AeroDocs suitable for teams where accountability matters.
 
-![Fleet Dashboard](../screenshots/05-fleet-dashboard.png)
+![Fleet Dashboard](screenshots/dashboard.png)
 
 ## What AeroDocs Does
 
@@ -17,6 +17,9 @@ Everything you do in AeroDocs is tracked. There is a permanent record of who log
 - Records every action in an immutable audit log
 - Requires two-factor authentication for every account - no exceptions
 - Supports multiple user accounts with Admin and Viewer roles
+- Sends email notifications for key events (server status changes, file uploads, user actions) via configurable SMTP
+- Secures agent-to-hub communication with mutual TLS (mTLS) for certificate-based authentication
+- Enforces sensitive path blocklists to prevent agents from exposing restricted filesystem paths
 
 ---
 
@@ -26,7 +29,7 @@ These guides cover features that require an admin role:
 
 - [[Getting Started]] - Initial setup and first admin account
 - [[Fleet Dashboard]] - Adding/removing servers, bulk operations
-- [[Settings]] - User management, role changes, 2FA reset
+- [[Settings]] - User management, role changes, 2FA reset, email notifications, alert preferences
 - [[Audit Logs]] - Activity monitoring and compliance
 
 ---

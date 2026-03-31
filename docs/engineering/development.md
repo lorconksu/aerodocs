@@ -112,8 +112,10 @@ make test
 This runs `go test ./...` from the `hub/` directory. The test suite covers:
 
 - `auth/` - JWT generation, validation, token type enforcement, bcrypt, TOTP
-- `store/` - All store methods against a real in-memory SQLite database
-- `server/` - HTTP handler tests using `httptest`
+- `store/` - All store methods against a real in-memory SQLite database (including notification preferences and log)
+- `server/` - HTTP handler tests using `httptest` (including SMTP, notification, and hub config handlers)
+- `notify/` - SMTP client tests, template rendering, CRLF injection prevention, debounce logic
+- `grpcserver/` - HeartbeatCoalescer tests, handler tests
 
 There are no frontend tests at this time.
 
@@ -195,15 +197,21 @@ aerodocs/
 │       │   ├── jwt.go          # Token generation and validation
 │       │   ├── password.go     # bcrypt helpers + password policy
 │       │   └── totp.go         # TOTP secret generation + code verification
+│       ├── ca/                 # Hub Certificate Authority for mTLS (ECDSA P-256)
 │       ├── connmgr/            # Agent connection manager (active streams + SendMu)
-│       ├── grpcserver/         # gRPC server, Connect handler, PendingRequests, LogSessions
+│       ├── grpcserver/         # gRPC server, Connect handler, PendingRequests, LogSessions, HeartbeatCoalescer
 │       ├── migrate/
 │       │   ├── migrate.go      # Migration runner
 │       │   └── migrations/     # Numbered .sql files (001_, 002_, ...)
 │       ├── model/
 │       │   ├── user.go         # User, request/response types
 │       │   ├── server.go       # Server, request/response types
-│       │   └── audit.go        # AuditEntry, action constants
+│       │   ├── audit.go        # AuditEntry, action constants
+│       │   └── notification.go # Notification types, SMTP config, alert event definitions
+│       ├── notify/
+│       │   ├── notifier.go     # Notification dispatcher (debounce, priority queue, background worker)
+│       │   ├── smtp.go         # SMTP client with TLS support and CRLF injection prevention
+│       │   └── templates.go    # Email HTML templates and context rendering
 │       ├── server/
 │       │   ├── server.go       # Server struct, Init, SPA handler
 │       │   ├── router.go       # Route registration
@@ -212,13 +220,16 @@ aerodocs/
 │       │   ├── handlers_auth.go
 │       │   ├── handlers_servers.go
 │       │   ├── handlers_users.go
-│       │   └── handlers_audit.go
+│       │   ├── handlers_audit.go
+│       │   ├── handlers_notifications.go  # SMTP config, notification preferences, notification log
+│       │   └── handlers_hub_config.go     # Hub settings (gRPC external address)
 │       └── store/
 │           ├── store.go        # Store struct, New(), DB pragma setup
 │           ├── users.go        # User CRUD
 │           ├── servers.go      # Server CRUD
 │           ├── audit.go        # Audit log writes and queries
-│           └── config.go       # Key-value config store
+│           ├── config.go       # Key-value config store
+│           └── notifications.go # Notification preferences and delivery log queries
 ├── agent/
 │   ├── go.mod / go.sum
 │   ├── cmd/
