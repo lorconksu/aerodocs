@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -186,7 +187,18 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.TOTPSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, user.ID, *user.TOTPSecret, req.Code) {
+	// Decrypt TOTP secret if encrypted
+	totpSecret := user.TOTPSecret
+	if totpSecret != nil && strings.HasPrefix(*totpSecret, "enc:") {
+		decrypted, err := s.decryptTOTPSecret(*totpSecret)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to decrypt TOTP secret")
+			return
+		}
+		totpSecret = &decrypted
+	}
+
+	if totpSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, user.ID, *totpSecret, req.Code) {
 		ip := clientIP(r)
 		s.store.LogAudit(model.AuditEntry{
 			ID: uuid.NewString(), UserID: &user.ID,
@@ -196,7 +208,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
+	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
@@ -244,8 +256,17 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate token generation matches DB (detect revoked/outdated refresh tokens)
+	if claims.TokenGeneration != user.TokenGeneration {
+		respondError(w, http.StatusUnauthorized, "token has been revoked")
+		return
+	}
+
+	// Increment token generation to prevent reuse of this refresh token
+	_ = s.store.IncrementTokenGeneration(user.ID)
+
 	// Use user.Role from DB, not claims.Role from the old token
-	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
+	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration+1)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
@@ -259,6 +280,12 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// Blacklist the access token if present
+	if tokenStr := readAccessToken(r); tokenStr != "" {
+		if claims, err := auth.ValidateToken(s.jwtSecret, tokenStr); err == nil && claims.ID != "" {
+			s.tokenBlacklist.Add(claims.ID, claims.ExpiresAt.Time)
+		}
+	}
 	clearAuthCookies(w)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -371,12 +398,30 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !auth.ValidateTOTPWithReplay(s.totpCache, userID, *user.TOTPSecret, req.Code) {
+	// Decrypt TOTP secret if encrypted for validation
+	totpSecretForValidation := user.TOTPSecret
+	if totpSecretForValidation != nil && strings.HasPrefix(*totpSecretForValidation, "enc:") {
+		decrypted, err := s.decryptTOTPSecret(*totpSecretForValidation)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to decrypt TOTP secret")
+			return
+		}
+		totpSecretForValidation = &decrypted
+	}
+
+	if !auth.ValidateTOTPWithReplay(s.totpCache, userID, *totpSecretForValidation, req.Code) {
 		respondError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
 	}
 
-	if err := s.store.UpdateUserTOTP(userID, user.TOTPSecret, true); err != nil {
+	// Encrypt the TOTP secret before final storage
+	encryptedSecret, err := s.encryptTOTPSecret(*totpSecretForValidation)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to encrypt TOTP secret")
+		return
+	}
+
+	if err := s.store.UpdateUserTOTP(userID, &encryptedSecret, true); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to enable TOTP")
 		return
 	}
@@ -394,7 +439,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate full access tokens now that 2FA is enabled
-	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
+	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
@@ -481,7 +526,18 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if admin.TOTPSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, adminID, *admin.TOTPSecret, req.AdminTOTPCode) {
+	// Decrypt admin's TOTP secret if encrypted
+	adminTOTPSecret := admin.TOTPSecret
+	if adminTOTPSecret != nil && strings.HasPrefix(*adminTOTPSecret, "enc:") {
+		decrypted, err := s.decryptTOTPSecret(*adminTOTPSecret)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to decrypt admin TOTP secret")
+			return
+		}
+		adminTOTPSecret = &decrypted
+	}
+
+	if adminTOTPSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, adminID, *adminTOTPSecret, req.AdminTOTPCode) {
 		respondError(w, http.StatusUnauthorized, "invalid admin TOTP code")
 		return
 	}
@@ -524,4 +580,31 @@ func validateUsername(username string) error {
 		}
 	}
 	return nil
+}
+
+// encryptTOTPSecret encrypts a TOTP secret and returns it with "enc:" prefix.
+func (s *Server) encryptTOTPSecret(secret string) (string, error) {
+	key := auth.DeriveKey(s.jwtSecret)
+	encrypted, err := auth.Encrypt([]byte(secret), key)
+	if err != nil {
+		return "", err
+	}
+	return "enc:" + hex.EncodeToString(encrypted), nil
+}
+
+// decryptTOTPSecret decrypts a TOTP secret that has the "enc:" prefix.
+func (s *Server) decryptTOTPSecret(encrypted string) (string, error) {
+	if !strings.HasPrefix(encrypted, "enc:") {
+		return encrypted, nil
+	}
+	data, err := hex.DecodeString(encrypted[4:])
+	if err != nil {
+		return "", fmt.Errorf("invalid encrypted TOTP secret format: %w", err)
+	}
+	key := auth.DeriveKey(s.jwtSecret)
+	decrypted, err := auth.Decrypt(data, key)
+	if err != nil {
+		return "", err
+	}
+	return string(decrypted), nil
 }

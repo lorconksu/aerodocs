@@ -243,11 +243,8 @@ func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer
 		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
 	}
 
-	// Prefer agent-reported IP (accurate behind TCP proxies), fall back to peer IP
-	ip := hb.IpAddress
-	if ip == "" {
-		ip = peerIP
-	}
+	// Always use the real peer IP (ignore agent-reported IP for security)
+	ip := peerIP
 	if ip != "" {
 		_ = h.store.UpdateServerIP(serverID, ip)
 	}

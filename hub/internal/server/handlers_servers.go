@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,6 +65,12 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		respondError(w, http.StatusBadRequest, "server name is required")
+		return
+	}
+
+	// Check for duplicate server names
+	if existing, err := s.store.GetServerByName(req.Name); err == nil && existing != nil {
+		respondError(w, http.StatusConflict, "a server with this name already exists")
 		return
 	}
 
@@ -136,9 +143,18 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate the gRPC target address (skip in dev mode where listen addr may be ":0")
+	if !s.isDev && !isValidGRPCAddr(grpcTarget) {
+		respondError(w, http.StatusInternalServerError, "invalid gRPC address")
+		return
+	}
+
+	// Compute the HMAC-based self-unregister token for this server
+	unregisterToken := s.selfUnregisterToken(srv.ID)
+
 	installCmd := fmt.Sprintf(
-		"curl -sSL %s/install.sh | sudo bash -s -- --token %s --hub %s --url %s",
-		baseURL, rawToken, grpcTarget, baseURL,
+		"curl -sSL '%s/install.sh' | sudo bash -s -- --token '%s' --hub '%s' --url '%s' --unregister-token '%s'",
+		baseURL, rawToken, grpcTarget, baseURL, unregisterToken,
 	)
 
 	respondJSON(w, http.StatusCreated, model.CreateServerResponse{
@@ -151,14 +167,21 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
+	// Check role first — non-admins get 403 whether or not the server exists
+	// to avoid leaking server IDs via 404 vs 403 differences.
+	role := UserRoleFromContext(r.Context())
+
 	srv, err := s.store.GetServerByID(id)
 	if err != nil {
+		if role != "admin" {
+			respondError(w, http.StatusForbidden, "access denied")
+			return
+		}
 		respondError(w, http.StatusNotFound, errServerNotFound)
 		return
 	}
 
 	// Viewers must have permission on this specific server
-	role := UserRoleFromContext(r.Context())
 	if role != "admin" {
 		userID := UserIDFromContext(r.Context())
 		paths, err := s.store.GetUserPathsForServer(userID, id)
@@ -293,5 +316,38 @@ func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	http.ServeFile(w, r, binaryPath)
+}
+
+func (s *Server) handleAgentBinaryChecksum(w http.ResponseWriter, r *http.Request) {
+	osName := r.PathValue("os")
+	arch := r.PathValue("arch")
+	if osName != "linux" || (arch != "amd64" && arch != "arm64") {
+		respondError(w, http.StatusNotFound, "unsupported platform")
+		return
+	}
+	filename := fmt.Sprintf("aerodocs-agent-%s-%s.sha256", osName, arch)
+	checksumPath := filepath.Join(s.agentBinDir, filename)
+	data, err := os.ReadFile(checksumPath)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "checksum not found")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(strings.TrimSpace(string(data))))
+}
+
+// isValidGRPCAddr validates a gRPC address (host:port format).
+func isValidGRPCAddr(addr string) bool {
+	if addr == "" {
+		return false
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" || port == "" {
+		return false
+	}
+	return hostPattern.MatchString(host)
 }
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,8 +20,10 @@ import (
 const version = "0.1.0"
 
 type agentConfig struct {
-	ServerID string `json:"server_id"`
-	HubURL   string `json:"hub_url"`
+	ServerID        string   `json:"server_id"`
+	HubURL          string   `json:"hub_url"`
+	UnregisterToken string   `json:"unregister_token,omitempty"`
+	AllowedPaths    []string `json:"allowed_paths,omitempty"`
 }
 
 func main() {
@@ -28,6 +31,8 @@ func main() {
 	token := flag.String("token", "", "one-time registration token")
 	configPath := flag.String("config", "/etc/aerodocs/agent.conf", "path to config file")
 	selfUnregister := flag.Bool("self-unregister", false, "connect to Hub, request deletion of this server, then exit")
+	insecureFlag := flag.Bool("insecure", false, "disable TLS (for development only)")
+	allowedPathsFlag := flag.String("allowed-paths", "", "comma-separated list of allowed filesystem paths")
 	flag.Parse()
 
 	if *selfUnregister {
@@ -36,6 +41,12 @@ func main() {
 	}
 
 	cfg, hubAddr, serverID, regToken := resolveConfig(*configPath, *hub, *token)
+
+	// Merge allowed paths from config and CLI flag
+	allowedPaths := parseAllowedPaths(*allowedPathsFlag)
+	if cfg != nil && len(cfg.AllowedPaths) > 0 && len(allowedPaths) == 0 {
+		allowedPaths = cfg.AllowedPaths
+	}
 
 	hostname := sysinfo.Hostname()
 	osInfo := sysinfo.OSInfo()
@@ -48,6 +59,8 @@ func main() {
 		IPAddress:    "",
 		OS:           osInfo,
 		AgentVersion: version,
+		Insecure:     *insecureFlag,
+		AllowedPaths: allowedPaths,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -61,7 +74,8 @@ func main() {
 	}
 
 	if cfg == nil && c.ServerID() != "" {
-		saveNewConfig(*configPath, hubAddr, c.ServerID())
+		unregToken := os.Getenv("AERODOCS_UNREGISTER_TOKEN")
+		saveNewConfig(*configPath, hubAddr, c.ServerID(), unregToken)
 	}
 
 	log.Println("agent stopped")
@@ -77,9 +91,10 @@ func runSelfUnregister(configPath string) {
 	}
 	log.Printf("self-unregistering server_id=%s from hub=%s", cfg.ServerID, cfg.HubURL)
 	c := client.New(client.Config{
-		HubAddr:      cfg.HubURL,
-		ServerID:     cfg.ServerID,
-		AgentVersion: version,
+		HubAddr:         cfg.HubURL,
+		ServerID:        cfg.ServerID,
+		AgentVersion:    version,
+		UnregisterToken: cfg.UnregisterToken,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -136,10 +151,11 @@ func resolveConfig(configPath, hubFlag, tokenFlag string) (cfg *agentConfig, hub
 }
 
 // saveNewConfig persists the server ID and hub URL returned after a successful first registration.
-func saveNewConfig(configPath, hubAddr, serverID string) {
+func saveNewConfig(configPath, hubAddr, serverID, unregisterToken string) {
 	newCfg := agentConfig{
-		ServerID: serverID,
-		HubURL:   hubAddr,
+		ServerID:        serverID,
+		HubURL:          hubAddr,
+		UnregisterToken: unregisterToken,
 	}
 	if err := saveConfig(configPath, newCfg); err != nil {
 		log.Printf("warning: failed to save config: %v", err)
@@ -158,6 +174,20 @@ func loadConfig(path string) (*agentConfig, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func parseAllowedPaths(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var paths []string
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
 }
 
 func saveConfig(path string, cfg agentConfig) error {

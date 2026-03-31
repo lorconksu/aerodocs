@@ -10,6 +10,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    sourcemap: false,
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:8080',

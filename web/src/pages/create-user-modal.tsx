@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Eye, EyeOff } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import type { CreateUserRequest, CreateUserResponse, Role } from '@/types/api'
 
@@ -14,6 +15,7 @@ export function CreateUserModal({ onClose }: Readonly<CreateUserModalProps>) {
   const [role, setRole] = useState<Role>('viewer')
   const [tempPassword, setTempPassword] = useState('')
   const [copied, setCopied] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const mutation = useMutation({
     mutationFn: (data: CreateUserRequest) =>
@@ -50,8 +52,15 @@ export function CreateUserModal({ onClose }: Readonly<CreateUserModalProps>) {
             </p>
             <div className="flex items-center gap-2 mb-4">
               <code className="flex-1 bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary font-mono select-all">
-                {tempPassword}
+                {showPassword ? tempPassword : '••••••••••••••••'}
               </code>
+              <button
+                onClick={() => setShowPassword(!showPassword)}
+                className="px-2 py-2 text-text-muted hover:text-text-primary transition-colors"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
               <button
                 onClick={copyPassword}
                 className="px-3 py-2 bg-accent hover:bg-accent-hover text-white text-sm rounded transition-colors"

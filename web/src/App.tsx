@@ -36,6 +36,16 @@ function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   return <>{children}</>
 }
 
+function AdminRoute({ children }: Readonly<{ children: React.ReactNode }>) {
+  const { user } = useAuth()
+
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -50,7 +60,7 @@ function AppRoutes() {
       {/* Protected routes */}
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route path="/" element={<Suspense fallback={LazyFallback}><DashboardPage /></Suspense>} />
-        <Route path="/audit-logs" element={<Suspense fallback={LazyFallback}><AuditLogsPage /></Suspense>} />
+        <Route path="/audit-logs" element={<Suspense fallback={LazyFallback}><AdminRoute><AuditLogsPage /></AdminRoute></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={LazyFallback}><SettingsPage /></Suspense>} />
         <Route path="/servers/:id" element={<Suspense fallback={LazyFallback}><ServerDetailPage /></Suspense>} />
       </Route>

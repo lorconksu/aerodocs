@@ -9,10 +9,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -29,30 +29,38 @@ import (
 )
 
 type Config struct {
-	HubAddr      string
-	ServerID     string
-	Token        string
-	Hostname     string
-	IPAddress    string
-	OS           string
-	AgentVersion string
-	CertDir      string // directory for mTLS cert storage; empty uses /etc/aerodocs/tls/
+	HubAddr         string
+	ServerID        string
+	Token           string
+	Hostname        string
+	IPAddress       string
+	OS              string
+	AgentVersion    string
+	CertDir         string // directory for mTLS cert storage; empty uses /etc/aerodocs/tls/
+	UnregisterToken string
+	Insecure        bool
+	AllowedPaths    []string
 }
 
+const maxTailSessions = 50
+
 type Client struct {
-	hubAddr      string
-	serverID     string
-	token        string
-	hostname     string
-	ipAddress    string
-	os           string
-	agentVersion string
-	backoff      time.Duration
-	maxBackoff   time.Duration
-	tailSessionsMu sync.Mutex
-	tailSessions   map[string]chan struct{}
-	dropzone       *dropzone.Dropzone
-	certStore      *certs.Store
+	hubAddr         string
+	serverID        string
+	token           string
+	hostname        string
+	ipAddress       string
+	os              string
+	agentVersion    string
+	backoff         time.Duration
+	maxBackoff      time.Duration
+	tailSessionsMu  sync.Mutex
+	tailSessions    map[string]chan struct{}
+	dropzone        *dropzone.Dropzone
+	certStore       *certs.Store
+	unregisterToken string
+	insecure        bool
+	allowedPaths    []string
 }
 
 func New(cfg Config) *Client {
@@ -61,18 +69,21 @@ func New(cfg Config) *Client {
 		certDir = "/etc/aerodocs/tls/"
 	}
 	return &Client{
-		hubAddr:      cfg.HubAddr,
-		serverID:     cfg.ServerID,
-		token:        cfg.Token,
-		hostname:     cfg.Hostname,
-		ipAddress:    cfg.IPAddress,
-		os:           cfg.OS,
-		agentVersion: cfg.AgentVersion,
-		backoff:      1 * time.Second,
-		maxBackoff:   60 * time.Second,
-		tailSessions: make(map[string]chan struct{}),
-		dropzone:     dropzone.New(dropzone.DefaultDir),
-		certStore:    certs.NewStore(certDir),
+		hubAddr:         cfg.HubAddr,
+		serverID:        cfg.ServerID,
+		token:           cfg.Token,
+		hostname:        cfg.Hostname,
+		ipAddress:       cfg.IPAddress,
+		os:              cfg.OS,
+		agentVersion:    cfg.AgentVersion,
+		backoff:         1 * time.Second,
+		maxBackoff:      60 * time.Second,
+		tailSessions:    make(map[string]chan struct{}),
+		dropzone:        dropzone.New(dropzone.DefaultDir),
+		certStore:       certs.NewStore(certDir),
+		unregisterToken: cfg.UnregisterToken,
+		insecure:        cfg.Insecure,
+		allowedPaths:    cfg.AllowedPaths,
 	}
 }
 
@@ -105,6 +116,9 @@ func (c *Client) SelfUnregister(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
+	}
+	if c.unregisterToken != "" {
+		req.Header.Set("X-Unregister-Token", c.unregisterToken)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -149,7 +163,34 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 }
 
+// isPathAllowed checks whether path falls under one of the allowed prefixes.
+// If allowedPaths is empty, all paths are allowed.
+func isPathAllowed(path string, allowedPaths []string) bool {
+	if len(allowedPaths) == 0 {
+		return true
+	}
+	cleaned := filepath.Clean(path)
+	for _, allowed := range allowedPaths {
+		prefix := filepath.Clean(allowed)
+		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh chan<- *pb.AgentMessage) {
+	if !isPathAllowed(p.FileListRequest.Path, c.allowedPaths) {
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_FileListResponse{
+				FileListResponse: &pb.FileListResponse{
+					RequestId: p.FileListRequest.RequestId,
+					Error:     "path not in allowed list",
+				},
+			},
+		}
+		return
+	}
 	resp, _ := filebrowser.ListDir(p.FileListRequest.Path)
 	if resp != nil {
 		resp.RequestId = p.FileListRequest.RequestId
@@ -162,6 +203,17 @@ func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh 
 }
 
 func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh chan<- *pb.AgentMessage) {
+	if !isPathAllowed(p.FileReadRequest.Path, c.allowedPaths) {
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_FileReadResponse{
+				FileReadResponse: &pb.FileReadResponse{
+					RequestId: p.FileReadRequest.RequestId,
+					Error:     "path not in allowed list",
+				},
+			},
+		}
+		return
+	}
 	resp, _ := filebrowser.ReadFile(
 		p.FileReadRequest.Path,
 		p.FileReadRequest.Offset,
@@ -179,8 +231,31 @@ func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh 
 
 func (c *Client) handleLogStreamRequest(p *pb.HubMessage_LogStreamRequest, sendCh chan<- *pb.AgentMessage) {
 	req := p.LogStreamRequest
-	stop := make(chan struct{})
+	if !isPathAllowed(req.Path, c.allowedPaths) {
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_LogStreamChunk{
+				LogStreamChunk: &pb.LogStreamChunk{
+					RequestId: req.RequestId,
+					Data:      []byte("error: path not in allowed list"),
+				},
+			},
+		}
+		return
+	}
 	c.tailSessionsMu.Lock()
+	if len(c.tailSessions) >= maxTailSessions {
+		c.tailSessionsMu.Unlock()
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_LogStreamChunk{
+				LogStreamChunk: &pb.LogStreamChunk{
+					RequestId: req.RequestId,
+					Data:      []byte("error: too many active tail sessions"),
+				},
+			},
+		}
+		return
+	}
+	stop := make(chan struct{})
 	c.tailSessions[req.RequestId] = stop
 	c.tailSessionsMu.Unlock()
 	go logtailer.StartTail(req.Path, req.Grep, req.Offset, sendCh, req.RequestId, stop)
@@ -217,7 +292,8 @@ func (c *Client) handleFileDeleteRequest(p *pb.HubMessage_FileDeleteRequest, sen
 	resp := &pb.FileDeleteResponse{RequestId: req.RequestId}
 	// Only allow deletion from dropzone directory
 	cleanPath := filepath.Clean(req.Path)
-	if !strings.HasPrefix(cleanPath, "/tmp/aerodocs-dropzone/") {
+	dropzonePrefix := filepath.Clean(c.dropzone.Dir()) + "/"
+	if !strings.HasPrefix(cleanPath, dropzonePrefix) {
 		resp.Success = false
 		resp.Error = "deletion only allowed from dropzone directory"
 	} else if err := os.Remove(cleanPath); err != nil {
@@ -236,6 +312,19 @@ func (c *Client) handleFileDeleteRequest(p *pb.HubMessage_FileDeleteRequest, sen
 
 func (c *Client) handleUnregisterRequest(p *pb.HubMessage_UnregisterRequest, sendCh chan<- *pb.AgentMessage) {
 	req := p.UnregisterRequest
+	// Require mTLS for unregister — reject if no cert is present
+	if !c.certStore.HasCert() {
+		sendCh <- &pb.AgentMessage{
+			Payload: &pb.AgentMessage_UnregisterAck{
+				UnregisterAck: &pb.UnregisterAck{
+					RequestId: req.RequestId,
+					Success:   false,
+				},
+			},
+		}
+		log.Printf("unregister rejected: no mTLS certificate")
+		return
+	}
 	// Send ack before self-destruct
 	sendCh <- &pb.AgentMessage{
 		Payload: &pb.AgentMessage_UnregisterAck{
@@ -323,17 +412,28 @@ func (c *Client) startCertRenewalTicker(interval time.Duration, sendCh chan<- *p
 	}
 }
 
-// dialHub creates a gRPC connection to the hub. If the cert store has a
-// valid mTLS certificate, it is used for transport credentials. Otherwise
-// the connection falls back to auto-detected TLS or plaintext.
+// dialHub creates a gRPC connection to the hub with 3-tier TLS:
+//  1. mTLS if the cert store has a valid certificate
+//  2. Insecure (no TLS) if the --insecure flag is set
+//  3. TOFU (TLS with InsecureSkipVerify) for IP addresses
+//  4. Standard TLS for hostnames
 func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	var creds grpc.DialOption
 	if tlsCfg := c.certStore.TLSConfig(); tlsCfg != nil {
 		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
-	} else if c.useTLS() {
-		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
-	} else {
+	} else if !c.useTLS() {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	} else {
+		// Check if hub address is an IP — use TOFU (skip verify)
+		host, _, err := net.SplitHostPort(c.hubAddr)
+		if err != nil {
+			host = c.hubAddr
+		}
+		if net.ParseIP(host) != nil {
+			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}))
+		} else {
+			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+		}
 	}
 	conn, err := grpc.NewClient(c.hubAddr, creds,
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -526,59 +626,31 @@ func (c *Client) resetBackoff() {
 }
 
 func (c *Client) selfCleanup() {
-	tmpDir, err := os.MkdirTemp("", "aerodocs-cleanup-*")
-	if err != nil {
-		log.Printf("failed to create temp dir for cleanup script: %v", err)
-		return
+	log.Printf("starting self-cleanup")
+
+	// Remove agent binary and config
+	os.Remove("/usr/local/bin/aerodocs-agent")
+	os.RemoveAll("/etc/aerodocs/")
+	os.RemoveAll("/tmp/aerodocs-dropzone")
+
+	// Disable and remove the systemd service using a sanitized environment
+	cleanEnv := []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmds := [][]string{
+		{"systemctl", "disable", "aerodocs-agent"},
+		{"systemctl", "stop", "aerodocs-agent"},
+		{"systemctl", "daemon-reload"},
 	}
-	scriptPath := filepath.Join(tmpDir, "cleanup.sh")
-	script := fmt.Sprintf(`#!/bin/bash
-# AeroDocs Agent self-cleanup script
-# Remove files FIRST (while agent process may still be running under systemd)
-rm -f /usr/local/bin/aerodocs-agent 2>/dev/null || true
-rm -rf /etc/aerodocs/ 2>/dev/null || true
-rm -rf /tmp/aerodocs-dropzone 2>/dev/null || true
-
-# Disable and remove the systemd service
-systemctl disable aerodocs-agent 2>/dev/null || true
-rm -f /etc/systemd/system/aerodocs-agent.service 2>/dev/null || true
-systemctl daemon-reload 2>/dev/null || true
-
-# Stop the service LAST — this kills the agent process
-systemctl stop aerodocs-agent 2>/dev/null || true
-
-# Kill any remaining agent processes
-pkill -9 -f "aerodocs-agent" 2>/dev/null || true
-
-# Clean up this script
-rm -rf %s
-`, tmpDir)
-	if err := os.WriteFile(scriptPath, []byte(script), 0700); err != nil {
-		log.Printf("failed to write cleanup script: %v", err)
-		return
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Env = cleanEnv
+		_ = cmd.Run()
 	}
-	log.Printf("executing cleanup script: %s", scriptPath)
-	// Use syscall.Exec to replace this process with the cleanup script
-	syscall.Exec("/bin/bash", []string{"bash", scriptPath}, os.Environ())
+	os.Remove("/etc/systemd/system/aerodocs-agent.service")
+
+	log.Printf("self-cleanup complete")
 }
 
-// useTLS returns true if the hub address appears to be a hostname (not an IP),
-// indicating connection through a TLS-terminating reverse proxy.
+// useTLS returns true unless the insecure flag is explicitly set.
 func (c *Client) useTLS() bool {
-	host, port, err := net.SplitHostPort(c.hubAddr)
-	if err != nil {
-		// No port — treat as hostname:443
-		host = c.hubAddr
-		port = "443"
-	}
-	// If host is an IP address, use insecure (direct connection)
-	if net.ParseIP(host) != nil {
-		return false
-	}
-	// Hostname with port 443 or no explicit port — use TLS
-	if port == "443" || port == "" {
-		return true
-	}
-	// Hostname with explicit non-443 port — check if it looks like a domain
-	return strings.Contains(host, ".")
+	return !c.insecure
 }

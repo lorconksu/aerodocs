@@ -11,6 +11,7 @@ export function SetupTOTPPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { login } = useAuth()
+  // Security: setupToken is passed via React Router state (in-memory only, not in URL)
   const setupToken = (location.state as { setupToken?: string })?.setupToken
 
   const [totpData, setTotpData] = useState<TOTPSetupResponse | null>(null)

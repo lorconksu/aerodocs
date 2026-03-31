@@ -288,7 +288,8 @@ func TestLoginTOTP_Success(t *testing.T) {
 
 	// Clear replay cache so the code (already used during enable) can be reused in this test
 	s.totpCache.Clear()
-	code, _ := auth.GenerateValidCode(*user.TOTPSecret)
+	rawTOTP, _ := s.DecryptTOTPSecret(*user.TOTPSecret)
+	code, _ := auth.GenerateValidCode(rawTOTP)
 
 	// Login with TOTP
 	totpBody, _ := json.Marshal(model.LoginTOTPRequest{
@@ -388,7 +389,8 @@ func TestRefresh_ValidToken(t *testing.T) {
 
 	// Clear replay cache so the code (already used during enable) can be reused in this test
 	s.totpCache.Clear()
-	code, _ := auth.GenerateValidCode(*user.TOTPSecret)
+	rawTOTP, _ := s.DecryptTOTPSecret(*user.TOTPSecret)
+	code, _ := auth.GenerateValidCode(rawTOTP)
 
 	totpBody, _ := json.Marshal(model.LoginTOTPRequest{
 		TOTPToken: loginResp.TOTPToken,
@@ -646,7 +648,8 @@ func TestTOTPDisable_Success(t *testing.T) {
 
 	// Clear replay cache so the code (already used during enable) can be reused in this test
 	s.totpCache.Clear()
-	adminCode, _ := auth.GenerateValidCode(*adminUser.TOTPSecret)
+	rawAdminTOTP, _ := s.DecryptTOTPSecret(*adminUser.TOTPSecret)
+	adminCode, _ := auth.GenerateValidCode(rawAdminTOTP)
 
 	// Disable viewer's TOTP
 	disableBody, _ := json.Marshal(model.TOTPDisableRequest{
@@ -760,7 +763,8 @@ func TestTOTPDisable_AdminSelfDisable(t *testing.T) {
 	adminUser, _ := s.store.GetUserByUsername("admin")
 
 	s.totpCache.Clear()
-	adminCode, _ := auth.GenerateValidCode(*adminUser.TOTPSecret)
+	rawAdminTOTP, _ := s.DecryptTOTPSecret(*adminUser.TOTPSecret)
+	adminCode, _ := auth.GenerateValidCode(rawAdminTOTP)
 
 	body, _ := json.Marshal(model.TOTPDisableRequest{
 		UserID:        adminUser.ID,

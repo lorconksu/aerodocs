@@ -53,27 +53,36 @@ func TestQueryBuilder_LimitOffset(t *testing.T) {
 	qb := newQueryBuilder("SELECT * FROM servers")
 	qb.Limit(10)
 	qb.Offset(20)
-	q, _ := qb.Build()
-	if q != "SELECT * FROM servers LIMIT 10 OFFSET 20" {
+	q, args := qb.Build()
+	if q != "SELECT * FROM servers LIMIT ? OFFSET ?" {
 		t.Fatalf("unexpected query: %q", q)
+	}
+	if len(args) != 2 || args[0] != 10 || args[1] != 20 {
+		t.Fatalf("unexpected args: %v", args)
 	}
 }
 
 func TestQueryBuilder_LimitWithoutOffset(t *testing.T) {
 	qb := newQueryBuilder("SELECT * FROM servers")
 	qb.Limit(5)
-	q, _ := qb.Build()
-	if q != "SELECT * FROM servers LIMIT 5" {
+	q, args := qb.Build()
+	if q != "SELECT * FROM servers LIMIT ?" {
 		t.Fatalf("unexpected query: %q", q)
+	}
+	if len(args) != 1 || args[0] != 5 {
+		t.Fatalf("unexpected args: %v", args)
 	}
 }
 
 func TestQueryBuilder_OffsetWithoutLimit(t *testing.T) {
 	qb := newQueryBuilder("SELECT * FROM servers")
 	qb.Offset(10)
-	q, _ := qb.Build()
-	if q != "SELECT * FROM servers OFFSET 10" {
+	q, args := qb.Build()
+	if q != "SELECT * FROM servers OFFSET ?" {
 		t.Fatalf("unexpected query: %q", q)
+	}
+	if len(args) != 1 || args[0] != 10 {
+		t.Fatalf("unexpected args: %v", args)
 	}
 }
 
@@ -84,11 +93,11 @@ func TestQueryBuilder_Full(t *testing.T) {
 	qb.Limit(10)
 	qb.Offset(5)
 	q, args := qb.Build()
-	expected := "SELECT * FROM servers WHERE status = ? ORDER BY created_at DESC LIMIT 10 OFFSET 5"
+	expected := "SELECT * FROM servers WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	if q != expected {
 		t.Fatalf("expected %q, got %q", expected, q)
 	}
-	if len(args) != 1 || args[0] != "online" {
+	if len(args) != 3 || args[0] != "online" || args[1] != 10 || args[2] != 5 {
 		t.Fatalf("unexpected args: %v", args)
 	}
 }

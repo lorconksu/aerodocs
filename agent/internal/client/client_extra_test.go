@@ -123,7 +123,7 @@ func TestHandleFileUploadRequest_MultipleChunks(t *testing.T) {
 
 // TestHandleFileDeleteRequest_PathTraversal verifies path traversal is blocked.
 func TestHandleFileDeleteRequest_PathTraversal(t *testing.T) {
-	c := &Client{tailSessions: make(map[string]chan struct{})}
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: newTestDropzone("/tmp/aerodocs-dropzone")}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{
@@ -324,7 +324,7 @@ func TestHandleFileDeleteRequest_InDropzone_WithActualFile(t *testing.T) {
 		t.Fatalf("create test file: %v", err)
 	}
 
-	c := &Client{tailSessions: make(map[string]chan struct{})}
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: newTestDropzone(dropzoneDir)}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{

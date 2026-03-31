@@ -10,7 +10,7 @@ import (
 func TestGenerateAndValidateAccessToken(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 
-	access, _, err := auth.GenerateTokenPair(secret, "user-1", "admin")
+	access, _, err := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 func TestValidateRefreshToken(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 
-	_, refresh, _ := auth.GenerateTokenPair(secret, "user-1", "admin")
+	_, refresh, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
 
 	claims, err := auth.ValidateToken(secret, refresh)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestExpiredToken(t *testing.T) {
 }
 
 func TestWrongSecret(t *testing.T) {
-	access, _, _ := auth.GenerateTokenPair("correct-secret-key-256-bits!!!!", "user-1", "admin")
+	access, _, _ := auth.GenerateTokenPair("correct-secret-key-256-bits!!!!", "user-1", "admin", 0)
 
 	_, err := auth.ValidateToken("wrong-secret-key-256-bits-long!", access)
 	if err == nil {

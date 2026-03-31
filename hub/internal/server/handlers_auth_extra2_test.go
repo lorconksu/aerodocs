@@ -158,7 +158,7 @@ func TestHandleRefresh_ValidToken(t *testing.T) {
 	_ = registerAndGetAdminToken(t, s)
 
 	user, _ := s.store.GetUserByUsername("admin")
-	_, refreshToken, _ := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role))
+	_, refreshToken, _ := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration)
 
 	body, _ := json.Marshal(model.RefreshRequest{RefreshToken: refreshToken})
 	req := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(body))
@@ -238,7 +238,8 @@ func TestHandleTOTPDisable_Success(t *testing.T) {
 	s.totpCache.Clear()
 
 	// Generate a valid TOTP code for the admin (proving admin identity)
-	adminCode, err := auth.GenerateValidCode(*adminUser.TOTPSecret)
+	rawAdminTOTP, _ := s.DecryptTOTPSecret(*adminUser.TOTPSecret)
+	adminCode, err := auth.GenerateValidCode(rawAdminTOTP)
 	if err != nil {
 		t.Fatalf("generate TOTP code: %v", err)
 	}

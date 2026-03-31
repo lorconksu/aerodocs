@@ -11,6 +11,7 @@ import (
 	"time"
 
 	hub "github.com/wyiu/aerodocs/hub"
+	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
 	"github.com/wyiu/aerodocs/hub/internal/notify"
@@ -56,6 +57,11 @@ func runServer() error {
 		return fmt.Errorf("init JWT secret: %w", err)
 	}
 
+	caCert, caKey, err := ca.InitCA(st, jwtSecret)
+	if err != nil {
+		return fmt.Errorf("init CA: %w", err)
+	}
+
 	cm := connmgr.New()
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
@@ -81,6 +87,8 @@ func runServer() error {
 		ConnMgr:     cm,
 		Pending:     pending,
 		LogSessions: logSessions,
+		CACert:      caCert,
+		CAKey:       caKey,
 		Notifier:    notifier,
 	})
 

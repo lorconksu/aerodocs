@@ -88,8 +88,7 @@ func TestHandleSelfUnregister_NotFound(t *testing.T) {
 	}
 }
 
-// TestHandleSelfUnregister_Success verifies that self-unregister for an existing server deletes it
-// when the request comes from the matching agent IP.
+// TestHandleSelfUnregister_Success verifies that self-unregister works with a valid HMAC token.
 func TestHandleSelfUnregister_Success(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
@@ -97,11 +96,11 @@ func TestHandleSelfUnregister_Success(t *testing.T) {
 	// Create a server to self-unregister
 	serverID := createTestServer(t, s, adminToken, "self-unregister-server")
 
-	// Set the server's IP to match the default httptest RemoteAddr (port stripped by handler)
-	agentIP := "192.0.2.1"
-	s.store.SetServerIP(serverID, agentIP)
+	// Compute the correct HMAC unregister token
+	unregToken := s.selfUnregisterToken(serverID)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
+	req.Header.Set("X-Unregister-Token", unregToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -116,18 +115,18 @@ func TestHandleSelfUnregister_Success(t *testing.T) {
 	}
 }
 
-// TestHandleSelfUnregister_RemoteAddrNoPort verifies self-unregister works when
-// RemoteAddr has no port (fallback to raw RemoteAddr as IP).
+// TestHandleSelfUnregister_RemoteAddrNoPort verifies self-unregister works regardless of
+// RemoteAddr format when a valid HMAC token is provided.
 func TestHandleSelfUnregister_RemoteAddrNoPort(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "self-unreg-noport")
 
-	agentIP := "10.0.0.5"
-	s.store.SetServerIP(serverID, agentIP)
+	unregToken := s.selfUnregisterToken(serverID)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
-	req.RemoteAddr = agentIP // no port — triggers reqIP = r.RemoteAddr fallback
+	req.Header.Set("X-Unregister-Token", unregToken)
+	req.RemoteAddr = "10.0.0.5" // no port
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -137,23 +136,20 @@ func TestHandleSelfUnregister_RemoteAddrNoPort(t *testing.T) {
 }
 
 // TestHandleSelfUnregister_WrongIP verifies that self-unregister is rejected when the
-// request comes from a different IP than the registered agent.
+// HMAC token is missing or invalid.
 func TestHandleSelfUnregister_WrongIP(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 
 	serverID := createTestServer(t, s, adminToken, "wrong-ip-server")
 
-	// Set a different IP than what httptest will send (192.0.2.1:1234)
-	agentIP := "10.0.0.99:5678"
-	s.store.SetServerIP(serverID, agentIP)
-
+	// No HMAC token header — should be rejected
 	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for wrong IP, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 403 for missing token, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	// Verify server still exists
@@ -163,21 +159,25 @@ func TestHandleSelfUnregister_WrongIP(t *testing.T) {
 	}
 }
 
-// TestHandleSelfUnregister_NilIP verifies that self-unregister is rejected when the
-// server has no IP address recorded (IPAddress is nil).
+// TestHandleSelfUnregister_NilIP verifies that self-unregister is rejected with an invalid
+// HMAC token (wrong server ID used for token computation).
 func TestHandleSelfUnregister_NilIP(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 
-	// Create server via API — IPAddress will be nil by default
+	// Create server via API
 	serverID := createTestServer(t, s, adminToken, "nil-ip-server")
 
+	// Use a token computed for a different server ID
+	wrongToken := s.selfUnregisterToken("wrong-server-id")
+
 	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
+	req.Header.Set("X-Unregister-Token", wrongToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for nil IP, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 403 for wrong token, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	// Verify server still exists

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/wyiu/aerodocs/hub/internal/model"
 	"github.com/wyiu/aerodocs/hub/internal/notify"
@@ -32,6 +33,22 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
+	}
+
+	// Validate SMTP configuration
+	if req.Enabled {
+		if req.Port < 1 || req.Port > 65535 {
+			respondError(w, http.StatusBadRequest, "SMTP port must be between 1 and 65535")
+			return
+		}
+		if !strings.Contains(req.From, "@") {
+			respondError(w, http.StatusBadRequest, "SMTP from address must contain @")
+			return
+		}
+		if req.Host == "" {
+			respondError(w, http.StatusBadRequest, "SMTP host is required when enabled")
+			return
+		}
 	}
 
 	configs := map[string]string{

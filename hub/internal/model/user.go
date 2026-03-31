@@ -10,16 +10,17 @@ const (
 )
 
 type User struct {
-	ID           string    `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
-	Role         Role      `json:"role"`
-	TOTPSecret   *string   `json:"-"`
-	TOTPEnabled  bool      `json:"totp_enabled"`
-	Avatar       *string   `json:"avatar"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	Username        string    `json:"username"`
+	Email           string    `json:"email"`
+	PasswordHash    string    `json:"-"`
+	Role            Role      `json:"role"`
+	TOTPSecret      *string   `json:"-"`
+	TOTPEnabled     bool      `json:"totp_enabled"`
+	TokenGeneration int       `json:"-"`
+	Avatar          *string   `json:"avatar"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type UpdateAvatarRequest struct {

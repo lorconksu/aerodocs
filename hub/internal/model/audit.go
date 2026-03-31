@@ -9,6 +9,7 @@ type AuditEntry struct {
 	Target    *string   `json:"target"`
 	Detail    *string   `json:"detail"`
 	IPAddress *string   `json:"ip_address"`
+	PrevHash  string    `json:"prev_hash,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

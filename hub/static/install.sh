@@ -9,15 +9,17 @@ set -euo pipefail
 TOKEN=""
 HUB=""
 URL=""
+UNREGISTER_TOKEN=""
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --token) TOKEN="$2"; shift 2 ;;
-    --hub)   HUB="$2";   shift 2 ;;
-    --url)   URL="$2";   shift 2 ;;
-    --force) FORCE=true;  shift ;;
-    *)       echo "Unknown argument: $1"; exit 1 ;;
+    --token)             TOKEN="$2";             shift 2 ;;
+    --hub)               HUB="$2";               shift 2 ;;
+    --url)               URL="$2";               shift 2 ;;
+    --unregister-token)  UNREGISTER_TOKEN="$2";  shift 2 ;;
+    --force)             FORCE=true;              shift ;;
+    *)                   echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
 
@@ -37,6 +39,10 @@ if [[ -n "$TOKEN" ]] && ! echo "$TOKEN" | grep -qE '^[a-zA-Z0-9-]+$'; then
 fi
 if [[ -n "$URL" ]] && ! echo "$URL" | grep -qE '^https?://[a-zA-Z0-9._:/-]+$'; then
     echo "ERROR: Invalid URL format" >&2
+    exit 1
+fi
+if [[ -n "$UNREGISTER_TOKEN" ]] && ! echo "$UNREGISTER_TOKEN" | grep -qE '^[a-fA-F0-9]+$'; then
+    echo "ERROR: Invalid unregister token format" >&2
     exit 1
 fi
 
@@ -100,8 +106,14 @@ if [[ "$EXISTING" = true ]]; then
   fi
 
   # Unregister old server from Hub before teardown
-  if [[ -x /usr/local/bin/aerodocs-agent ]] && [[ -f /etc/aerodocs/agent.conf ]]; then
+  if [[ -x /usr/local/bin/aerodocs-agent ]]; then
     echo "==> Removing old server from Hub..."
+    # Source existing env file for the unregister token
+    if [[ -f /etc/aerodocs/agent.env ]]; then
+      set +u
+      . /etc/aerodocs/agent.env
+      set -u
+    fi
     /usr/local/bin/aerodocs-agent --self-unregister 2>/dev/null || true
   fi
   echo "==> Removing previous installation..."
@@ -117,8 +129,14 @@ fi
 
 # --- Download agent binary ---
 if [[ -z "$URL" ]]; then
-  HUB_HOST=$(echo "$HUB" | cut -d: -f1)
-  URL="https://${HUB_HOST}"
+  # Handle IPv6 addresses in HUB (e.g., [::1]:9090)
+  if [[ "$HUB" == \[* ]]; then
+    HUB_HOST=$(echo "$HUB" | sed 's/\[\(.*\)\]:.*/\1/')
+    URL="https://[${HUB_HOST}]"
+  else
+    HUB_HOST=$(echo "$HUB" | cut -d: -f1)
+    URL="https://${HUB_HOST}"
+  fi
 fi
 DOWNLOAD_URL="${URL}/install/${OS}/${ARCH}"
 
@@ -132,6 +150,23 @@ if [[ ! -x /usr/local/bin/aerodocs-agent ]]; then
   exit 1
 fi
 
+# SHA256 checksum verification
+echo "==> Verifying checksum..."
+EXPECTED_SHA=$(curl -sSL "${DOWNLOAD_URL}/sha256" 2>/dev/null | awk '{print $1}')
+if [[ -n "$EXPECTED_SHA" ]]; then
+  ACTUAL_SHA=$(sha256sum /usr/local/bin/aerodocs-agent | awk '{print $1}')
+  if [[ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
+    echo "ERROR: Checksum verification failed!" >&2
+    echo "  Expected: $EXPECTED_SHA" >&2
+    echo "  Actual:   $ACTUAL_SHA" >&2
+    rm -f /usr/local/bin/aerodocs-agent
+    exit 1
+  fi
+  echo "    Checksum OK."
+else
+  echo "    WARNING: Could not fetch checksum — skipping verification."
+fi
+
 # --- Create config directory ---
 echo "==> Creating config directory..."
 mkdir -p /etc/aerodocs
@@ -141,8 +176,9 @@ echo "==> Writing agent credentials..."
 cat > /etc/aerodocs/agent.env <<'ENVEOF'
 AERODOCS_HUB=__HUB_ADDR__
 AERODOCS_TOKEN=__REG_TOKEN__
+AERODOCS_UNREGISTER_TOKEN=__UNREG_TOKEN__
 ENVEOF
-sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g" /etc/aerodocs/agent.env
+sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g; s|__UNREG_TOKEN__|${UNREGISTER_TOKEN}|g" /etc/aerodocs/agent.env
 chmod 600 /etc/aerodocs/agent.env
 
 # --- Install systemd service ---

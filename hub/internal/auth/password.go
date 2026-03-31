@@ -27,6 +27,9 @@ func ValidatePasswordPolicy(password string) error {
 	if len(password) < 12 {
 		return fmt.Errorf("password must be at least 12 characters")
 	}
+	if len(password) > 256 {
+		return fmt.Errorf("password must be at most 256 characters")
+	}
 
 	var hasUpper, hasLower, hasDigit, hasSpecial bool
 	for _, r := range password {

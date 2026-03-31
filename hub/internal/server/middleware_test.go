@@ -13,7 +13,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 	s := &Server{jwtSecret: secret}
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin")
+	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
 
 	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uid := UserIDFromContext(r.Context())
@@ -233,11 +233,11 @@ func TestAdminOnly_Viewer(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 	s := &Server{jwtSecret: secret}
 
-	_, viewerRefresh, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer")
+	_, viewerRefresh, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer", 0)
 	_ = viewerRefresh
 
 	// Generate a viewer access token directly
-	viewerAccess, _, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer")
+	viewerAccess, _, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer", 0)
 
 	handler := s.authMiddleware(auth.TokenTypeAccess,
 		s.adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +258,7 @@ func TestAdminOnly_Admin(t *testing.T) {
 	secret := "test-secret-key-256-bits-long!!!"
 	s := &Server{jwtSecret: secret}
 
-	adminAccess, _, _ := auth.GenerateTokenPair(secret, "admin-1", "admin")
+	adminAccess, _, _ := auth.GenerateTokenPair(secret, "admin-1", "admin", 0)
 
 	called := false
 	handler := s.authMiddleware(auth.TokenTypeAccess,

@@ -1,6 +1,9 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+	"net/url"
+)
 
 // csrfExemptPaths lists public auth endpoints that must work before a CSRF cookie exists.
 var csrfExemptPaths = []string{
@@ -45,6 +48,14 @@ func csrfMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Origin header validation — reject cross-origin mutations
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if !isValidOrigin(r, origin) {
+				respondError(w, http.StatusForbidden, "origin not allowed")
+				return
+			}
+		}
+
 		// No cookie-based session means no CSRF risk.
 		// If neither the access cookie nor the CSRF cookie is present, this
 		// request is not using cookie auth, so skip CSRF validation.
@@ -61,4 +72,13 @@ func csrfMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isValidOrigin checks that the Origin header matches the request's Host.
+func isValidOrigin(r *http.Request, origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return u.Host == r.Host
 }

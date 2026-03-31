@@ -2,6 +2,30 @@ import { getCSRFToken } from './auth'
 
 const BASE_URL = '/api'
 
+// Singleton refresh promise to prevent race conditions when multiple
+// requests hit 401 simultaneously
+let refreshPromise: Promise<boolean> | null = null
+
+async function refreshToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
+
+  refreshPromise = (async () => {
+    try {
+      const csrfToken = getCSRFToken()
+      const res = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+      })
+      return res.ok
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -20,15 +44,11 @@ export async function apiFetch<T>(
     credentials: 'same-origin',
   })
 
-  // Handle 401 with automatic refresh
+  // Handle 401 with automatic refresh (singleton to prevent race conditions)
   if (res.status === 401) {
-    const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
-    })
+    const refreshed = await refreshToken()
 
-    if (refreshRes.ok) {
+    if (refreshed) {
       // Retry with new cookies (set by server)
       const newCsrf = getCSRFToken()
       if (newCsrf) {

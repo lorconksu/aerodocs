@@ -109,10 +109,12 @@ func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]
 	          FROM servers` + joinClause + whereSQL + " ORDER BY servers.created_at DESC"
 
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
+		query += " LIMIT ?"
+		allArgs = append(allArgs, filter.Limit)
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+		query += " OFFSET ?"
+		allArgs = append(allArgs, filter.Offset)
 	}
 
 	rows, err := s.db.Query(query, allArgs...)
@@ -179,6 +181,14 @@ func (s *Store) DeleteServers(ids []string) error {
 		return fmt.Errorf("batch delete servers: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) GetServerByName(name string) (*model.Server, error) {
+	return s.scanServer(s.db.QueryRow(
+		`SELECT id, name, hostname, ip_address, os, status, registration_token, token_expires_at,
+		        agent_version, labels, last_seen_at, created_at, updated_at
+		 FROM servers WHERE name = ?`, name,
+	))
 }
 
 func (s *Store) GetServerByToken(tokenHash string) (*model.Server, error) {

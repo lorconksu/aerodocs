@@ -22,6 +22,7 @@ var blockedPaths = []string{
 	"/etc/gshadow",
 	"/etc/sudoers",
 	"/etc/sudoers.d",
+	"/etc/aerodocs",
 	"/root/.ssh",
 	"/proc/self",
 	"/proc/kcore",
@@ -33,47 +34,48 @@ var blockedPrefixes = []string{
 	"/sys/kernel/",
 }
 
-func validateLogPath(path string) error {
+func validateLogPath(path string) (string, error) {
 	if strings.Contains(path, "..") {
-		return fmt.Errorf("path traversal not allowed")
+		return "", fmt.Errorf("path traversal not allowed")
 	}
 	cleaned := filepath.Clean(path)
 	if !filepath.IsAbs(cleaned) {
-		return fmt.Errorf("path must be absolute")
+		return "", fmt.Errorf("path must be absolute")
 	}
 	for _, blocked := range blockedPaths {
 		if cleaned == blocked || strings.HasPrefix(cleaned, blocked+"/") {
-			return fmt.Errorf("access to this path is restricted")
+			return "", fmt.Errorf("access to this path is restricted")
 		}
 	}
 	for _, prefix := range blockedPrefixes {
 		if strings.HasPrefix(cleaned, prefix) {
-			return fmt.Errorf("access to this path is restricted")
+			return "", fmt.Errorf("access to this path is restricted")
 		}
 	}
 	// Resolve symlinks to prevent reading sensitive files via symlink
 	resolved, err := filepath.EvalSymlinks(cleaned)
 	if err != nil {
-		return fmt.Errorf("cannot resolve path")
+		return "", fmt.Errorf("cannot resolve path")
 	}
 	for _, blocked := range blockedPaths {
 		if resolved == blocked || strings.HasPrefix(resolved, blocked+"/") {
-			return fmt.Errorf("access to this path is restricted")
+			return "", fmt.Errorf("access to this path is restricted")
 		}
 	}
 	for _, prefix := range blockedPrefixes {
 		if strings.HasPrefix(resolved, prefix) {
-			return fmt.Errorf("access to this path is restricted")
+			return "", fmt.Errorf("access to this path is restricted")
 		}
 	}
-	return nil
+	return resolved, nil
 }
 
 // StartTail opens a file, seeks to offset (0 = end of file), and polls for new data.
 // Matching lines (if grep is non-empty) are sent as LogStreamChunk messages.
 // Stops when the stop channel is closed.
 func StartTail(path string, grep string, offset int64, sendCh chan<- *pb.AgentMessage, requestID string, stop <-chan struct{}) {
-	if err := validateLogPath(path); err != nil {
+	resolved, err := validateLogPath(path)
+	if err != nil {
 		sendCh <- &pb.AgentMessage{
 			Payload: &pb.AgentMessage_LogStreamChunk{
 				LogStreamChunk: &pb.LogStreamChunk{
@@ -85,7 +87,7 @@ func StartTail(path string, grep string, offset int64, sendCh chan<- *pb.AgentMe
 		return
 	}
 
-	f, err := os.Open(path)
+	f, err := os.Open(resolved)
 	if err != nil {
 		log.Printf("logtailer: cannot open %s: %v", path, err)
 		return
@@ -119,7 +121,7 @@ func StartTail(path string, grep string, offset int64, sendCh chan<- *pb.AgentMe
 			return
 		case <-ticker.C:
 			var newF *os.File
-			newF, offset = readNewData(f, path, offset, grepLower, sendCh, requestID)
+			newF, offset = readNewData(f, resolved, offset, grepLower, sendCh, requestID)
 			if newF != nil {
 				f.Close()
 				f = newF
