@@ -11,19 +11,31 @@ import (
 
 const DefaultDir = "/tmp/aerodocs-dropzone"
 
+// MaxUploadSize is the maximum total bytes allowed per file upload (100MB).
+const MaxUploadSize = 100 * 1024 * 1024
+
+// MaxConcurrentUploads limits simultaneous in-progress uploads.
+const MaxConcurrentUploads = 10
+
+// uploadState tracks an in-progress upload's file handle and byte count.
+type uploadState struct {
+	file  *os.File
+	bytes int64
+}
+
 // Dropzone manages file uploads to a staging directory.
 type Dropzone struct {
 	dir     string
 	mu      sync.Mutex
-	uploads map[string]*os.File
+	uploads map[string]*uploadState
 }
 
 // New creates a Dropzone that writes files to dir.
 func New(dir string) *Dropzone {
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 	return &Dropzone{
 		dir:     dir,
-		uploads: make(map[string]*os.File),
+		uploads: make(map[string]*uploadState),
 	}
 }
 
@@ -33,10 +45,18 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	f, exists := d.uploads[requestID]
+	state, exists := d.uploads[requestID]
 
 	// First chunk — open the file
 	if !exists {
+		if len(d.uploads) >= MaxConcurrentUploads {
+			return &pb.FileUploadAck{
+				RequestId: requestID,
+				Success:   false,
+				Error:     "too many concurrent uploads",
+			}
+		}
+
 		if filename == "" {
 			return &pb.FileUploadAck{
 				RequestId: requestID,
@@ -56,8 +76,7 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 		}
 
 		path := filepath.Join(d.dir, safe)
-		var err error
-		f, err = os.Create(path)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
 			log.Printf("dropzone create error: %v", err)
 			return &pb.FileUploadAck{
@@ -66,14 +85,26 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 				Error:     "file operation failed",
 			}
 		}
-		d.uploads[requestID] = f
+		state = &uploadState{file: f}
+		d.uploads[requestID] = state
 	}
 
-	// Write data
+	// Write data with size limit enforcement
 	if len(data) > 0 {
-		if _, err := f.Write(data); err != nil {
+		if state.bytes+int64(len(data)) > MaxUploadSize {
+			log.Printf("dropzone: upload %s exceeds %d byte limit", requestID, MaxUploadSize)
+			state.file.Close()
+			os.Remove(state.file.Name())
+			delete(d.uploads, requestID)
+			return &pb.FileUploadAck{
+				RequestId: requestID,
+				Success:   false,
+				Error:     "file size limit exceeded",
+			}
+		}
+		if _, err := state.file.Write(data); err != nil {
 			log.Printf("dropzone write error: %v", err)
-			f.Close()
+			state.file.Close()
 			delete(d.uploads, requestID)
 			return &pb.FileUploadAck{
 				RequestId: requestID,
@@ -81,11 +112,12 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 				Error:     "file operation failed",
 			}
 		}
+		state.bytes += int64(len(data))
 	}
 
 	// Final chunk — close file
 	if done {
-		f.Close()
+		state.file.Close()
 		delete(d.uploads, requestID)
 		return &pb.FileUploadAck{
 			RequestId: requestID,
@@ -100,8 +132,8 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 func (d *Dropzone) Cleanup() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	for id, f := range d.uploads {
-		f.Close()
+	for id, state := range d.uploads {
+		state.file.Close()
 		delete(d.uploads, id)
 	}
 }

@@ -175,9 +175,34 @@ func TestStartTail_InvalidPath(t *testing.T) {
 			if chunk.RequestId != "req-invalid" {
 				t.Fatalf("expected requestID 'req-invalid', got %q", chunk.RequestId)
 			}
-			if !strings.Contains(string(chunk.Data), "error: invalid path") {
-				t.Fatalf("expected 'error: invalid path' in data, got %q", string(chunk.Data))
+			if !strings.HasPrefix(string(chunk.Data), "error: ") {
+				t.Fatalf("expected error message in data, got %q", string(chunk.Data))
 			}
 		})
+	}
+}
+
+func TestValidateLogPath_BlockedPaths(t *testing.T) {
+	tests := []struct {
+		path      string
+		shouldErr bool
+	}{
+		{"/etc/shadow", true},
+		{"/etc/gshadow", true},
+		{"/root/.ssh/authorized_keys", true},
+		{"/proc/1/cmdline", true},
+		{"/proc/kcore", true},
+		{"/sys/kernel/security", true},
+		{"/var/log/syslog", false},
+		{"/var/log/auth.log", false},
+	}
+	for _, tt := range tests {
+		err := validateLogPath(tt.path)
+		if tt.shouldErr && err == nil {
+			t.Errorf("validateLogPath(%q) should have returned error", tt.path)
+		}
+		if !tt.shouldErr && err != nil {
+			t.Errorf("validateLogPath(%q) unexpected error: %v", tt.path, err)
+		}
 	}
 }

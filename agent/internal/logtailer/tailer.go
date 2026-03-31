@@ -2,6 +2,7 @@ package logtailer
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -14,17 +15,69 @@ import (
 
 const pollInterval = 500 * time.Millisecond
 
+// blockedPaths are sensitive system paths that the log tailer must never read.
+var blockedPaths = []string{
+	"/etc/shadow",
+	"/etc/gshadow",
+	"/etc/sudoers",
+	"/etc/sudoers.d",
+	"/root/.ssh",
+	"/proc/self",
+	"/proc/kcore",
+	"/sys/firmware",
+}
+
+var blockedPrefixes = []string{
+	"/proc/",
+	"/sys/kernel/",
+}
+
+func validateLogPath(path string) error {
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path traversal not allowed")
+	}
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) {
+		return fmt.Errorf("path must be absolute")
+	}
+	for _, blocked := range blockedPaths {
+		if cleaned == blocked || strings.HasPrefix(cleaned, blocked+"/") {
+			return fmt.Errorf("access to this path is restricted")
+		}
+	}
+	for _, prefix := range blockedPrefixes {
+		if strings.HasPrefix(cleaned, prefix) {
+			return fmt.Errorf("access to this path is restricted")
+		}
+	}
+	// Resolve symlinks to prevent reading sensitive files via symlink
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return fmt.Errorf("cannot resolve path")
+	}
+	for _, blocked := range blockedPaths {
+		if resolved == blocked || strings.HasPrefix(resolved, blocked+"/") {
+			return fmt.Errorf("access to this path is restricted")
+		}
+	}
+	for _, prefix := range blockedPrefixes {
+		if strings.HasPrefix(resolved, prefix) {
+			return fmt.Errorf("access to this path is restricted")
+		}
+	}
+	return nil
+}
+
 // StartTail opens a file, seeks to offset (0 = end of file), and polls for new data.
 // Matching lines (if grep is non-empty) are sent as LogStreamChunk messages.
 // Stops when the stop channel is closed.
 func StartTail(path string, grep string, offset int64, sendCh chan<- *pb.AgentMessage, requestID string, stop <-chan struct{}) {
-	// Defense in depth: validate path even though hub should have checked
-	if strings.Contains(path, "..") || !filepath.IsAbs(path) {
+	if err := validateLogPath(path); err != nil {
 		sendCh <- &pb.AgentMessage{
 			Payload: &pb.AgentMessage_LogStreamChunk{
 				LogStreamChunk: &pb.LogStreamChunk{
 					RequestId: requestID,
-					Data:      []byte("error: invalid path"),
+					Data:      []byte("error: " + err.Error()),
 				},
 			},
 		}
