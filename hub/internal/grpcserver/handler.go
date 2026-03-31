@@ -181,7 +181,7 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 	case *pb.AgentMessage_Register:
 		return h.performRegisterHandshake(stream, p.Register, peerIP)
 	case *pb.AgentMessage_Heartbeat:
-		return h.performHeartbeatHandshake(stream, p.Heartbeat.ServerId)
+		return h.performHeartbeatHandshake(stream, p.Heartbeat.ServerId, peerIP)
 	default:
 		return "", status.Errorf(codes.InvalidArgument, "first message must be Register or Heartbeat")
 	}
@@ -221,7 +221,7 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 	return serverID, nil
 }
 
-func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, serverID string) (string, error) {
+func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, serverID, peerIP string) (string, error) {
 	if err := h.handleHeartbeat(serverID); err != nil {
 		return "", status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
 	}
@@ -232,6 +232,12 @@ func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer
 	}); err != nil {
 		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
 	}
+
+	// Refresh stored IP on reconnect (may have changed or been wrong initially)
+	if peerIP != "" {
+		_ = h.store.UpdateServerIP(serverID, peerIP)
+	}
+
 	return serverID, nil
 }
 
