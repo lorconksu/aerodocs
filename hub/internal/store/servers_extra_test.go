@@ -137,6 +137,38 @@ func TestListServersForUser_Pagination(t *testing.T) {
 	}
 }
 
+// TestSetServerIP verifies setting the IP address of a server.
+func TestSetServerIP(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "online", Labels: "{}"})
+
+	if err := s.SetServerIP("s1", "10.0.0.5"); err != nil {
+		t.Fatalf("set server IP: %v", err)
+	}
+
+	got, _ := s.GetServerByID("s1")
+	if got.IPAddress == nil || *got.IPAddress != "10.0.0.5" {
+		t.Fatalf("expected IP '10.0.0.5', got '%v'", got.IPAddress)
+	}
+}
+
+// TestUpdateServerIP verifies updating the IP address of a server.
+func TestUpdateServerIP(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "online", Labels: "{}"})
+
+	if err := s.UpdateServerIP("s1", "192.168.1.1"); err != nil {
+		t.Fatalf("update server IP: %v", err)
+	}
+
+	got, _ := s.GetServerByID("s1")
+	if got.IPAddress == nil || *got.IPAddress != "192.168.1.1" {
+		t.Fatalf("expected IP '192.168.1.1', got '%v'", got.IPAddress)
+	}
+}
+
 // TestGetOnlineServersNotIn_AllActive verifies no stale servers when all online are in active list.
 func TestGetOnlineServersNotIn_AllActive(t *testing.T) {
 	s := testStore(t)

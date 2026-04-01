@@ -84,6 +84,15 @@ func TestDeletePermission(t *testing.T) {
 	}
 }
 
+func TestDeletePermission_NotFound(t *testing.T) {
+	s := testStore(t)
+
+	err := s.DeletePermission("nonexistent-id")
+	if err == nil {
+		t.Fatal("expected error for deleting nonexistent permission")
+	}
+}
+
 func TestGetPermissionByID(t *testing.T) {
 	s := testStore(t)
 	s.CreateUser(&model.User{ID: "user-1", Username: "alice", Email: "alice@test.com", PasswordHash: "hashedpw", Role: model.RoleViewer})

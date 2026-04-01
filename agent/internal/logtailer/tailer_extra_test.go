@@ -194,6 +194,47 @@ func TestReadNewData_NewContent(t *testing.T) {
 	}
 }
 
+// TestIsBlockedPath verifies the isBlockedPath helper for various paths.
+func TestIsBlockedPath(t *testing.T) {
+	tests := []struct {
+		path    string
+		blocked bool
+	}{
+		{"/etc/shadow", true},
+		{"/etc/shadow/subdir", true},
+		{"/etc/gshadow", true},
+		{"/etc/sudoers", true},
+		{"/etc/sudoers.d/myconfig", true},
+		{"/etc/aerodocs", true},
+		{"/etc/aerodocs/config.yaml", true},
+		{"/root/.ssh", true},
+		{"/root/.ssh/authorized_keys", true},
+		{"/proc/self", true},
+		{"/proc/self/environ", true},
+		{"/proc/kcore", true},
+		{"/sys/firmware", true},
+		{"/sys/firmware/efi", true},
+		// Blocked prefixes
+		{"/proc/1/cmdline", true},
+		{"/proc/123/status", true},
+		{"/sys/kernel/security", true},
+		{"/sys/kernel/debug", true},
+		// Allowed paths
+		{"/var/log/syslog", false},
+		{"/var/log/auth.log", false},
+		{"/tmp/test.log", false},
+		{"/etc/hostname", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isBlockedPath(tt.path)
+			if got != tt.blocked {
+				t.Errorf("isBlockedPath(%q) = %v, want %v", tt.path, got, tt.blocked)
+			}
+		})
+	}
+}
+
 // TestReadNewData_MissingFile verifies readNewData handles a missing file gracefully.
 func TestReadNewData_MissingFile(t *testing.T) {
 	dir := t.TempDir()

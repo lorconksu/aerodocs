@@ -281,6 +281,96 @@ func TestUpdateUserTOTP_Clear(t *testing.T) {
 	}
 }
 
+func TestIncrementTokenGeneration(t *testing.T) {
+	s := testStore(t)
+
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin,
+	})
+
+	// Token generation starts at 0
+	user, _ := s.GetUserByID("u1")
+	if user.TokenGeneration != 0 {
+		t.Fatalf("expected initial token_generation=0, got %d", user.TokenGeneration)
+	}
+
+	if err := s.IncrementTokenGeneration("u1"); err != nil {
+		t.Fatalf("increment token generation: %v", err)
+	}
+
+	user, _ = s.GetUserByID("u1")
+	if user.TokenGeneration != 1 {
+		t.Fatalf("expected token_generation=1, got %d", user.TokenGeneration)
+	}
+
+	// Increment again
+	s.IncrementTokenGeneration("u1")
+	user, _ = s.GetUserByID("u1")
+	if user.TokenGeneration != 2 {
+		t.Fatalf("expected token_generation=2, got %d", user.TokenGeneration)
+	}
+}
+
+func TestInitializedUserCount(t *testing.T) {
+	s := testStore(t)
+
+	// No users
+	count, err := s.InitializedUserCount()
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0, got %d", count)
+	}
+
+	// Add a user with TOTP disabled (not initialized)
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "alice", Email: "alice@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin, TOTPEnabled: false,
+	})
+
+	count, _ = s.InitializedUserCount()
+	if count != 0 {
+		t.Fatalf("expected 0 initialized users, got %d", count)
+	}
+
+	// Enable TOTP (marks as initialized)
+	secret := "JBSWY3DPEHPK3PXP"
+	s.UpdateUserTOTP("u1", &secret, true)
+
+	count, _ = s.InitializedUserCount()
+	if count != 1 {
+		t.Fatalf("expected 1 initialized user, got %d", count)
+	}
+}
+
+func TestDeleteIncompleteUsers(t *testing.T) {
+	s := testStore(t)
+
+	// Add one complete and one incomplete user
+	s.CreateUser(&model.User{
+		ID: "u1", Username: "complete", Email: "c@test.com",
+		PasswordHash: "h", Role: model.RoleAdmin, TOTPEnabled: true,
+	})
+	s.CreateUser(&model.User{
+		ID: "u2", Username: "incomplete", Email: "i@test.com",
+		PasswordHash: "h", Role: model.RoleViewer, TOTPEnabled: false,
+	})
+
+	if err := s.DeleteIncompleteUsers(); err != nil {
+		t.Fatalf("delete incomplete users: %v", err)
+	}
+
+	users, _ := s.ListUsers()
+	if len(users) != 1 {
+		t.Fatalf("expected 1 user remaining, got %d", len(users))
+	}
+	if users[0].ID != "u1" {
+		t.Fatalf("expected u1 to remain, got %s", users[0].ID)
+	}
+}
+
 func TestListUsers_Empty(t *testing.T) {
 	s := testStore(t)
 
