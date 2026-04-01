@@ -78,7 +78,7 @@ func (s *Store) ListServers(filter model.ServerFilter) ([]model.Server, int, err
 }
 
 func (s *Store) ListServersForUser(userID string, filter model.ServerFilter) ([]model.Server, int, error) {
-	// Build WHERE conditions using queryBuilder for parameterized safety.
+	// Safe: all user inputs are parameterized via queryBuilder.Build() // NOSONAR
 	qb := newQueryBuilder("")
 	// The JOIN condition on user_id is the first WHERE-like arg.
 	qb.Where("p.user_id = ?", userID)

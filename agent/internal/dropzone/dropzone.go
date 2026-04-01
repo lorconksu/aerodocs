@@ -11,6 +11,8 @@ import (
 
 const DefaultDir = "/tmp/aerodocs-dropzone"
 
+const errFileOperation = "file operation failed"
+
 // MaxUploadSize is the maximum total bytes allowed per file upload (100MB).
 const MaxUploadSize = 100 * 1024 * 1024
 
@@ -46,6 +48,48 @@ func (d *Dropzone) Dir() string {
 	return d.dir
 }
 
+// openNewUpload validates the filename, checks concurrent upload limits, and
+// opens a temp file for a new upload. Returns the upload state on success, or
+// a FileUploadAck error response on failure.
+func (d *Dropzone) openNewUpload(requestID, filename string) (*uploadState, *pb.FileUploadAck) {
+	if len(d.uploads) >= MaxConcurrentUploads {
+		return nil, &pb.FileUploadAck{
+			RequestId: requestID,
+			Success:   false,
+			Error:     "too many concurrent uploads",
+		}
+	}
+
+	if filename == "" {
+		return nil, &pb.FileUploadAck{
+			RequestId: requestID,
+			Success:   false,
+			Error:     "no filename provided",
+		}
+	}
+
+	safe := sanitizeFilename(filename)
+	if safe == "" {
+		return nil, &pb.FileUploadAck{
+			RequestId: requestID,
+			Success:   false,
+			Error:     "invalid filename",
+		}
+	}
+
+	tmpPath := filepath.Join(d.dir, ".upload-"+requestID)
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		log.Printf("dropzone create error: %v", err)
+		return nil, &pb.FileUploadAck{
+			RequestId: requestID,
+			Success:   false,
+			Error:     errFileOperation,
+		}
+	}
+	return &uploadState{file: f, finalName: safe}, nil
+}
+
 // HandleChunk processes a file upload chunk.
 // Returns a FileUploadAck when done=true or on error, nil otherwise.
 func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done bool) *pb.FileUploadAck {
@@ -56,44 +100,11 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 
 	// First chunk — open the file
 	if !exists {
-		if len(d.uploads) >= MaxConcurrentUploads {
-			return &pb.FileUploadAck{
-				RequestId: requestID,
-				Success:   false,
-				Error:     "too many concurrent uploads",
-			}
+		var ack *pb.FileUploadAck
+		state, ack = d.openNewUpload(requestID, filename)
+		if ack != nil {
+			return ack
 		}
-
-		if filename == "" {
-			return &pb.FileUploadAck{
-				RequestId: requestID,
-				Success:   false,
-				Error:     "no filename provided",
-			}
-		}
-
-		// Sanitize filename
-		safe := sanitizeFilename(filename)
-		if safe == "" {
-			return &pb.FileUploadAck{
-				RequestId: requestID,
-				Success:   false,
-				Error:     "invalid filename",
-			}
-		}
-
-		// Write to a temp file, rename on completion
-		tmpPath := filepath.Join(d.dir, ".upload-"+requestID)
-		f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-		if err != nil {
-			log.Printf("dropzone create error: %v", err)
-			return &pb.FileUploadAck{
-				RequestId: requestID,
-				Success:   false,
-				Error:     "file operation failed",
-			}
-		}
-		state = &uploadState{file: f, finalName: safe}
 		d.uploads[requestID] = state
 	}
 
@@ -117,7 +128,7 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 			return &pb.FileUploadAck{
 				RequestId: requestID,
 				Success:   false,
-				Error:     "file operation failed",
+				Error:     errFileOperation,
 			}
 		}
 		state.bytes += int64(len(data))
@@ -135,7 +146,7 @@ func (d *Dropzone) HandleChunk(requestID, filename string, data []byte, done boo
 			return &pb.FileUploadAck{
 				RequestId: requestID,
 				Success:   false,
-				Error:     "file operation failed",
+				Error:     errFileOperation,
 			}
 		}
 		delete(d.uploads, requestID)

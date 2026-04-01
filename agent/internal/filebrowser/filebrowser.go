@@ -29,6 +29,7 @@ var readBufPool = sync.Pool{
 const MaxReadSize = 1048576 // 1MB
 
 const errCannotReadFile = "cannot read file"
+const errPathRestricted = "access to this path is restricted"
 
 // blockedPaths are sensitive system paths that the file browser must never expose.
 // Checked against the cleaned path prefix — blocks the path itself and all children.
@@ -63,12 +64,12 @@ func validatePath(path string) error {
 	// Check against blocklist of sensitive paths
 	for _, blocked := range blockedPaths {
 		if cleaned == blocked || strings.HasPrefix(cleaned, blocked+"/") {
-			return fmt.Errorf("access to this path is restricted")
+			return fmt.Errorf(errPathRestricted)
 		}
 	}
 	for _, prefix := range blockedPrefixes {
 		if strings.HasPrefix(cleaned, prefix) {
-			return fmt.Errorf("access to this path is restricted")
+			return fmt.Errorf(errPathRestricted)
 		}
 	}
 
@@ -85,7 +86,7 @@ func resolveAndValidateSymlink(path string) (string, string) {
 	}
 	// Re-validate the resolved path against the blocklist
 	if err := validatePath(resolved); err != nil {
-		return "", "access to this path is restricted"
+		return "", errPathRestricted
 	}
 	cleanPath := filepath.Clean(path)
 	if resolved != cleanPath && !strings.HasPrefix(resolved, cleanPath+"/") {

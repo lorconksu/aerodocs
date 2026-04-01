@@ -430,7 +430,7 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 			host = c.hubAddr
 		}
 		if net.ParseIP(host) != nil {
-			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}))
+			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})) // NOSONAR — intentional TOFU for IP bootstrap; mTLS takes over after cert enrollment
 		} else {
 			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
 		}

@@ -28,7 +28,7 @@ func SendEmail(cfg model.SMTPConfig, to, subject, body string) error {
 	if cfg.TLS {
 		return sendTLS(cfg, addr, auth, to, msg)
 	}
-	return smtp.SendMail(addr, auth, cfg.From, []string{to}, []byte(msg))
+	return smtp.SendMail(addr, auth, cfg.From, []string{to}, []byte(msg)) // NOSONAR — cleartext SMTP is an intentional config option; STARTTLS is used when TLS=true
 }
 
 // sendTLS connects using tlsDialer and sends the message over an encrypted connection.

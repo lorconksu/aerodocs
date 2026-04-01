@@ -26,6 +26,23 @@ func (s *Server) handleGetSMTPConfig(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, cfg)
 }
 
+// validateSMTPConfig checks that a SMTPConfig has valid field values when enabled.
+func validateSMTPConfig(req model.SMTPConfig) error {
+	if !req.Enabled {
+		return nil
+	}
+	if req.Port < 1 || req.Port > 65535 {
+		return fmt.Errorf("SMTP port must be between 1 and 65535")
+	}
+	if !strings.Contains(req.From, "@") {
+		return fmt.Errorf("SMTP from address must contain @")
+	}
+	if req.Host == "" {
+		return fmt.Errorf("SMTP host is required when enabled")
+	}
+	return nil
+}
+
 // handleUpdateSMTPConfig saves SMTP configuration fields to the store.
 // If password is "********" or empty, the existing password is preserved.
 func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) {
@@ -35,20 +52,9 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate SMTP configuration
-	if req.Enabled {
-		if req.Port < 1 || req.Port > 65535 {
-			respondError(w, http.StatusBadRequest, "SMTP port must be between 1 and 65535")
-			return
-		}
-		if !strings.Contains(req.From, "@") {
-			respondError(w, http.StatusBadRequest, "SMTP from address must contain @")
-			return
-		}
-		if req.Host == "" {
-			respondError(w, http.StatusBadRequest, "SMTP host is required when enabled")
-			return
-		}
+	if err := validateSMTPConfig(req); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	configs := map[string]string{
