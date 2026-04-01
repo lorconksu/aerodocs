@@ -3,6 +3,8 @@ package sysinfo
 import (
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // TestUptimeSeconds_Fallback verifies the fallback path by manipulating startTime.
@@ -92,5 +94,45 @@ func TestOSInfo_ContainsSlash(t *testing.T) {
 	info := OSInfo()
 	if len(info) == 0 {
 		t.Fatal("expected non-empty OS info")
+	}
+}
+
+// TestOutboundIP verifies that OutboundIP returns a non-empty string.
+func TestOutboundIP(t *testing.T) {
+	ip := OutboundIP()
+	if ip == "" {
+		t.Skip("skipping OutboundIP test - no network connectivity")
+	}
+	// Should look like an IP address
+	if len(ip) < 7 { // shortest: "1.2.3.4"
+		t.Fatalf("expected IP-like string, got '%s'", ip)
+	}
+}
+
+// TestUptimeSecondsFrom_FallbackMinimumOne verifies the fallback returns at least 1.
+func TestUptimeSecondsFrom_FallbackMinimumOne(t *testing.T) {
+	// When sysinfo fails (ok=false), should use process uptime
+	var info unix.Sysinfo_t
+	result := uptimeSecondsFrom(&info, false)
+	if result < 1 {
+		t.Fatalf("expected uptime >= 1 from fallback, got %d", result)
+	}
+}
+
+// TestMemoryPercentFrom_ZeroTotalRAM verifies 0 is returned when TotalRAM is 0.
+func TestMemoryPercentFrom_ZeroTotalRAM(t *testing.T) {
+	info := &unix.Sysinfo_t{Totalram: 0, Unit: 1}
+	pct := memoryPercentFrom(info, true)
+	if pct != 0 {
+		t.Fatalf("expected 0%% for zero totalram, got %f", pct)
+	}
+}
+
+// TestMemoryPercentFrom_NotOK verifies 0 is returned when sysinfo failed.
+func TestMemoryPercentFrom_NotOK(t *testing.T) {
+	info := &unix.Sysinfo_t{Totalram: 1024, Freeram: 512, Unit: 1}
+	pct := memoryPercentFrom(info, false)
+	if pct != 0 {
+		t.Fatalf("expected 0%% when ok=false, got %f", pct)
 	}
 }

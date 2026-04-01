@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -409,5 +410,176 @@ func TestContextHelpers(t *testing.T) {
 	}
 	if TokenTypeFromContext(ctx) != "" {
 		t.Fatal("expected empty token type from bare context")
+	}
+}
+
+// TestEvictOldest verifies that evictOldest removes the entry with the oldest
+// last attempt while preserving the skipIP.
+func TestEvictOldest(t *testing.T) {
+	rl := newRateLimiter(10, time.Minute)
+
+	now := time.Now()
+
+	// Add entries with different timestamps
+	rl.attempts["1.1.1.1"] = []time.Time{now.Add(-3 * time.Minute)}
+	rl.attempts["2.2.2.2"] = []time.Time{now.Add(-1 * time.Minute)}
+	rl.attempts["3.3.3.3"] = []time.Time{now.Add(-2 * time.Minute)}
+
+	// Evict oldest, skipping 1.1.1.1 (oldest but should be preserved)
+	rl.evictOldest("1.1.1.1")
+
+	// 1.1.1.1 should still exist (skipped)
+	if _, ok := rl.attempts["1.1.1.1"]; !ok {
+		t.Fatal("expected 1.1.1.1 to be preserved (skipIP)")
+	}
+	// 3.3.3.3 should be evicted (oldest after skip)
+	if _, ok := rl.attempts["3.3.3.3"]; ok {
+		t.Fatal("expected 3.3.3.3 to be evicted")
+	}
+	// 2.2.2.2 should still exist
+	if _, ok := rl.attempts["2.2.2.2"]; !ok {
+		t.Fatal("expected 2.2.2.2 to remain")
+	}
+}
+
+// TestEvictOldest_EmptyMap verifies evictOldest is a no-op on empty map.
+func TestEvictOldest_EmptyMap(t *testing.T) {
+	rl := newRateLimiter(10, time.Minute)
+	rl.evictOldest("1.1.1.1") // should not panic
+}
+
+// TestEvictOldest_OnlySkipIP verifies evictOldest when only the skipIP exists.
+func TestEvictOldest_OnlySkipIP(t *testing.T) {
+	rl := newRateLimiter(10, time.Minute)
+	rl.attempts["1.1.1.1"] = []time.Time{time.Now()}
+	rl.evictOldest("1.1.1.1")
+	if _, ok := rl.attempts["1.1.1.1"]; !ok {
+		t.Fatal("expected skipIP to be preserved")
+	}
+}
+
+// TestRateLimiter_EvictsWhenFull verifies that allow() evicts the oldest entry
+// when the tracked IP count reaches maxTrackedIPs.
+func TestRateLimiter_EvictsWhenFull(t *testing.T) {
+	rl := newRateLimiter(5, time.Minute)
+
+	// Fill the map to maxTrackedIPs
+	for i := 0; i < maxTrackedIPs; i++ {
+		ip := fmt.Sprintf("10.%d.%d.%d", i/(256*256), (i/256)%256, i%256)
+		rl.attempts[ip] = []time.Time{time.Now()}
+	}
+
+	if len(rl.attempts) != maxTrackedIPs {
+		t.Fatalf("expected %d entries, got %d", maxTrackedIPs, len(rl.attempts))
+	}
+
+	// Next allow() should evict one entry to make room
+	newIP := "99.99.99.99"
+	if !rl.allow(newIP) {
+		t.Fatal("expected allow to succeed for new IP")
+	}
+
+	// Total should be maxTrackedIPs (one evicted, one added)
+	if len(rl.attempts) != maxTrackedIPs {
+		t.Fatalf("expected %d entries after eviction, got %d", maxTrackedIPs, len(rl.attempts))
+	}
+}
+
+// TestRateLimiter_ExpiredEntriesCleanedUp verifies that expired entries are
+// removed and the IP key is deleted when all entries expire.
+func TestRateLimiter_ExpiredEntriesCleanedUp(t *testing.T) {
+	rl := newRateLimiter(5, 100*time.Millisecond)
+
+	rl.allow("1.2.3.4")
+	time.Sleep(150 * time.Millisecond) // let the entry expire
+
+	// Next call should clean up the expired entry
+	if !rl.allow("1.2.3.4") {
+		t.Fatal("expected allow after expiry")
+	}
+
+	// The map should have exactly one entry (the new one)
+	if len(rl.attempts["1.2.3.4"]) != 1 {
+		t.Fatalf("expected 1 attempt after cleanup, got %d", len(rl.attempts["1.2.3.4"]))
+	}
+}
+
+// TestRateLimiter_Middleware_NoPort verifies the fallback path when
+// RemoteAddr has no port (net.SplitHostPort fails).
+func TestRateLimiter_Middleware_NoPort(t *testing.T) {
+	rl := newRateLimiter(1, time.Minute)
+
+	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// RemoteAddr without port
+	req := httptest.NewRequest("POST", "/login", nil)
+	req.RemoteAddr = "10.0.0.1" // no port
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	// Second request same IP (no port) - should be blocked
+	req2 := httptest.NewRequest("POST", "/login", nil)
+	req2.RemoteAddr = "10.0.0.1"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", rec2.Code)
+	}
+}
+
+// TestClientIP_SingleXFF verifies clientIP with a single X-Forwarded-For value (no comma).
+func TestClientIP_SingleXFF(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:54321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.5")
+
+	ip := clientIP(req)
+	if ip != "203.0.113.5" {
+		t.Fatalf("expected '203.0.113.5', got '%s'", ip)
+	}
+}
+
+// TestClientIP_RemoteAddrNoPort verifies clientIP when RemoteAddr has no port.
+func TestClientIP_RemoteAddrNoPort(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "192.168.1.1" // no port
+
+	ip := clientIP(req)
+	if ip != "192.168.1.1" {
+		t.Fatalf("expected '192.168.1.1', got '%s'", ip)
+	}
+}
+
+// TestAuthMiddleware_BlacklistedToken verifies that a blacklisted token is rejected.
+func TestAuthMiddleware_BlacklistedToken(t *testing.T) {
+	secret := "test-secret-key-256-bits-long!!!"
+	bl := auth.NewTokenBlacklist()
+	s := &Server{jwtSecret: secret, tokenBlacklist: bl}
+
+	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+
+	// Parse the token to get its JTI and blacklist it
+	claims, err := auth.ValidateToken(secret, access)
+	if err != nil {
+		t.Fatalf("validate token: %v", err)
+	}
+	bl.Add(claims.ID, claims.ExpiresAt.Time)
+
+	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called for blacklisted token")
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
