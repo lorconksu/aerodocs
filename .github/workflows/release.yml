@@ -143,3 +143,32 @@ jobs:
 
       - name: Run ClamAV scan
         run: clamscan --infected --recursive image-fs.tar
+
+  create-release:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^$GITHUB_REF_NAME$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREV_TAG: ${{ steps.notes.outputs.prev_tag }}
+        run: |
+          if [ -n "$PREV_TAG" ]; then
+            gh release create "$GITHUB_REF_NAME" --generate-notes --notes-start-tag "$PREV_TAG"
+          else
+            gh release create "$GITHUB_REF_NAME" --generate-notes
+          fi
