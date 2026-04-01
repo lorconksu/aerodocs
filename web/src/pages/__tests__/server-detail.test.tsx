@@ -128,6 +128,7 @@ describe('ServerDetailPage', () => {
     })
     // Mock global fetch for SSE
     vi.stubGlobal('fetch', vi.fn())
+    sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -1341,6 +1342,133 @@ describe('onToggleMarkdownView (line 1806)', () => {
     await waitFor(() => {
       // Now in raw mode, button title changes to 'Show rendered'
       expect(screen.getByTitle('Show rendered')).toBeInTheDocument()
+    })
+  })
+
+  // --- Feature #6: Refresh button in file explorer sidebar ---
+  describe('file tree refresh button', () => {
+    it('shows refresh button in file explorer sidebar header', async () => {
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByTitle('Refresh file tree')).toBeInTheDocument())
+    })
+
+    it('refresh button is enabled after paths load', async () => {
+      mockApiFetch.mockResolvedValueOnce(mockServer)
+      mockApiFetch.mockResolvedValue({ paths: ['/etc'] })
+      renderPage()
+      // Wait for paths to load (indicated by /etc appearing in tree)
+      await waitFor(() => expect(screen.getByText('/etc')).toBeInTheDocument())
+
+      const refreshBtn = screen.getByTitle('Refresh file tree')
+      expect(refreshBtn).not.toBeDisabled()
+    })
+
+    it('hides refresh button when sidebar is collapsed', async () => {
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByTitle('Refresh file tree')).toBeInTheDocument())
+
+      // Collapse sidebar
+      fireEvent.click(screen.getByTitle('Collapse sidebar'))
+      expect(screen.queryByTitle('Refresh file tree')).not.toBeInTheDocument()
+    })
+  })
+
+  // --- Feature #5: Resizable sidebar divider ---
+  describe('resizable sidebar divider', () => {
+    it('renders a draggable divider between sidebar and content', async () => {
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+    })
+
+    it('hides divider when sidebar is collapsed', async () => {
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+
+      // Collapse sidebar
+      fireEvent.click(screen.getByTitle('Collapse sidebar'))
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+    })
+
+    it('resizes sidebar on drag', async () => {
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+
+      const divider = screen.getByRole('separator')
+
+      // Simulate drag: mousedown at x=288, then mousemove to x=400
+      fireEvent.mouseDown(divider, { clientX: 288 })
+      fireEvent.mouseMove(document, { clientX: 400 })
+      fireEvent.mouseUp(document)
+
+      // Sidebar should have been resized (stored in sessionStorage)
+      expect(sessionStorage.getItem('aerodocs-sidebar-width')).toBe('400')
+    })
+
+    it('resets sidebar width on double-click', async () => {
+      // Set a non-default width first
+      sessionStorage.setItem('aerodocs-sidebar-width', '400')
+
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+
+      const divider = screen.getByRole('separator')
+      fireEvent.doubleClick(divider)
+
+      expect(sessionStorage.getItem('aerodocs-sidebar-width')).toBe('288')
+    })
+
+    it('clamps sidebar width to min 200 and max 600', async () => {
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
+        if (url.match(/\/servers\/srv-1$/)) return Promise.resolve(mockServer)
+        return Promise.resolve({ files: [] })
+      })
+      renderPage()
+      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+
+      const divider = screen.getByRole('separator')
+
+      // Try to drag below minimum (200)
+      fireEvent.mouseDown(divider, { clientX: 288 })
+      fireEvent.mouseMove(document, { clientX: 50 })
+      fireEvent.mouseUp(document)
+      expect(sessionStorage.getItem('aerodocs-sidebar-width')).toBe('200')
+
+      // Try to drag above maximum (600)
+      fireEvent.mouseDown(divider, { clientX: 200 })
+      fireEvent.mouseMove(document, { clientX: 900 })
+      fireEvent.mouseUp(document)
+      expect(sessionStorage.getItem('aerodocs-sidebar-width')).toBe('600')
     })
   })
 })

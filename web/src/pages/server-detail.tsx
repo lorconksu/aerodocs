@@ -1281,7 +1281,10 @@ function FileSearchBar({
 
 interface FileExplorerSidebarProps {
   sidebarCollapsed: boolean
+  sidebarWidth: number
   onToggleCollapse: () => void
+  onRefreshTree: () => void
+  treeRefreshing: boolean
   pathsLoading: boolean
   rootPaths: string[]
   rootNodes: FileNode[]
@@ -1294,7 +1297,10 @@ interface FileExplorerSidebarProps {
 
 function FileExplorerSidebar({
   sidebarCollapsed,
+  sidebarWidth,
   onToggleCollapse,
+  onRefreshTree,
+  treeRefreshing,
   pathsLoading,
   rootPaths,
   rootNodes,
@@ -1305,18 +1311,33 @@ function FileExplorerSidebar({
   onSelectFile,
 }: Readonly<FileExplorerSidebarProps>) {
   return (
-    <div className={`${sidebarCollapsed ? 'w-10' : 'w-72'} border-r border-border flex flex-col bg-surface/30 shrink-0 transition-all duration-200`}>
+    <div
+      className="border-r border-border flex flex-col bg-surface/30 shrink-0 transition-all duration-200"
+      style={{ width: sidebarCollapsed ? 40 : sidebarWidth }}
+    >
       <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
         {!sidebarCollapsed && (
           <span className="text-xs text-text-muted uppercase tracking-wider font-medium pl-1">File Explorer</span>
         )}
-        <button
-          onClick={onToggleCollapse}
-          className="p-1 text-text-muted hover:text-text-primary transition-colors"
-          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-        </button>
+        <div className="flex items-center gap-0.5">
+          {!sidebarCollapsed && (
+            <button
+              onClick={onRefreshTree}
+              disabled={treeRefreshing || pathsLoading}
+              className="p-1 text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+              title="Refresh file tree"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${treeRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+          <button
+            onClick={onToggleCollapse}
+            className="p-1 text-text-muted hover:text-text-primary transition-colors"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
       <div className={`flex-1 overflow-y-auto ${sidebarCollapsed ? 'hidden' : ''}`}>
         {pathsLoading && (
@@ -1399,6 +1420,12 @@ export function ServerDetailPage() {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [markdownView, setMarkdownView] = useState<'raw' | 'rendered'>('rendered')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = sessionStorage.getItem('aerodocs-sidebar-width')
+    return saved ? Number(saved) : 288
+  })
+  const [isDragging, setIsDragging] = useState(false)
+  const [treeRefreshing, setTreeRefreshing] = useState(false)
   const [liveTailing, setLiveTailing] = useState(false)
 
   // In-file search state (debounced — searchInput is what user types, searchTerm is applied after 300ms)
@@ -1565,6 +1592,74 @@ export function ServerDetailPage() {
     setCurrentMatch(0)
   }, [])
 
+  // Refresh all expanded directories in the file tree
+  const handleRefreshTree = useCallback(async () => {
+    setTreeRefreshing(true)
+    try {
+      const expandedPaths = Object.entries(treeStateRef.current)
+        .filter(([, state]) => state.expanded && state.children !== null)
+        .map(([path]) => path)
+
+      const results = await Promise.allSettled(
+        expandedPaths.map(async (dirPath) => {
+          const data = await apiFetch<FileListResponse>(
+            `/servers/${serverId}/files?path=${encodeURIComponent(dirPath)}`,
+          )
+          const sorted = [...data.files].sort((a, b) => {
+            if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+            return a.name.localeCompare(b.name)
+          })
+          return { dirPath, children: sorted }
+        }),
+      )
+
+      setTreeState((prev) => {
+        const next = { ...prev }
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            const { dirPath, children } = result.value
+            next[dirPath] = { loading: false, expanded: true, children, error: null }
+          }
+        }
+        return next
+      })
+    } finally {
+      setTreeRefreshing(false)
+    }
+  }, [serverId])
+
+  // Resizable sidebar drag handlers
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const startX = e.clientX
+      const startWidth = sidebarWidth
+      setIsDragging(true)
+
+      const handleMouseMove = (ev: MouseEvent) => {
+        const delta = ev.clientX - startX
+        const newWidth = Math.min(600, Math.max(200, startWidth + delta))
+        setSidebarWidth(newWidth)
+        sessionStorage.setItem('aerodocs-sidebar-width', String(newWidth))
+      }
+
+      const handleMouseUp = () => {
+        setIsDragging(false)
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    [sidebarWidth],
+  )
+
+  const handleResetWidth = useCallback(() => {
+    setSidebarWidth(288)
+    sessionStorage.setItem('aerodocs-sidebar-width', '288')
+  }, [])
+
   // Reset tree state when server changes
   useEffect(() => {
     setTreeState({})
@@ -1696,10 +1791,13 @@ export function ServerDetailPage() {
       )}
 
       {!isOffline && (
-        <div className="flex flex-1 min-h-0">
+        <div className={`flex flex-1 min-h-0${isDragging ? ' select-none' : ''}`}>
           <FileExplorerSidebar
             sidebarCollapsed={sidebarCollapsed}
+            sidebarWidth={sidebarWidth}
             onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+            onRefreshTree={handleRefreshTree}
+            treeRefreshing={treeRefreshing}
             pathsLoading={pathsLoading}
             rootPaths={rootPaths}
             rootNodes={rootNodes}
@@ -1709,6 +1807,17 @@ export function ServerDetailPage() {
             onToggleDir={handleToggleDir}
             onSelectFile={handleSelectFile}
           />
+
+          {!sidebarCollapsed && (
+            <div
+              className="w-1 hover:w-1.5 bg-border hover:bg-accent/50 cursor-col-resize transition-colors shrink-0"
+              onMouseDown={handleDragStart}
+              onDoubleClick={handleResetWidth}
+              role="separator"
+              aria-orientation="vertical"
+              title="Drag to resize sidebar, double-click to reset"
+            />
+          )}
 
           <div className="flex-1 flex flex-col min-w-0">
             {selectedFile ? (
