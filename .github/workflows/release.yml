@@ -138,6 +138,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clamav
+          sudo systemctl stop clamav-freshclam 2>/dev/null || true
           sudo freshclam
 
       - name: Run ClamAV scan
