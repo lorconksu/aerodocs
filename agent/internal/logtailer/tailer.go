@@ -16,6 +16,8 @@ import (
 
 const pollInterval = 500 * time.Millisecond
 
+const errPathRestricted = "access to this path is restricted"
+
 // blockedPaths are sensitive system paths that the log tailer must never read.
 var blockedPaths = []string{
 	"/etc/shadow",
@@ -34,6 +36,22 @@ var blockedPrefixes = []string{
 	"/sys/kernel/",
 }
 
+// isBlockedPath checks whether the given path matches any entry in the
+// blocklist or starts with a blocked prefix.
+func isBlockedPath(path string) bool {
+	for _, blocked := range blockedPaths {
+		if path == blocked || strings.HasPrefix(path, blocked+"/") {
+			return true
+		}
+	}
+	for _, prefix := range blockedPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func validateLogPath(path string) (string, error) {
 	if strings.Contains(path, "..") {
 		return "", fmt.Errorf("path traversal not allowed")
@@ -42,30 +60,16 @@ func validateLogPath(path string) (string, error) {
 	if !filepath.IsAbs(cleaned) {
 		return "", fmt.Errorf("path must be absolute")
 	}
-	for _, blocked := range blockedPaths {
-		if cleaned == blocked || strings.HasPrefix(cleaned, blocked+"/") {
-			return "", fmt.Errorf("access to this path is restricted")
-		}
-	}
-	for _, prefix := range blockedPrefixes {
-		if strings.HasPrefix(cleaned, prefix) {
-			return "", fmt.Errorf("access to this path is restricted")
-		}
+	if isBlockedPath(cleaned) {
+		return "", fmt.Errorf(errPathRestricted)
 	}
 	// Resolve symlinks to prevent reading sensitive files via symlink
 	resolved, err := filepath.EvalSymlinks(cleaned)
 	if err != nil {
 		return "", fmt.Errorf("cannot resolve path")
 	}
-	for _, blocked := range blockedPaths {
-		if resolved == blocked || strings.HasPrefix(resolved, blocked+"/") {
-			return "", fmt.Errorf("access to this path is restricted")
-		}
-	}
-	for _, prefix := range blockedPrefixes {
-		if strings.HasPrefix(resolved, prefix) {
-			return "", fmt.Errorf("access to this path is restricted")
-		}
+	if isBlockedPath(resolved) {
+		return "", fmt.Errorf(errPathRestricted)
 	}
 	return resolved, nil
 }

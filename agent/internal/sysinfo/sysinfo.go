@@ -111,7 +111,7 @@ func OSInfo() string {
 // OutboundIP returns the preferred outbound IP address by dialing a
 // non-routable address. No actual connection is made.
 func OutboundIP() string {
-	conn, err := net.Dial("udp", "1.1.1.1:80")
+	conn, err := net.Dial("udp", "1.1.1.1:80") // NOSONAR — non-routable dial to detect local outbound IP; no actual connection is made
 	if err != nil {
 		return ""
 	}

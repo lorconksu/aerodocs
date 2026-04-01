@@ -56,6 +56,32 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// resolveGRPCTarget determines the gRPC target address using priority:
+// DB setting > CLI flag > default (hostname:9443). In dev mode, uses the raw
+// gRPC listen address.
+func (s *Server) resolveGRPCTarget(host string) string {
+	if s.isDev {
+		return s.grpcAddr
+	}
+	// Default: derive from Host header with port 9443
+	hostname := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		hostname = h
+	}
+	target := hostname + ":9443"
+
+	// CLI flag override
+	if s.grpcExternalAddr != "" {
+		target = s.grpcExternalAddr
+	}
+
+	// DB setting override (admin UI)
+	if dbAddr, err := s.store.GetConfig("grpc_external_addr"); err == nil && dbAddr != "" {
+		target = dbAddr
+	}
+	return target
+}
+
 func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	var req model.CreateServerRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -121,27 +147,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, host)
 
-	// gRPC target priority: DB setting > CLI flag > default (hostname:9443).
-	// In dev mode, use the raw gRPC listen address.
-	grpcTarget := s.grpcAddr
-	if !s.isDev {
-		// Default: derive from Host header with port 9443
-		hostname := host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			hostname = h
-		}
-		grpcTarget = hostname + ":9443"
-
-		// CLI flag override
-		if s.grpcExternalAddr != "" {
-			grpcTarget = s.grpcExternalAddr
-		}
-
-		// DB setting override (admin UI)
-		if dbAddr, err := s.store.GetConfig("grpc_external_addr"); err == nil && dbAddr != "" {
-			grpcTarget = dbAddr
-		}
-	}
+	grpcTarget := s.resolveGRPCTarget(host)
 
 	// Validate the gRPC target address (skip in dev mode where listen addr may be ":0")
 	if !s.isDev && !isValidGRPCAddr(grpcTarget) {

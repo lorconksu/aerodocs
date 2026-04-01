@@ -44,7 +44,7 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 		Value:    csrfToken,
 		Path:     "/",
 		MaxAge:   604800, // 7 days
-		HttpOnly: false,
+		HttpOnly: false,  // NOSONAR — intentionally not HttpOnly; double-submit CSRF pattern requires JS access to read the cookie value
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
@@ -52,21 +52,21 @@ func setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
 
 // clearAuthCookies clears all auth cookies by setting MaxAge to -1.
 func clearAuthCookies(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // NOSONAR — clearing cookie (MaxAge=-1); HttpOnly not relevant for deletion
 		Name:     cookieAccess,
 		Path:     "/",
 		MaxAge:   -1,
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // NOSONAR — clearing cookie (MaxAge=-1); HttpOnly not relevant for deletion
 		Name:     cookieRefresh,
 		Path:     "/api/auth/refresh",
 		MaxAge:   -1,
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // NOSONAR — clearing cookie (MaxAge=-1); CSRF cookie intentionally not HttpOnly (double-submit pattern)
 		Name:     cookieCSRF,
 		Path:     "/",
 		MaxAge:   -1,

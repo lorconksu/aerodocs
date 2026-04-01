@@ -198,6 +198,13 @@ func (n *Notifier) enqueueNotification(eventType string, context map[string]stri
 	}
 }
 
+// drainQueue processes all remaining jobs from a channel until it is closed.
+func (n *Notifier) drainQueue(ch <-chan emailJob) {
+	for job := range ch {
+		n.processJob(job)
+	}
+}
+
 // worker processes queued email jobs until both queue channels are closed.
 // Priority queue is checked first on each iteration to ensure security-critical
 // notifications are processed ahead of normal ones.
@@ -212,10 +219,7 @@ func (n *Notifier) worker() {
 		select {
 		case job, ok = <-n.priorityQueue:
 			if !ok {
-				// Priority queue closed — drain main queue
-				for job := range n.queue {
-					n.processJob(job)
-				}
+				n.drainQueue(n.queue)
 				return
 			}
 		default:
@@ -223,17 +227,12 @@ func (n *Notifier) worker() {
 			select {
 			case job, ok = <-n.priorityQueue:
 				if !ok {
-					for job := range n.queue {
-						n.processJob(job)
-					}
+					n.drainQueue(n.queue)
 					return
 				}
 			case job, ok = <-n.queue:
 				if !ok {
-					// Main queue closed — drain priority queue
-					for job := range n.priorityQueue {
-						n.processJob(job)
-					}
+					n.drainQueue(n.priorityQueue)
 					return
 				}
 			}

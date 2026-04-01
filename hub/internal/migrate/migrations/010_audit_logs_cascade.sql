@@ -11,7 +11,8 @@ CREATE TABLE audit_logs_new (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-INSERT INTO audit_logs_new SELECT * FROM audit_logs;
+INSERT INTO audit_logs_new (id, user_id, action, target, detail, ip_address, created_at)
+    SELECT id, user_id, action, target, detail, ip_address, created_at FROM audit_logs;
 DROP TABLE audit_logs;
 ALTER TABLE audit_logs_new RENAME TO audit_logs;
 
