@@ -35,3 +35,4 @@ web/coverage/
 docs-internal/
 node_modules/
 *.png
+.env
