@@ -6,7 +6,7 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 )
 
-const testPassword = "MyP@ssw0rd!23"
+const testPassword = "MyP@ssw0rd!23" // NOSONAR — test fixture
 
 func TestHashAndCompare(t *testing.T) {
 	hash, err := auth.HashPassword(testPassword)

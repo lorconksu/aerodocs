@@ -11,6 +11,8 @@ var ok200 = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 })
 
+const testExpected403 = "expected 403, got %d"
+
 func TestCSRFMiddleware_BlocksMutationWithoutToken(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
@@ -22,7 +24,7 @@ func TestCSRFMiddleware_BlocksMutationWithoutToken(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rr.Code)
+		t.Errorf(testExpected403, rr.Code)
 	}
 }
 
@@ -52,7 +54,7 @@ func TestCSRFMiddleware_MismatchToken(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rr.Code)
+		t.Errorf(testExpected403, rr.Code)
 	}
 }
 
@@ -125,6 +127,6 @@ func TestCSRFMiddleware_AccessCookiePresent_RequiresCSRF(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rr.Code)
+		t.Errorf(testExpected403, rr.Code)
 	}
 }
