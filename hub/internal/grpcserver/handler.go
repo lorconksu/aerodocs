@@ -197,8 +197,13 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 }
 
 func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent, peerIP string) (string, error) {
-	// Use the actual gRPC peer IP instead of agent-supplied IP for security
-	serverID, err := h.handleRegister(reg.Token, reg.Hostname, peerIP, reg.Os, reg.AgentVersion)
+	// Prefer agent-reported IP when behind a TCP proxy (e.g. Traefik TLS passthrough)
+	// where the peer address is the proxy, not the real client.
+	agentIP := reg.GetIpAddress()
+	if agentIP == "" {
+		agentIP = peerIP
+	}
+	serverID, err := h.handleRegister(reg.Token, reg.Hostname, agentIP, reg.Os, reg.AgentVersion)
 	if err != nil {
 		_ = stream.Send(&pb.HubMessage{
 			Payload: &pb.HubMessage_RegisterAck{
@@ -243,8 +248,11 @@ func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer
 		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
 	}
 
-	// Always use the real peer IP (ignore agent-reported IP for security)
-	ip := peerIP
+	// Prefer agent-reported IP (from heartbeat) when behind a TCP proxy
+	ip := hb.GetIpAddress()
+	if ip == "" {
+		ip = peerIP
+	}
 	if ip != "" {
 		_ = h.store.UpdateServerIP(serverID, ip)
 	}
