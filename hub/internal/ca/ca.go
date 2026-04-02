@@ -189,7 +189,7 @@ func SignCSR(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, csrDER []byte, s
 // GenerateServerCert creates a server TLS certificate signed by the CA.
 // The certificate has the given CN, a 1-year validity, and is suitable for
 // gRPC server authentication (ExtKeyUsageServerAuth).
-func GenerateServerCert(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, cn string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+func GenerateServerCert(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, cn string, dnsNames ...string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate server key: %w", err)
@@ -204,6 +204,7 @@ func GenerateServerCert(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, cn st
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: cn},
+		DNSNames:     dnsNames,
 		NotBefore:    now,
 		NotAfter:     now.Add(365 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,

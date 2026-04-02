@@ -424,16 +424,10 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	} else if !c.useTLS() {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	} else {
-		// Check if hub address is an IP — use TOFU (skip verify)
-		host, _, err := net.SplitHostPort(c.hubAddr)
-		if err != nil {
-			host = c.hubAddr
-		}
-		if net.ParseIP(host) != nil {
-			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})) // NOSONAR — intentional TOFU for IP bootstrap; mTLS takes over after cert enrollment
-		} else {
-			creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
-		}
+		// Initial bootstrap: use TOFU (skip server cert verify) since the agent
+		// will receive mTLS certs from the hub during registration and switch to
+		// full mutual TLS verification for all subsequent connections.
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})) // NOSONAR — intentional TOFU for bootstrap; mTLS takes over after cert enrollment
 	}
 	conn, err := grpc.NewClient(c.hubAddr, creds,
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
