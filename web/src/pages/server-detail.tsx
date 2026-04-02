@@ -1778,7 +1778,7 @@ export function ServerDetailPage() {
   const isOffline = server.status !== 'online'
 
   return (
-    <div className="flex flex-col h-[calc(100vh-92px)]">
+    <div className="flex flex-col h-[calc(100vh-92px)] overflow-hidden">
       <ServerDetailHeader server={server} />
 
       {isOffline && (
@@ -1791,7 +1791,7 @@ export function ServerDetailPage() {
       )}
 
       {!isOffline && (
-        <div className={`flex flex-1 min-h-0${isDragging ? ' select-none' : ''}`}>
+        <div className={`flex flex-1${isDragging ? ' select-none' : ''}`} style={{ minHeight: 0 }}>
           <FileExplorerSidebar
             sidebarCollapsed={sidebarCollapsed}
             sidebarWidth={sidebarWidth}
