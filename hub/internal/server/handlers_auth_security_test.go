@@ -82,7 +82,7 @@ func TestRefreshToken_StaleGeneration_Rejected(t *testing.T) {
 	_, refreshToken, _ := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), 0)
 
 	// Manually increment the generation in the DB (simulating another refresh or admin action)
-	s.store.IncrementTokenGeneration(user.ID)
+	_, _ = s.store.IncrementTokenGeneration(user.ID)
 
 	// The old refresh token should now be rejected
 	body, _ := json.Marshal(model.RefreshRequest{RefreshToken: refreshToken})

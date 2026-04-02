@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 )
@@ -74,11 +75,24 @@ func csrfMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// isValidOrigin checks that the Origin header matches the request's Host.
+// hostnameOnly extracts the hostname from a host string, stripping any port.
+func hostnameOnly(hostport string) string {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		// No port present — hostport is already just a hostname.
+		return hostport
+	}
+	return host
+}
+
+// isValidOrigin checks that the Origin header's hostname matches the request's
+// Host hostname. Ports are stripped before comparison so that port mismatches
+// (e.g. Origin "https://example.com" vs Host "example.com:8080") do not cause
+// false rejections.
 func isValidOrigin(r *http.Request, origin string) bool {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
-	return u.Host == r.Host
+	return hostnameOnly(u.Host) == hostnameOnly(r.Host)
 }

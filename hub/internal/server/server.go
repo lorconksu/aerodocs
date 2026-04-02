@@ -65,7 +65,7 @@ func New(cfg Config) *Server {
 		pending:     cfg.Pending,
 		logSessions: cfg.LogSessions,
 		totpCache:      auth.NewTOTPUsedCodes(),
-		tokenBlacklist: auth.NewTokenBlacklist(),
+		tokenBlacklist: auth.NewTokenBlacklist(cfg.Store.DB()),
 		notifier:       cfg.Notifier,
 	}
 

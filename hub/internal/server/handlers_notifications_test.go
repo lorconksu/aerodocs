@@ -150,8 +150,13 @@ func TestUpdateSMTPConfig_MaskedPasswordPreservesExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get config smtp_password: %v", err)
 	}
-	if storedPassword != "original-secret" {
-		t.Errorf("expected preserved password 'original-secret', got %q", storedPassword)
+	// Password is now stored encrypted with "enc:" prefix
+	decrypted, err := DecryptSMTPPassword(s.jwtSecret, storedPassword)
+	if err != nil {
+		t.Fatalf("failed to decrypt stored password: %v", err)
+	}
+	if decrypted != "original-secret" {
+		t.Errorf("expected preserved password 'original-secret', got %q", decrypted)
 	}
 
 	// Host should have been updated

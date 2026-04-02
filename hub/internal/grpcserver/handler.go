@@ -199,8 +199,9 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent, peerIP string) (string, error) {
 	// Prefer agent-reported IP when behind a TCP proxy (e.g. Traefik TLS passthrough)
 	// where the peer address is the proxy, not the real client.
+	// Validate the agent-reported IP to prevent arbitrary string injection.
 	agentIP := reg.GetIpAddress()
-	if agentIP == "" {
+	if agentIP == "" || net.ParseIP(agentIP) == nil {
 		agentIP = peerIP
 	}
 	serverID, err := h.handleRegister(reg.Token, reg.Hostname, agentIP, reg.Os, reg.AgentVersion)
@@ -248,9 +249,10 @@ func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer
 		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
 	}
 
-	// Prefer agent-reported IP (from heartbeat) when behind a TCP proxy
+	// Prefer agent-reported IP (from heartbeat) when behind a TCP proxy.
+	// Validate the agent-reported IP to prevent arbitrary string injection.
 	ip := hb.GetIpAddress()
-	if ip == "" {
+	if ip == "" || net.ParseIP(ip) == nil {
 		ip = peerIP
 	}
 	if ip != "" {

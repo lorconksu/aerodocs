@@ -1,6 +1,11 @@
 package notify
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -41,6 +46,7 @@ const smtpConfigCacheTTL = 60 * time.Second
 // Notifier dispatches email notifications asynchronously via a background worker.
 type Notifier struct {
 	store         *store.Store
+	jwtSecret     string
 	queue         chan emailJob
 	priorityQueue chan emailJob // overflow for security-critical notifications
 	done          chan struct{}
@@ -55,9 +61,16 @@ type Notifier struct {
 }
 
 // New creates a Notifier and starts the background worker goroutine.
-func New(st *store.Store) *Notifier {
+// The jwtSecret is used to decrypt encrypted SMTP passwords stored in the DB.
+// If jwtSecret is empty, encrypted passwords cannot be decrypted (backward compatible).
+func New(st *store.Store, jwtSecret ...string) *Notifier {
+	secret := ""
+	if len(jwtSecret) > 0 {
+		secret = jwtSecret[0]
+	}
 	n := &Notifier{
 		store:         st,
+		jwtSecret:     secret,
 		queue:         make(chan emailJob, queueSize),
 		priorityQueue: make(chan emailJob, queueSize),
 		done:          make(chan struct{}),
@@ -168,7 +181,7 @@ func (n *Notifier) cancelDebounce(key string) bool {
 
 // enqueueNotification resolves recipients and enqueues email jobs.
 func (n *Notifier) enqueueNotification(eventType string, context map[string]string) {
-	cfg := LoadSMTPConfig(n.store)
+	cfg := LoadSMTPConfig(n.store, n.jwtSecret)
 	if !cfg.Enabled || cfg.Host == "" {
 		return
 	}
@@ -268,7 +281,7 @@ func (n *Notifier) cachedSMTPConfig() model.SMTPConfig {
 	}
 	n.smtpMu.RUnlock()
 
-	cfg := LoadSMTPConfig(n.store)
+	cfg := LoadSMTPConfig(n.store, n.jwtSecret)
 	n.smtpMu.Lock()
 	n.smtpCfg = cfg
 	n.smtpCfgTime = time.Now()
@@ -305,7 +318,9 @@ func (n *Notifier) processJob(job emailJob) {
 }
 
 // LoadSMTPConfig reads SMTP settings from the store's _config table.
-func LoadSMTPConfig(st *store.Store) model.SMTPConfig {
+// If jwtSecret is provided, encrypted passwords (with "enc:" prefix) are decrypted.
+// Legacy plaintext passwords are returned as-is for backward compatibility.
+func LoadSMTPConfig(st *store.Store, jwtSecret ...string) model.SMTPConfig {
 	get := func(key string) string {
 		v, _ := st.GetConfig(key)
 		return v
@@ -328,13 +343,61 @@ func LoadSMTPConfig(st *store.Store) model.SMTPConfig {
 		enabled = true
 	}
 
+	password := get("smtp_password")
+	if password != "" && len(jwtSecret) > 0 && jwtSecret[0] != "" {
+		password = decryptSMTPPassword(jwtSecret[0], password)
+	}
+
 	return model.SMTPConfig{
 		Host:     get("smtp_host"),
 		Port:     port,
 		Username: get("smtp_username"),
-		Password: get("smtp_password"),
+		Password: password,
 		From:     get("smtp_from"),
 		TLS:      tls,
 		Enabled:  enabled,
 	}
+}
+
+// decryptSMTPPassword decrypts an SMTP password if it has the "enc:" prefix.
+// Returns plaintext as-is for backward compatibility with unencrypted passwords.
+func decryptSMTPPassword(jwtSecret, stored string) string {
+	if !strings.HasPrefix(stored, "enc:") {
+		return stored // legacy plaintext
+	}
+	data, err := hex.DecodeString(stored[4:])
+	if err != nil {
+		log.Printf("notify: invalid encrypted SMTP password format: %v", err)
+		return "" // return empty rather than corrupted data
+	}
+	key := deriveKey(jwtSecret)
+	decrypted, err := decrypt(data, key)
+	if err != nil {
+		log.Printf("notify: failed to decrypt SMTP password: %v", err)
+		return "" // return empty rather than corrupted data
+	}
+	return string(decrypted)
+}
+
+// deriveKey derives a 256-bit AES key from the given secret using SHA-256.
+func deriveKey(secret string) []byte {
+	h := sha256.Sum256([]byte(secret))
+	return h[:]
+}
+
+// decrypt decrypts ciphertext using AES-256-GCM.
+func decrypt(ciphertext, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	if len(ciphertext) < gcm.NonceSize() {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+	nonce := ciphertext[:gcm.NonceSize()]
+	return gcm.Open(nil, nonce, ciphertext[gcm.NonceSize():], nil)
 }

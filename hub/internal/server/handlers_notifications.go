@@ -1,12 +1,14 @@
 package server
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/wyiu/aerodocs/hub/internal/auth"
 	"github.com/wyiu/aerodocs/hub/internal/model"
 	"github.com/wyiu/aerodocs/hub/internal/notify"
 )
@@ -66,7 +68,12 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 		"smtp_enabled":  fmt.Sprintf("%t", req.Enabled),
 	}
 	if req.Password != "" && req.Password != redactedValue {
-		configs["smtp_password"] = req.Password
+		encrypted, err := encryptSMTPPassword(s.jwtSecret, req.Password)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to encrypt SMTP password")
+			return
+		}
+		configs["smtp_password"] = encrypted
 	}
 
 	tx, err := s.store.DB().Begin()
@@ -107,7 +114,7 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := notify.LoadSMTPConfig(s.store)
+	cfg := notify.LoadSMTPConfig(s.store, s.jwtSecret)
 
 	// Force enabled for the test send so SendEmail doesn't skip it
 	cfg.Enabled = true
@@ -183,4 +190,32 @@ func (s *Server) handleListNotificationLog(w http.ResponseWriter, r *http.Reques
 		"entries": entries,
 		"total":   total,
 	})
+}
+
+// encryptSMTPPassword encrypts an SMTP password and returns it with "enc:" prefix.
+func encryptSMTPPassword(jwtSecret, password string) (string, error) {
+	key := auth.DeriveKey(jwtSecret)
+	encrypted, err := auth.Encrypt([]byte(password), key)
+	if err != nil {
+		return "", err
+	}
+	return "enc:" + hex.EncodeToString(encrypted), nil
+}
+
+// DecryptSMTPPassword decrypts an SMTP password that has the "enc:" prefix.
+// If the value does not have the prefix, it is treated as legacy plaintext.
+func DecryptSMTPPassword(jwtSecret, stored string) (string, error) {
+	if !strings.HasPrefix(stored, "enc:") {
+		return stored, nil // legacy plaintext — backward compatible
+	}
+	data, err := hex.DecodeString(stored[4:])
+	if err != nil {
+		return "", fmt.Errorf("invalid encrypted SMTP password format: %w", err)
+	}
+	key := auth.DeriveKey(jwtSecret)
+	decrypted, err := auth.Decrypt(data, key)
+	if err != nil {
+		return "", err
+	}
+	return string(decrypted), nil
 }
