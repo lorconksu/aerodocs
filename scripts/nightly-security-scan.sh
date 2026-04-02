@@ -12,7 +12,7 @@ set -euo pipefail
 #   0 8 * * * /home/wyiu/personal/aerodocs/scripts/nightly-security-scan.sh >> /var/log/aerodocs-nightly.log 2>&1
 
 PROJECT_DIR="/home/wyiu/personal/aerodocs"
-LOG_DIR="/var/log"
+LOG_DIR="/opt/aerodocs/logs"
 TIMESTAMP=$(date +%Y-%m-%d)
 LOG_FILE="${LOG_DIR}/aerodocs-nightly-${TIMESTAMP}.log"
 
