@@ -173,7 +173,7 @@ func TestFullAuthFlow(t *testing.T) {
 	t.Logf("me: username=%s role=%s ✓", meResult.Username, meResult.Role)
 
 	// 9. PUT /api/auth/password → change password
-	const newPassword = "NewSecurePass456!"
+	const newPassword = "NewSecurePass456!" // NOSONAR — test fixture
 	pwResp := h.HTTPPut(t, "/api/auth/password", model.ChangePasswordRequest{
 		CurrentPassword: password,
 		NewPassword:     newPassword,

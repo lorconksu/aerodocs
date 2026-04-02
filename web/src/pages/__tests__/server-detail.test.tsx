@@ -1392,7 +1392,7 @@ describe('onToggleMarkdownView (line 1806)', () => {
         return Promise.resolve({ files: [] })
       })
       renderPage()
-      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByLabelText('Resize sidebar')).toBeInTheDocument())
     })
 
     it('hides divider when sidebar is collapsed', async () => {
@@ -1402,11 +1402,11 @@ describe('onToggleMarkdownView (line 1806)', () => {
         return Promise.resolve({ files: [] })
       })
       renderPage()
-      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByLabelText('Resize sidebar')).toBeInTheDocument())
 
       // Collapse sidebar
       fireEvent.click(screen.getByTitle('Collapse sidebar'))
-      expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Resize sidebar')).not.toBeInTheDocument()
     })
 
     it('resizes sidebar on drag', async () => {
@@ -1416,9 +1416,9 @@ describe('onToggleMarkdownView (line 1806)', () => {
         return Promise.resolve({ files: [] })
       })
       renderPage()
-      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByLabelText('Resize sidebar')).toBeInTheDocument())
 
-      const divider = screen.getByRole('separator')
+      const divider = screen.getByLabelText('Resize sidebar')
 
       // Simulate drag: mousedown at x=288, then mousemove to x=400
       fireEvent.mouseDown(divider, { clientX: 288 })
@@ -1439,9 +1439,9 @@ describe('onToggleMarkdownView (line 1806)', () => {
         return Promise.resolve({ files: [] })
       })
       renderPage()
-      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByLabelText('Resize sidebar')).toBeInTheDocument())
 
-      const divider = screen.getByRole('separator')
+      const divider = screen.getByLabelText('Resize sidebar')
       fireEvent.doubleClick(divider)
 
       expect(sessionStorage.getItem('aerodocs-sidebar-width')).toBe('288')
@@ -1454,9 +1454,9 @@ describe('onToggleMarkdownView (line 1806)', () => {
         return Promise.resolve({ files: [] })
       })
       renderPage()
-      await waitFor(() => expect(screen.getByRole('separator')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByLabelText('Resize sidebar')).toBeInTheDocument())
 
-      const divider = screen.getByRole('separator')
+      const divider = screen.getByLabelText('Resize sidebar')
 
       // Try to drag below minimum (200)
       fireEvent.mouseDown(divider, { clientX: 288 })

@@ -66,7 +66,7 @@ func testHandler(t *testing.T) (*Handler, *store.Store) {
 
 func TestHandleRegister_ValidToken(t *testing.T) {
 	h, st := testHandler(t)
-	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
 	expiresAt := "2099-12-31 23:59:59"
 	st.CreateServer(&model.Server{
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
@@ -125,7 +125,7 @@ func TestHandleHeartbeat_AlreadyOnline(t *testing.T) {
 
 func TestHandleRegister_ExpiredToken(t *testing.T) {
 	h, st := testHandler(t)
-	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
 	expiresAt := "2000-01-01 00:00:00" // expired
 	st.CreateServer(&model.Server{
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
