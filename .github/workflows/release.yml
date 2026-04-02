@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -106,6 +110,7 @@ jobs:
           image: yiucloud/aerodocs:${{ env.IMAGE_TAG }}
           format: spdx-json
           output-file: sbom.spdx.json
+          upload-release-assets: false
 
       - name: Upload SBOM
         uses: actions/upload-artifact@v7
@@ -147,8 +152,6 @@ jobs:
   create-release:
     needs: build-and-push
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
         with:

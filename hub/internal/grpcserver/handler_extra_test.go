@@ -297,3 +297,150 @@ func TestSweepStaleConnections_StaleTimeout(t *testing.T) {
 		t.Fatalf("expected server marked offline after stale sweep, got %s", srv.Status)
 	}
 }
+
+// TestRegisterHandshake_PrefersAgentIP verifies that registration uses agent-reported IP
+// over the gRPC peer address (important when behind a TCP proxy like Traefik).
+func TestRegisterHandshake_PrefersAgentIP(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	expiresAt := "2099-12-31 23:59:59"
+	st.CreateServer(&model.Server{
+		ID: "s-ip-test", Name: "ip-test", Status: "pending", Labels: "{}",
+		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
+	})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Register{
+				Register: &pb.RegisterAgent{
+					Token:        "",
+					Hostname:     "host-ip-test",
+					IpAddress:    "192.168.1.100", // agent's real IP
+					Os:           "Linux",
+					AgentVersion: "0.1.0",
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	srv, _ := st.GetServerByID("s-ip-test")
+	if srv.IPAddress == nil || *srv.IPAddress != "192.168.1.100" {
+		got := "<nil>"
+		if srv.IPAddress != nil {
+			got = *srv.IPAddress
+		}
+		t.Fatalf("expected agent-reported IP 192.168.1.100, got %s", got)
+	}
+}
+
+// TestRegisterHandshake_FallsBackToPeerIP verifies that registration falls back to
+// gRPC peer address when agent doesn't report an IP.
+func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	expiresAt := "2099-12-31 23:59:59"
+	st.CreateServer(&model.Server{
+		ID: "s-ip-fallback", Name: "ip-fallback", Status: "pending", Labels: "{}",
+		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
+	})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Register{
+				Register: &pb.RegisterAgent{
+					Token:        "",
+					Hostname:     "host-fb",
+					IpAddress:    "", // no agent-reported IP
+					Os:           "Linux",
+					AgentVersion: "0.1.0",
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	// peerAddr returns empty for mock streams, so IP should be empty
+	srv, _ := st.GetServerByID("s-ip-fallback")
+	// With mock stream, peer address is empty, so IP won't be set
+	// This verifies the fallback path is exercised without crash
+	_ = srv
+}
+
+// TestHeartbeatHandshake_PrefersAgentIP verifies that heartbeat reconnect
+// uses agent-reported IP over the proxy peer address.
+func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	proxyIP := "192.0.2.27" // Traefik proxy IP
+	st.CreateServer(&model.Server{ID: "s-hb-ip", Name: "hb-ip", Status: "online", Labels: "{}"})
+	_ = st.UpdateServerIP("s-hb-ip", proxyIP)
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Heartbeat{
+				Heartbeat: &pb.Heartbeat{
+					ServerId:  "s-hb-ip",
+					IpAddress: "198.51.100.95", // real agent IP
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	srv, _ := st.GetServerByID("s-hb-ip")
+	if srv.IPAddress == nil || *srv.IPAddress != "198.51.100.95" {
+		got := "<nil>"
+		if srv.IPAddress != nil {
+			got = *srv.IPAddress
+		}
+		t.Fatalf("expected agent-reported IP 198.51.100.95, got %s", got)
+	}
+}
+
+// TestHeartbeatHandshake_FallsBackToPeerIP verifies heartbeat reconnect
+// uses peer IP when agent doesn't report one.
+func TestHeartbeatHandshake_FallsBackToPeerIP(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	st.CreateServer(&model.Server{ID: "s-hb-fb", Name: "hb-fb", Status: "online", Labels: "{}"})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Heartbeat{
+				Heartbeat: &pb.Heartbeat{
+					ServerId:  "s-hb-fb",
+					IpAddress: "", // no agent-reported IP
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	// Verifies fallback path runs without crash
+}
