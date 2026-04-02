@@ -1809,12 +1809,12 @@ export function ServerDetailPage() {
           />
 
           {!sidebarCollapsed && (
-            <div
-              className="w-1 hover:w-1.5 bg-border hover:bg-accent/50 cursor-col-resize transition-colors shrink-0"
+            <button
+              type="button"
+              className="w-1 hover:w-1.5 bg-border hover:bg-accent/50 cursor-col-resize transition-colors shrink-0 p-0 border-0 rounded-none"
               onMouseDown={handleDragStart}
               onDoubleClick={handleResetWidth}
-              role="separator"
-              aria-orientation="vertical"
+              aria-label="Resize sidebar"
               title="Drag to resize sidebar, double-click to reset"
             />
           )}

@@ -10,6 +10,12 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	testFutureExpiry = "2099-12-31 23:59:59"
+	testConnectFmt   = "Connect: %v"
+	testServerHBIP   = "s-hb-ip"
+)
+
 // sequenceStream returns messages from a slice and then io.EOF.
 type sequenceStream struct {
 	mockStream
@@ -53,8 +59,8 @@ func TestConnect_RegisterWithCoalescer(t *testing.T) {
 	h.logSessions = NewLogSessions()
 	h.hbCoalescer = NewHeartbeatCoalescer(st, 5*time.Minute)
 
-	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-	expiresAt := "2099-12-31 23:59:59"
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
+	expiresAt := testFutureExpiry
 	st.CreateServer(&model.Server{
 		ID: "s-coal", Name: "coalescer-test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
@@ -134,8 +140,8 @@ func TestConnect_Register(t *testing.T) {
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
 
-	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-	expiresAt := "2099-12-31 23:59:59"
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
+	expiresAt := testFutureExpiry
 	st.CreateServer(&model.Server{
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
@@ -305,8 +311,8 @@ func TestRegisterHandshake_PrefersAgentIP(t *testing.T) {
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
 
-	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-	expiresAt := "2099-12-31 23:59:59"
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
+	expiresAt := testFutureExpiry
 	st.CreateServer(&model.Server{
 		ID: "s-ip-test", Name: "ip-test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
@@ -328,7 +334,7 @@ func TestRegisterHandshake_PrefersAgentIP(t *testing.T) {
 
 	err := h.Connect(stream)
 	if err != nil {
-		t.Fatalf("Connect: %v", err)
+		t.Fatalf(testConnectFmt, err)
 	}
 
 	srv, _ := st.GetServerByID("s-ip-test")
@@ -348,8 +354,8 @@ func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
 
-	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-	expiresAt := "2099-12-31 23:59:59"
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
+	expiresAt := testFutureExpiry
 	st.CreateServer(&model.Server{
 		ID: "s-ip-fallback", Name: "ip-fallback", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
@@ -371,7 +377,7 @@ func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
 
 	err := h.Connect(stream)
 	if err != nil {
-		t.Fatalf("Connect: %v", err)
+		t.Fatalf(testConnectFmt, err)
 	}
 
 	// peerAddr returns empty for mock streams, so IP should be empty
@@ -389,14 +395,14 @@ func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
 	h.logSessions = NewLogSessions()
 
 	proxyIP := "10.10.1.27" // Traefik proxy IP
-	st.CreateServer(&model.Server{ID: "s-hb-ip", Name: "hb-ip", Status: "online", Labels: "{}"})
-	_ = st.UpdateServerIP("s-hb-ip", proxyIP)
+	st.CreateServer(&model.Server{ID: testServerHBIP, Name: "hb-ip", Status: "online", Labels: "{}"})
+	_ = st.UpdateServerIP(testServerHBIP, proxyIP)
 
 	stream := newSequenceStream([]*pb.AgentMessage{
 		{
 			Payload: &pb.AgentMessage_Heartbeat{
 				Heartbeat: &pb.Heartbeat{
-					ServerId:  "s-hb-ip",
+					ServerId:  testServerHBIP,
 					IpAddress: "10.10.1.95", // real agent IP
 				},
 			},
@@ -405,10 +411,10 @@ func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
 
 	err := h.Connect(stream)
 	if err != nil {
-		t.Fatalf("Connect: %v", err)
+		t.Fatalf(testConnectFmt, err)
 	}
 
-	srv, _ := st.GetServerByID("s-hb-ip")
+	srv, _ := st.GetServerByID(testServerHBIP)
 	if srv.IPAddress == nil || *srv.IPAddress != "10.10.1.95" {
 		got := "<nil>"
 		if srv.IPAddress != nil {
@@ -440,7 +446,7 @@ func TestHeartbeatHandshake_FallsBackToPeerIP(t *testing.T) {
 
 	err := h.Connect(stream)
 	if err != nil {
-		t.Fatalf("Connect: %v", err)
+		t.Fatalf(testConnectFmt, err)
 	}
 	// Verifies fallback path runs without crash
 }

@@ -12,6 +12,12 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/ca"
 )
 
+const (
+	testGenerateCAFmt         = "GenerateCA: %v"
+	testServerCN              = "aerodocs-hub"
+	testGenerateServerCertFmt = "GenerateServerCert() error: %v"
+)
+
 func TestGenerateCA(t *testing.T) {
 	cert, key, err := ca.GenerateCA()
 	if err != nil {
@@ -250,17 +256,17 @@ func TestSignCSR_UniqueSerials(t *testing.T) {
 func TestGenerateServerCert_BasicFields(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA: %v", err)
+		t.Fatalf(testGenerateCAFmt, err)
 	}
 
-	cert, key, err := ca.GenerateServerCert(caCert, caKey, "aerodocs-hub")
+	cert, key, err := ca.GenerateServerCert(caCert, caKey, testServerCN)
 	if err != nil {
-		t.Fatalf("GenerateServerCert() error: %v", err)
+		t.Fatalf(testGenerateServerCertFmt, err)
 	}
 	if cert == nil || key == nil {
 		t.Fatal("expected non-nil cert and key")
 	}
-	if cert.Subject.CommonName != "aerodocs-hub" {
+	if cert.Subject.CommonName != testServerCN {
 		t.Errorf("expected CN=aerodocs-hub, got %s", cert.Subject.CommonName)
 	}
 	if len(cert.ExtKeyUsage) == 0 || cert.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
@@ -271,12 +277,12 @@ func TestGenerateServerCert_BasicFields(t *testing.T) {
 func TestGenerateServerCert_WithDNSSANs(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA: %v", err)
+		t.Fatalf(testGenerateCAFmt, err)
 	}
 
-	cert, _, err := ca.GenerateServerCert(caCert, caKey, "aerodocs-hub", "aerodocs.example.com", "localhost")
+	cert, _, err := ca.GenerateServerCert(caCert, caKey, testServerCN, "aerodocs.example.com", "localhost")
 	if err != nil {
-		t.Fatalf("GenerateServerCert() error: %v", err)
+		t.Fatalf(testGenerateServerCertFmt, err)
 	}
 
 	expected := map[string]bool{"aerodocs.example.com": false, "localhost": false}
@@ -295,12 +301,12 @@ func TestGenerateServerCert_WithDNSSANs(t *testing.T) {
 func TestGenerateServerCert_NoDNSSANs(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA: %v", err)
+		t.Fatalf(testGenerateCAFmt, err)
 	}
 
-	cert, _, err := ca.GenerateServerCert(caCert, caKey, "aerodocs-hub")
+	cert, _, err := ca.GenerateServerCert(caCert, caKey, testServerCN)
 	if err != nil {
-		t.Fatalf("GenerateServerCert() error: %v", err)
+		t.Fatalf(testGenerateServerCertFmt, err)
 	}
 	if len(cert.DNSNames) != 0 {
 		t.Errorf("expected no DNS SANs when none provided, got %v", cert.DNSNames)
