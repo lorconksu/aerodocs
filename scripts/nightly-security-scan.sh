@@ -49,7 +49,7 @@ Use vertical tables for metadata in reports (severity, CVSS, type, location).
 If any findings were discovered:
 - Fix all findings that can be safely auto-fixed (vulnerabilities, code issues)
 - Run `go test ./...` (from hub/ and agent/) and `npx vitest run` (from web/) to verify
-- For findings that can't be auto-fixed (architectural, breaking changes), open GitHub issues on lorconksu/aerodocs with the finding details
+- For findings that can't be auto-fixed (architectural, breaking changes), open GitHub issues on lorconksu/aerodocs-internal (PRIVATE repo) with full details. NEVER put security finding details in the public lorconksu/aerodocs repo.
 
 ### Phase 3: Re-scan
 If fixes were made, re-run the security review on the fixed code to verify:
