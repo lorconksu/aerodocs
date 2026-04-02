@@ -17,13 +17,15 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+const testTxtFilename = "test.txt"
+
 // TestHandleUploadFile_WithAgent verifies upload works with a connected agent.
 func TestHandleUploadFile_WithAgent(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "test.txt")
+	part, err := writer.CreateFormFile("file", testTxtFilename)
 	if err != nil {
 		t.Fatalf("create form file: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestHandleUploadFile_NoAgentConnected(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.txt")
+	part, _ := writer.CreateFormFile("file", testTxtFilename)
 	part.Write([]byte("hello"))
 	writer.Close()
 
@@ -685,7 +687,7 @@ func TestHandleUploadFile_AckFailure(t *testing.T) {
 		return &mockGRPCStreamFailedAck{pending: pending, serverID: sid}
 	})
 
-	body, ct := buildMultipartBody(t, "file", "test.txt", []byte("hello"))
+	body, ct := buildMultipartBody(t, "file", testTxtFilename, []byte("hello"))
 
 	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
 	req.Header.Set("Authorization", testBearerPrefix+adminToken)
@@ -707,7 +709,7 @@ func TestHandleUploadFile_WrongAckType(t *testing.T) {
 		return &mockGRPCStreamWrongAckType{pending: pending, serverID: sid}
 	})
 
-	body, ct := buildMultipartBody(t, "file", "test.txt", []byte("hello"))
+	body, ct := buildMultipartBody(t, "file", testTxtFilename, []byte("hello"))
 
 	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
 	req.Header.Set("Authorization", testBearerPrefix+adminToken)

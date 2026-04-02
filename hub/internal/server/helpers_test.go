@@ -106,7 +106,7 @@ func createViewerAndGetToken(t *testing.T, s *Server, adminToken string) string 
 		Username: "viewertest", Email: "viewertest@test.com", Role: model.RoleViewer,
 	})
 	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(body))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -132,7 +132,7 @@ func createViewerAndGetToken(t *testing.T, s *Server, adminToken string) string 
 
 	// Setup TOTP
 	setupReq := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
-	setupReq.Header.Set("Authorization", "Bearer "+loginResp.SetupToken)
+	setupReq.Header.Set("Authorization", testBearerPrefix+loginResp.SetupToken)
 	setupRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(setupRec, setupReq)
 
@@ -143,7 +143,7 @@ func createViewerAndGetToken(t *testing.T, s *Server, adminToken string) string 
 	code, _ := auth.GenerateValidCode(totpResp.Secret)
 	enableBody, _ := json.Marshal(model.TOTPEnableRequest{Code: code})
 	enableReq := httptest.NewRequest("POST", "/api/auth/totp/enable", bytes.NewReader(enableBody))
-	enableReq.Header.Set("Authorization", "Bearer "+loginResp.SetupToken)
+	enableReq.Header.Set("Authorization", testBearerPrefix+loginResp.SetupToken)
 	enableRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(enableRec, enableReq)
 

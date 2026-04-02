@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	testSMTPEHLOReply    = "250-localhost\r\n250 OK\r\n"
 	testSMTPGreeting     = "220 localhost ESMTP\r\n"
 	testSMTPMailFrom     = "MAIL FROM"
 	testSMTPOK           = "250 OK\r\n"
@@ -57,7 +58,7 @@ func mockSMTPServer(t *testing.T, ln net.Listener, received chan<- string) {
 		data := string(buf[:n])
 		allData += data
 		if strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO") {
-			fmt.Fprintf(conn, "250-localhost\r\n250 OK\r\n")
+			fmt.Fprintf(conn, testSMTPEHLOReply)
 		} else if strings.HasPrefix(data, testSMTPMailFrom) {
 			fmt.Fprintf(conn, testSMTPOK)
 		} else if strings.HasPrefix(data, testSMTPRcptTo) {
@@ -197,8 +198,8 @@ func generateSelfSignedCert(t *testing.T) tls.Certificate {
 
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "127.0.0.1"},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		Subject:      pkix.Name{CommonName: testLocalhost},
+		IPAddresses:  []net.IP{net.ParseIP(testLocalhost)},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 	}
@@ -320,17 +321,17 @@ func TestSendEmail_TLS_DialError(t *testing.T) {
 func smtpResponse(data string) (response string, quit bool) {
 	switch {
 	case strings.HasPrefix(data, "EHLO"), strings.HasPrefix(data, "HELO"):
-		return "250-localhost\r\n250 OK\r\n", false
+		return testSMTPEHLOReply, false
 	case strings.HasPrefix(data, testSMTPMailFrom):
-		return "250 OK\r\n", false
+		return testSMTPOK, false
 	case strings.HasPrefix(data, testSMTPRcptTo):
-		return "250 OK\r\n", false
+		return testSMTPOK, false
 	case strings.HasPrefix(data, "DATA"):
-		return "354 Send data\r\n", false
+		return testSMTPSendData, false
 	case strings.Contains(data, testSMTPDataEnd):
-		return "250 OK\r\n", false
+		return testSMTPOK, false
 	case strings.HasPrefix(data, "QUIT"):
-		return "221 Bye\r\n", true
+		return testSMTPBye, true
 	default:
 		return "", false
 	}

@@ -13,6 +13,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const testExpectedAccessToken = "expected access_token in response"
+
 func testServer(t *testing.T) *Server {
 	t.Helper()
 	st, err := store.New(testMemoryDB)
@@ -307,7 +309,7 @@ func TestLoginTOTP_Success(t *testing.T) {
 	var authResp model.AuthResponse
 	json.NewDecoder(totpRec.Body).Decode(&authResp)
 	if authResp.AccessToken == "" {
-		t.Fatal("expected access_token in response")
+		t.Fatal(testExpectedAccessToken)
 	}
 }
 
@@ -418,7 +420,7 @@ func TestRefresh_ValidToken(t *testing.T) {
 	var tokenPair model.TokenPair
 	json.NewDecoder(refreshRec.Body).Decode(&tokenPair)
 	if tokenPair.AccessToken == "" {
-		t.Fatal("expected access_token in response")
+		t.Fatal(testExpectedAccessToken)
 	}
 }
 
@@ -539,7 +541,7 @@ func TestTOTPEnable_Success(t *testing.T) {
 	var authResp model.AuthResponse
 	json.NewDecoder(enableRec.Body).Decode(&authResp)
 	if authResp.AccessToken == "" {
-		t.Fatal("expected access_token in response")
+		t.Fatal(testExpectedAccessToken)
 	}
 	if !authResp.User.TOTPEnabled {
 		t.Fatal("expected totp_enabled=true")
