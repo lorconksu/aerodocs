@@ -1,0 +1,6 @@
+[allowlist]
+  description = "Allowlist for test fixtures and non-secret hashes"
+  paths = [
+    '''hub/internal/grpcserver/handler_extra_test\.go''',
+    '''hub/internal/grpcserver/handler_test\.go''',
+  ]
