@@ -37,6 +37,7 @@
 | Auth Header | `Authorization: Bearer <token>` |
 | Pagination | `?limit=N&offset=N` (default limit varies, max 100) |
 | CORS | Enabled globally |
+| Caching | `Cache-Control: no-store` on all API responses |
 
 All request and response bodies are JSON unless otherwise noted (file uploads use `multipart/form-data`, SSE streams use `text/event-stream`, binary downloads use `application/octet-stream`).
 
@@ -116,13 +117,24 @@ Check whether the Hub has been initialized (at least one user exists).
 | Auth | None |
 | Rate Limited | No |
 
-**Response (200):**
+**Response (200) - unauthenticated:**
 
 ```json
 {
   "initialized": true
 }
 ```
+
+**Response (200) - authenticated (with valid access token):**
+
+```json
+{
+  "initialized": true,
+  "version": "1.2.17"
+}
+```
+
+> **Note:** The `version` field is only included when the request carries a valid access token. Unauthenticated requests receive only the `initialized` field.
 
 **cURL:**
 
@@ -470,6 +482,8 @@ Change the authenticated user's password.
   "status": "password updated"
 }
 ```
+
+> **Note:** A successful password change invalidates all of the user's existing sessions (access and refresh tokens) except the one used to make the request. Other devices will need to log in again.
 
 **Error Cases:**
 - `401` - Invalid current password

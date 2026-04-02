@@ -26,6 +26,10 @@ An additional **Admin Tools sidebar** is available on the right for admins, prov
 
 The File Explorer is the left sidebar. It lets you navigate the remote server's filesystem without opening a terminal.
 
+### Refreshing the File Tree
+
+Click the **Refresh** button (circular arrow icon) in the File Explorer sidebar header to re-fetch all currently expanded directories while preserving the tree's expand/collapse state. The icon spins while the refresh is in progress. The button is hidden when the sidebar is collapsed.
+
 ### Navigating Directories
 
 - Directories are shown with a folder icon and a disclosure arrow.
@@ -43,6 +47,12 @@ The File Explorer is the left sidebar. It lets you navigate the remote server's 
 ### Collapsing the Sidebar
 
 Click the **collapse** button (chevron icon) at the top of the File Explorer panel to hide the sidebar and give the main panel more space. Click it again to restore the panel.
+
+### Resizing the Sidebar
+
+Drag the thin vertical divider between the File Explorer and the content viewer to resize the sidebar. Double-click the divider to reset it to the default width. The width is constrained between 200 px and 600 px, and your chosen width persists for the duration of the browser session.
+
+Both the file tree and the content viewer scroll independently, so long directory listings and large files each have their own scrollbar.
 
 ---
 
