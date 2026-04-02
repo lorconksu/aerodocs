@@ -23,7 +23,7 @@ AeroDocs is built for home lab operators and small teams who want real visibilit
 
 - **Fleet Dashboard** — At-a-glance health overview of all connected servers with live status, search, and filtering
 - **Real-time Log Tailing** — Live log streaming over SSE with server-side grep/filter, pause/resume, and terminal-like UI
-- **Remote File Browser** — Browse remote file systems with syntax highlighting for 16 languages; binaries and forbidden paths shown but greyed out
+- **Remote File Browser** — Browse remote file systems with syntax highlighting for 16 languages; resizable sidebar, refresh button, and binaries/forbidden paths shown but greyed out
 - **Secure File Transfers (Dropzone)** — Admin-only drag-and-drop chunked file uploads to a quarantined staging directory on the target server
 - **Email Notifications** — 8 configurable alert types (agent connect/disconnect, file uploads, login events, and more)
 - **Audit Logging** — Immutable record of every action with 23 event types — who did what, when, and from where
@@ -71,7 +71,7 @@ The Hub starts on port 8081 (HTTP) and 9090 (gRPC). Open `http://localhost:8081`
 
 To pin a specific version instead of `latest`:
 ```yaml
-image: yiucloud/aerodocs:1.2.11
+image: yiucloud/aerodocs:1.2.17
 ```
 
 ### Agent Installation
@@ -112,6 +112,12 @@ The agent installs as a systemd service, connects to the Hub over gRPC with mTLS
 | Path Traversal | Server-side path canonicalization + symlink resolution |
 | Sensitive Paths | Blocklist enforcement at both Hub and Agent layers |
 | Agent Auth | mTLS with Hub-issued 12-hour ECDSA P-256 certificates |
+| SMTP Credentials | AES-256-GCM encryption at rest |
+| Token Blacklist | Persistent across restarts (SQLite-backed) |
+| Session Invalidation | Password change invalidates all sessions |
+| gRPC Limits | 256 KB max receive message size |
+| Version Disclosure | Hidden from unauthenticated users |
+| Cache-Control | `no-store` on all API responses |
 
 ## Documentation
 
@@ -123,7 +129,7 @@ The agent installs as a systemd service, connects to the Hub over gRPC with mTLS
 
 ## Version
 
-Current release: **v1.2.11**
+Current release: **v1.2.17**
 
 ## License
 

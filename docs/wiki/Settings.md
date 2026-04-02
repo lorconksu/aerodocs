@@ -23,7 +23,7 @@ In the **Change Password** section:
 3. Confirm the new password
 4. Click **Update Password**
 
-You will remain logged in after changing your password. All existing sessions (on other devices) will also remain valid until their tokens expire.
+You will remain logged in on the current device after changing your password. All other existing sessions (on other devices) are immediately invalidated and those users will need to log in again.
 
 ---
 

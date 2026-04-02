@@ -15,6 +15,11 @@
 
 **Setup & Deployment**
 - [[Deployment]]
+- [[Deployment On-Prem]]
+- [[Deployment AWS]]
+- [[Deployment Azure]]
+- [[Deployment GCP]]
+- [[Proxy Configuration]]
 - [[Development]]
 - [[API Reference]]
 

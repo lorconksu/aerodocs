@@ -79,6 +79,10 @@ Binary files or permission-restricted paths are visible in the directory listing
 - The agent may have disconnected. Wait for reconnection or check the agent service on the remote server.
 - Try navigating away and back to the file.
 
+### File explorer sidebar or content viewer won't scroll
+
+This was a layout bug fixed in v1.2.16. Update your Hub to v1.2.16 or later. After upgrading, do a hard refresh of the page (Ctrl+Shift+R or Cmd+Shift+R) to ensure you are loading the latest frontend assets.
+
 ### A path I expect is not visible
 
 The path may be on the sensitive path blocklist. AeroDocs prevents agents from exposing certain restricted filesystem paths (e.g. `/etc/shadow`, private key directories). If you need access to a blocked path, check the Hub's blocklist configuration. This is a security feature and cannot be overridden from the UI.
@@ -149,6 +153,10 @@ The Dropzone tab is only visible to admin users. Viewers cannot upload files. If
 - Verify the Hub gRPC address in the agent configuration file (`/etc/aerodocs/agent.conf`).
 - Check agent logs: `journalctl -u aerodocs-agent -f`
 - If mTLS is enabled, ensure the agent's certificate is valid and not expired.
+
+### Agent shows proxy IP instead of real IP
+
+Fixed in v1.2.15. The Hub now reads the client IP from the `X-Forwarded-For` header when running behind a reverse proxy (e.g. Traefik). To take advantage of this fix, both the Hub and the agent must be updated to v1.2.15 or later. After updating, the agent's real IP will be recorded in the Fleet Dashboard and audit log entries.
 
 ### Agent keeps reconnecting
 

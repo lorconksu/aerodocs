@@ -4,7 +4,7 @@
 
 Every action taken in AeroDocs is recorded in the audit log. Think of it as an activity history - a permanent record of who did what and when.
 
-Audit log entries cannot be edited or deleted, even by admins. This makes the log trustworthy: if something changed, there will be a record of it.
+Audit log entries cannot be edited or deleted, even by admins. Each entry is protected by a transactional hash chain - every row includes a cryptographic hash that incorporates the previous entry's hash. This means any tampering (insertion, deletion, or modification of a row) breaks the chain and is detectable. This makes the log trustworthy: if something changed, there will be a record of it.
 
 The audit log is only visible to admins.
 
