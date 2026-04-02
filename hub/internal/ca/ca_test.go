@@ -246,3 +246,63 @@ func TestSignCSR_UniqueSerials(t *testing.T) {
 		t.Error("two signed certs should have different serial numbers")
 	}
 }
+
+func TestGenerateServerCert_BasicFields(t *testing.T) {
+	caCert, caKey, err := ca.GenerateCA()
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+
+	cert, key, err := ca.GenerateServerCert(caCert, caKey, "aerodocs-hub")
+	if err != nil {
+		t.Fatalf("GenerateServerCert() error: %v", err)
+	}
+	if cert == nil || key == nil {
+		t.Fatal("expected non-nil cert and key")
+	}
+	if cert.Subject.CommonName != "aerodocs-hub" {
+		t.Errorf("expected CN=aerodocs-hub, got %s", cert.Subject.CommonName)
+	}
+	if len(cert.ExtKeyUsage) == 0 || cert.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
+		t.Error("expected ServerAuth extended key usage")
+	}
+}
+
+func TestGenerateServerCert_WithDNSSANs(t *testing.T) {
+	caCert, caKey, err := ca.GenerateCA()
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+
+	cert, _, err := ca.GenerateServerCert(caCert, caKey, "aerodocs-hub", "aerodocs.example.com", "localhost")
+	if err != nil {
+		t.Fatalf("GenerateServerCert() error: %v", err)
+	}
+
+	expected := map[string]bool{"aerodocs.example.com": false, "localhost": false}
+	for _, name := range cert.DNSNames {
+		if _, ok := expected[name]; ok {
+			expected[name] = true
+		}
+	}
+	for name, found := range expected {
+		if !found {
+			t.Errorf("expected DNS SAN %q not found in cert, got %v", name, cert.DNSNames)
+		}
+	}
+}
+
+func TestGenerateServerCert_NoDNSSANs(t *testing.T) {
+	caCert, caKey, err := ca.GenerateCA()
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+
+	cert, _, err := ca.GenerateServerCert(caCert, caKey, "aerodocs-hub")
+	if err != nil {
+		t.Fatalf("GenerateServerCert() error: %v", err)
+	}
+	if len(cert.DNSNames) != 0 {
+		t.Errorf("expected no DNS SANs when none provided, got %v", cert.DNSNames)
+	}
+}
