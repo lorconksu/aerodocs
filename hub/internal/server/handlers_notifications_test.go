@@ -607,6 +607,85 @@ func TestUpdateNotificationPreferences_InvalidBody(t *testing.T) {
 	}
 }
 
+// TestEncryptDecryptSMTPPassword verifies round-trip encrypt/decrypt of SMTP passwords.
+func TestEncryptDecryptSMTPPassword(t *testing.T) {
+	secret := "test-jwt-secret-256-bits-long!!!"
+	password := "my-smtp-password"
+
+	encrypted, err := encryptSMTPPassword(secret, password)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	if !strings.HasPrefix(encrypted, "enc:") {
+		t.Fatalf("expected enc: prefix, got %q", encrypted)
+	}
+
+	decrypted, err := DecryptSMTPPassword(secret, encrypted)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if decrypted != password {
+		t.Fatalf("expected %q, got %q", password, decrypted)
+	}
+}
+
+// TestDecryptSMTPPassword_LegacyPlaintext verifies backward compat with unencrypted passwords.
+func TestDecryptSMTPPassword_LegacyPlaintext(t *testing.T) {
+	decrypted, err := DecryptSMTPPassword("any-secret", "plain-password")
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if decrypted != "plain-password" {
+		t.Fatalf("expected plain-password, got %q", decrypted)
+	}
+}
+
+// TestDecryptSMTPPassword_InvalidHex verifies error on invalid hex after enc: prefix.
+func TestDecryptSMTPPassword_InvalidHex(t *testing.T) {
+	_, err := DecryptSMTPPassword("secret", "enc:not-valid-hex!!")
+	if err == nil {
+		t.Fatal("expected error for invalid hex")
+	}
+}
+
+// TestDecryptSMTPPassword_WrongKey verifies error on wrong decryption key.
+func TestDecryptSMTPPassword_WrongKey(t *testing.T) {
+	encrypted, err := encryptSMTPPassword("correct-secret", "password")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	_, err = DecryptSMTPPassword("wrong-secret", encrypted)
+	if err != nil {
+		// Expected — wrong key should fail
+		return
+	}
+	t.Fatal("expected error for wrong decryption key")
+}
+
+// TestValidateSMTPConfig verifies SMTP config validation.
+func TestValidateSMTPConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     model.SMTPConfig
+		wantErr bool
+	}{
+		{"disabled config is always valid", model.SMTPConfig{Enabled: false}, false},
+		{"valid enabled config", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 587, From: "a@b.com"}, false},
+		{"invalid port low", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 0, From: "a@b.com"}, true},
+		{"invalid port high", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 70000, From: "a@b.com"}, true},
+		{"missing from @", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 587, From: "invalid"}, true},
+		{"missing host", model.SMTPConfig{Enabled: true, Host: "", Port: 587, From: "a@b.com"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSMTPConfig(tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateSMTPConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // TestUpdateNotificationPreferences_UnknownEventType verifies unknown event types are rejected.
 func TestUpdateNotificationPreferences_UnknownEventType(t *testing.T) {
 	s := testServer(t)

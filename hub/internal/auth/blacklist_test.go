@@ -161,6 +161,108 @@ func TestTokenBlacklist_SurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestTokenBlacklist_Cleanup_MemoryAndDB(t *testing.T) {
+	db := setupTestDB(t)
+	bl := auth.NewTokenBlacklist(db)
+
+	// Add an entry that will expire immediately
+	bl.Add("expire-soon", time.Now().Add(-1*time.Second))
+	// Add a valid entry
+	bl.Add("still-valid", time.Now().Add(10*time.Minute))
+
+	// Verify both are in DB
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM token_blacklist").Scan(&count)
+	if count != 2 {
+		t.Fatalf("expected 2 rows in DB before cleanup, got %d", count)
+	}
+
+	// Add another entry to trigger in-memory cleanup of expired entries
+	bl.Add("trigger-cleanup", time.Now().Add(10*time.Minute))
+
+	// expired entry should be removed from memory
+	if bl.IsBlacklisted("expire-soon") {
+		t.Fatal("expected expired entry to be cleaned from memory")
+	}
+	if !bl.IsBlacklisted("still-valid") {
+		t.Fatal("expected still-valid to remain")
+	}
+	if !bl.IsBlacklisted("trigger-cleanup") {
+		t.Fatal("expected trigger-cleanup to remain")
+	}
+}
+
+func TestTokenBlacklist_DBFallback_NotInMemory(t *testing.T) {
+	db := setupTestDB(t)
+	bl := auth.NewTokenBlacklist(db)
+
+	// Insert directly into DB after blacklist creation (simulating another process adding it)
+	expiry := time.Now().Add(10 * time.Minute).UTC().Format("2006-01-02 15:04:05")
+	_, err := db.Exec("INSERT INTO token_blacklist (jti, expires_at) VALUES (?, ?)", "other-process-jti", expiry)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Entry is NOT in memory (was added after creation), but should be found via DB fallback
+	if !bl.IsBlacklisted("other-process-jti") {
+		t.Fatal("expected other-process-jti to be found via DB fallback")
+	}
+
+	// After DB fallback, the entry should now be cached in memory
+	if bl.Len() != 1 {
+		t.Fatalf("expected 1 entry cached in memory after DB fallback, got %d", bl.Len())
+	}
+}
+
+func TestTokenBlacklist_DBFallback_ExpiredInDB(t *testing.T) {
+	db := setupTestDB(t)
+	bl := auth.NewTokenBlacklist(db)
+
+	// Insert an expired entry directly into DB
+	expiry := time.Now().Add(-5 * time.Minute).UTC().Format("2006-01-02 15:04:05")
+	_, err := db.Exec("INSERT INTO token_blacklist (jti, expires_at) VALUES (?, ?)", "expired-db-jti", expiry)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Expired entry in DB should NOT be returned as blacklisted
+	if bl.IsBlacklisted("expired-db-jti") {
+		t.Fatal("expected expired DB entry to not be blacklisted")
+	}
+}
+
+func TestTokenBlacklist_LoadFromDB_RFC3339Format(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert entry with RFC3339 format (tests the fallback time parse path)
+	expiry := time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
+	_, err := db.Exec("INSERT INTO token_blacklist (jti, expires_at) VALUES (?, ?)", "rfc3339-jti", expiry)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	bl := auth.NewTokenBlacklist(db)
+	if !bl.IsBlacklisted("rfc3339-jti") {
+		t.Fatal("expected rfc3339-jti to be loaded from DB with RFC3339 format")
+	}
+}
+
+func TestTokenBlacklist_LoadFromDB_InvalidFormat(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert entry with unparseable format — should be skipped during loadFromDB without crashing
+	_, err := db.Exec("INSERT INTO token_blacklist (jti, expires_at) VALUES (?, ?)", "bad-fmt-jti", "not-a-date")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	bl := auth.NewTokenBlacklist(db)
+	// The entry should NOT have been loaded into memory (unparseable date)
+	if bl.Len() != 0 {
+		t.Fatalf("expected 0 entries loaded into memory, got %d", bl.Len())
+	}
+}
+
 func TestTokenBlacklist_ExpiredNotLoadedFromDB(t *testing.T) {
 	db := setupTestDB(t)
 

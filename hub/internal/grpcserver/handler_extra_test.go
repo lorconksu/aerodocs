@@ -426,6 +426,80 @@ func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
 	}
 }
 
+// TestRegisterHandshake_InvalidAgentIP verifies that an invalid agent-reported IP
+// (e.g., arbitrary string injection) is rejected and the peer IP is used instead.
+func TestRegisterHandshake_InvalidAgentIP(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
+	expiresAt := testFutureExpiry
+	st.CreateServer(&model.Server{
+		ID: "s-ip-invalid", Name: "ip-invalid", Status: "pending", Labels: "{}",
+		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
+	})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Register{
+				Register: &pb.RegisterAgent{
+					Token:        "",
+					Hostname:     "host-invalid-ip",
+					IpAddress:    "not-an-ip-address", // invalid IP
+					Os:           "Linux",
+					AgentVersion: "0.1.0",
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf(testConnectFmt, err)
+	}
+
+	// The invalid IP should have been rejected; peer IP (empty for mock) is used instead
+	srv, _ := st.GetServerByID("s-ip-invalid")
+	if srv.IPAddress != nil && *srv.IPAddress == "not-an-ip-address" {
+		t.Fatal("expected invalid IP to be rejected, but it was stored")
+	}
+}
+
+// TestHeartbeatHandshake_InvalidAgentIP verifies that an invalid agent-reported IP
+// in heartbeat reconnect is rejected and peer IP is used instead.
+func TestHeartbeatHandshake_InvalidAgentIP(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	originalIP := "10.0.0.5"
+	st.CreateServer(&model.Server{ID: "s-hb-invalid-ip", Name: "hb-invalid", Status: "online", Labels: "{}"})
+	_ = st.UpdateServerIP("s-hb-invalid-ip", originalIP)
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Heartbeat{
+				Heartbeat: &pb.Heartbeat{
+					ServerId:  "s-hb-invalid-ip",
+					IpAddress: "'; DROP TABLE servers; --", // SQL injection attempt as IP
+				},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err != nil {
+		t.Fatalf(testConnectFmt, err)
+	}
+
+	// The invalid IP should have been rejected
+	srv, _ := st.GetServerByID("s-hb-invalid-ip")
+	if srv.IPAddress != nil && *srv.IPAddress == "'; DROP TABLE servers; --" {
+		t.Fatal("expected SQL injection string to be rejected as IP")
+	}
+}
+
 // TestHeartbeatHandshake_FallsBackToPeerIP verifies heartbeat reconnect
 // uses peer IP when agent doesn't report one.
 func TestHeartbeatHandshake_FallsBackToPeerIP(t *testing.T) {

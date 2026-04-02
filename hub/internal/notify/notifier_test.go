@@ -1,7 +1,11 @@
 package notify
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -11,6 +15,23 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
+
+// encrypt is a test helper that encrypts data using AES-256-GCM (mirrors auth.Encrypt).
+func encrypt(plaintext, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+}
 
 func testStoreAndUser(t *testing.T) *store.Store {
 	t.Helper()
@@ -512,6 +533,112 @@ func TestNotifier_AgentOnlineWithoutPendingOffline(t *testing.T) {
 	_, total, _ := st.ListNotificationLog(50, 0)
 	if total != 1 {
 		t.Fatalf("expected 1 notification log entry, got %d", total)
+	}
+}
+
+// TestDecryptSMTPPassword_Plaintext verifies that a plaintext password (no "enc:" prefix)
+// is returned as-is for backward compatibility.
+func TestDecryptSMTPPassword_Plaintext(t *testing.T) {
+	result := decryptSMTPPassword("any-secret", "my-plain-password")
+	if result != "my-plain-password" {
+		t.Fatalf("expected plaintext password returned as-is, got %q", result)
+	}
+}
+
+// TestDecryptSMTPPassword_Encrypted verifies that an encrypted password with "enc:" prefix
+// is decrypted correctly.
+func TestDecryptSMTPPassword_Encrypted(t *testing.T) {
+	secret := "test-jwt-secret-for-encrypt"
+	key := deriveKey(secret)
+
+	// Encrypt a password
+	plaintext := "super-secret-smtp-pass"
+	ciphertext, err := encrypt([]byte(plaintext), key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	stored := "enc:" + fmt.Sprintf("%x", ciphertext)
+
+	result := decryptSMTPPassword(secret, stored)
+	if result != plaintext {
+		t.Fatalf("expected decrypted password %q, got %q", plaintext, result)
+	}
+}
+
+// TestDecryptSMTPPassword_InvalidHex verifies that an invalid hex value after "enc:" returns empty.
+func TestDecryptSMTPPassword_InvalidHex(t *testing.T) {
+	result := decryptSMTPPassword("secret", "enc:not-valid-hex!!")
+	if result != "" {
+		t.Fatalf("expected empty string for invalid hex, got %q", result)
+	}
+}
+
+// TestDecryptSMTPPassword_WrongKey verifies that decrypting with wrong key returns empty.
+func TestDecryptSMTPPassword_WrongKey(t *testing.T) {
+	key := deriveKey("correct-secret")
+	ciphertext, _ := encrypt([]byte("password"), key)
+	stored := "enc:" + fmt.Sprintf("%x", ciphertext)
+
+	result := decryptSMTPPassword("wrong-secret", stored)
+	if result != "" {
+		t.Fatalf("expected empty string for wrong decryption key, got %q", result)
+	}
+}
+
+// TestDecryptSMTPPassword_TooShort verifies that a very short ciphertext returns empty.
+func TestDecryptSMTPPassword_TooShort(t *testing.T) {
+	result := decryptSMTPPassword("secret", "enc:0102")
+	if result != "" {
+		t.Fatalf("expected empty string for too-short ciphertext, got %q", result)
+	}
+}
+
+// TestLoadSMTPConfig_WithEncryptedPassword verifies LoadSMTPConfig decrypts passwords.
+func TestLoadSMTPConfig_WithEncryptedPassword(t *testing.T) {
+	st := testStoreAndUser(t)
+
+	secret := "my-jwt-secret-for-test"
+	key := deriveKey(secret)
+	plainPassword := "smtp-real-password"
+	ciphertext, err := encrypt([]byte(plainPassword), key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	encryptedStored := "enc:" + fmt.Sprintf("%x", ciphertext)
+
+	st.SetConfig("smtp_password", encryptedStored)
+	st.SetConfig("smtp_host", "mail.example.com")
+	st.SetConfig("smtp_enabled", "true")
+
+	cfg := LoadSMTPConfig(st, secret)
+	if cfg.Password != plainPassword {
+		t.Fatalf("expected decrypted password %q, got %q", plainPassword, cfg.Password)
+	}
+}
+
+// TestLoadSMTPConfig_WithPlaintextPassword verifies LoadSMTPConfig handles legacy plaintext.
+func TestLoadSMTPConfig_WithPlaintextPassword(t *testing.T) {
+	st := testStoreAndUser(t)
+
+	st.SetConfig("smtp_password", "legacy-plain")
+	st.SetConfig("smtp_host", "mail.example.com")
+	st.SetConfig("smtp_enabled", "true")
+
+	cfg := LoadSMTPConfig(st, "any-secret")
+	if cfg.Password != "legacy-plain" {
+		t.Fatalf("expected plaintext password %q, got %q", "legacy-plain", cfg.Password)
+	}
+}
+
+// TestLoadSMTPConfig_NoSecret verifies LoadSMTPConfig without jwtSecret returns raw password.
+func TestLoadSMTPConfig_NoSecret(t *testing.T) {
+	st := testStoreAndUser(t)
+
+	st.SetConfig("smtp_password", "enc:deadbeef")
+
+	cfg := LoadSMTPConfig(st)
+	if cfg.Password != "enc:deadbeef" {
+		t.Fatalf("expected raw password when no secret, got %q", cfg.Password)
 	}
 }
 

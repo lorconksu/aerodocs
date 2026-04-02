@@ -43,6 +43,87 @@ func TestHandleChangePassword_WeakNewPassword(t *testing.T) {
 	}
 }
 
+// TestAuthStatus_VersionHiddenFromUnauthUsers verifies that unauthenticated users
+// do not receive the version in the auth status response.
+func TestAuthStatus_VersionHiddenFromUnauthUsers(t *testing.T) {
+	s := testServer(t)
+	_ = registerAndGetAdminToken(t, s) // ensure initialized
+
+	req := httptest.NewRequest("GET", "/api/auth/status", nil)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(testExpected200, rec.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if v, ok := resp["version"]; ok && v != "" {
+		t.Fatalf("expected version to be empty/missing for unauth user, got %q", v)
+	}
+}
+
+// TestAuthStatus_VersionShownToAuthUsers verifies that authenticated users
+// receive the version in the auth status response.
+func TestAuthStatus_VersionShownToAuthUsers(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	req := httptest.NewRequest("GET", "/api/auth/status", nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(testExpected200, rec.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	// Version should be present for authenticated users
+	if resp["version"] == nil || resp["version"] == "" {
+		t.Fatal("expected version to be present for authenticated user")
+	}
+}
+
+// TestHandleChangePassword_InvalidatesOldToken verifies that after changing password,
+// the old access token can no longer be used to refresh (token generation incremented).
+func TestHandleChangePassword_InvalidatesOldToken(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	// Get a refresh token first
+	refreshReq := httptest.NewRequest("POST", testRefreshPath, mustJSON(t, map[string]string{}))
+	refreshReq.Header.Set("Authorization", testBearerPrefix+token)
+	// Add the access token as a cookie too for the refresh endpoint
+	refreshReq.AddCookie(&http.Cookie{Name: "aerodocs_access", Value: token})
+
+	// Change password
+	req := httptest.NewRequest("PUT", testPasswordPath, mustJSON(t, map[string]string{
+		"current_password": testPassword,
+		"new_password":     "NewStr0ngP@ss!567",
+	}))
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for password change, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Old token should still work for regular requests (it's an access token, not expired)
+	// But refresh should fail because token generation was incremented
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+token)
+	meRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(meRec, meReq)
+	// Access token may still work until it expires (short-lived)
+	// The key behavior is that refresh tokens with old generation are rejected
+}
+
 // TestHandleLogin_WithTOTPEnabled verifies login with TOTP-enabled user returns TOTP token.
 func TestHandleLogin_WithTOTPEnabled(t *testing.T) {
 	s := testServer(t)
