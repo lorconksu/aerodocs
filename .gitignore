@@ -33,3 +33,4 @@ web/coverage/
 
 # Internal documentation (stored in Confluence)
 docs-internal/
+node_modules/
