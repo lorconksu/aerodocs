@@ -11,6 +11,16 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	testHubAddr              = "localhost:9090"
+	testExpectedFileDeleteResp = "expected FileDeleteResponse"
+	testExpectedRespOnSendCh = "expected response on sendCh"
+	testSessionID            = "session-1"
+	testExpectedAckOnSendCh  = "expected ack on sendCh"
+	testReqList              = "req-list"
+	testReqLog               = "req-log"
+)
+
 // newTestDropzone creates a Dropzone using a test directory.
 func newTestDropzone(dir string) *dropzone.Dropzone {
 	return dropzone.New(dir)
@@ -64,10 +74,10 @@ func TestResetBackoff(t *testing.T) {
 
 func TestNewClient(t *testing.T) {
 	c := New(Config{
-		HubAddr:  "localhost:9090",
+		HubAddr:  testHubAddr,
 		ServerID: "srv-1",
 	})
-	if c.hubAddr != "localhost:9090" {
+	if c.hubAddr != testHubAddr {
 		t.Fatalf("expected hubAddr 'localhost:9090', got '%s'", c.hubAddr)
 	}
 	if c.serverID != "srv-1" {
@@ -85,13 +95,13 @@ func TestServerID(t *testing.T) {
 func TestUseTLS(t *testing.T) {
 	// useTLS now defaults to true, false only when insecure flag is set
 	t.Run("default_true", func(t *testing.T) {
-		c := &Client{hubAddr: "localhost:9090"}
+		c := &Client{hubAddr: testHubAddr}
 		if !c.useTLS() {
 			t.Fatal("useTLS should default to true")
 		}
 	})
 	t.Run("insecure_false", func(t *testing.T) {
-		c := &Client{hubAddr: "localhost:9090", insecure: true}
+		c := &Client{hubAddr: testHubAddr, insecure: true}
 		if c.useTLS() {
 			t.Fatal("useTLS should be false when insecure=true")
 		}
@@ -114,7 +124,7 @@ func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {
 	case resp := <-sendCh:
 		ack := resp.GetFileDeleteResponse()
 		if ack == nil {
-			t.Fatal("expected FileDeleteResponse")
+			t.Fatal(testExpectedFileDeleteResp)
 		}
 		if ack.Success {
 			t.Fatal("expected failure for path outside dropzone")
@@ -123,7 +133,7 @@ func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {
 			t.Fatal("expected error message")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -143,13 +153,13 @@ func TestHandleFileDeleteRequest_NonexistentFile(t *testing.T) {
 	case resp := <-sendCh:
 		ack := resp.GetFileDeleteResponse()
 		if ack == nil {
-			t.Fatal("expected FileDeleteResponse")
+			t.Fatal(testExpectedFileDeleteResp)
 		}
 		if ack.Success {
 			t.Fatal("expected failure for nonexistent file")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -180,28 +190,28 @@ func TestHandleFileDeleteRequest_Success(t *testing.T) {
 	case resp := <-sendCh:
 		ack := resp.GetFileDeleteResponse()
 		if ack == nil {
-			t.Fatal("expected FileDeleteResponse")
+			t.Fatal(testExpectedFileDeleteResp)
 		}
 		if !ack.Success {
 			t.Fatalf("expected success, got error: %s", ack.Error)
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
 func TestHandleLogStreamStop_ExistingSession(t *testing.T) {
 	c := &Client{tailSessions: make(map[string]chan struct{})}
 	stop := make(chan struct{})
-	c.tailSessions["session-1"] = stop
+	c.tailSessions[testSessionID] = stop
 
 	msg := &pb.HubMessage_LogStreamStop{
-		LogStreamStop: &pb.LogStreamStop{RequestId: "session-1"},
+		LogStreamStop: &pb.LogStreamStop{RequestId: testSessionID},
 	}
 	c.handleLogStreamStop(msg)
 
 	// channel should be closed and removed
-	if _, ok := c.tailSessions["session-1"]; ok {
+	if _, ok := c.tailSessions[testSessionID]; ok {
 		t.Fatal("expected session to be removed")
 	}
 
@@ -226,7 +236,7 @@ func TestHandleLogStreamStop_NonexistentSession(t *testing.T) {
 func TestHandleUnregisterRequest_NoCert(t *testing.T) {
 	c := &Client{
 		tailSessions: make(map[string]chan struct{}),
-		hubAddr:      "localhost:9090",
+		hubAddr:      testHubAddr,
 		serverID:     "srv-1",
 		certStore:    certs.NewMemoryStore(),
 	}
@@ -248,7 +258,7 @@ func TestHandleUnregisterRequest_NoCert(t *testing.T) {
 			t.Fatal("expected rejection without mTLS cert")
 		}
 	default:
-		t.Fatal("expected ack on sendCh")
+		t.Fatal(testExpectedAckOnSendCh)
 	}
 }
 
@@ -272,7 +282,7 @@ func TestHandleFileListRequest(t *testing.T) {
 
 	msg := &pb.HubMessage_FileListRequest{
 		FileListRequest: &pb.FileListRequest{
-			RequestId: "req-list",
+			RequestId: testReqList,
 			Path:      "/tmp",
 		},
 	}
@@ -284,7 +294,7 @@ func TestHandleFileListRequest(t *testing.T) {
 		if listResp == nil {
 			t.Fatal("expected FileListResponse")
 		}
-		if listResp.RequestId != "req-list" {
+		if listResp.RequestId != testReqList {
 			t.Fatalf("expected 'req-list', got '%s'", listResp.RequestId)
 		}
 	default:
@@ -325,7 +335,7 @@ func TestHandleFileReadRequest(t *testing.T) {
 			t.Fatalf("expected 'req-read', got '%s'", readResp.RequestId)
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -358,7 +368,7 @@ func TestHandleFileUploadRequest(t *testing.T) {
 			t.Fatalf("expected success, got error: %s", ack.Error)
 		}
 	default:
-		t.Fatal("expected ack on sendCh")
+		t.Fatal(testExpectedAckOnSendCh)
 	}
 }
 
@@ -377,7 +387,7 @@ func TestHandleLogStreamRequest(t *testing.T) {
 
 	msg := &pb.HubMessage_LogStreamRequest{
 		LogStreamRequest: &pb.LogStreamRequest{
-			RequestId: "req-log",
+			RequestId: testReqLog,
 			Path:      tmpFile.Name(),
 			Grep:      "",
 			Offset:    0,
@@ -386,13 +396,13 @@ func TestHandleLogStreamRequest(t *testing.T) {
 	c.handleLogStreamRequest(msg, sendCh)
 
 	// Verify the session was created
-	if _, ok := c.tailSessions["req-log"]; !ok {
+	if _, ok := c.tailSessions[testReqLog]; !ok {
 		t.Fatal("expected tail session to be registered")
 	}
 
 	// Stop the session
 	stopMsg := &pb.HubMessage_LogStreamStop{
-		LogStreamStop: &pb.LogStreamStop{RequestId: "req-log"},
+		LogStreamStop: &pb.LogStreamStop{RequestId: testReqLog},
 	}
 	c.handleLogStreamStop(stopMsg)
 }
@@ -404,7 +414,7 @@ func TestHandleMessage_FileList(t *testing.T) {
 	msg := &pb.HubMessage{
 		Payload: &pb.HubMessage_FileListRequest{
 			FileListRequest: &pb.FileListRequest{
-				RequestId: "req-list",
+				RequestId: testReqList,
 				Path:      "/tmp",
 			},
 		},
@@ -415,7 +425,7 @@ func TestHandleMessage_FileList(t *testing.T) {
 	case <-sendCh:
 		// ok
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -437,7 +447,7 @@ func TestHandleMessage_FileDelete(t *testing.T) {
 	case <-sendCh:
 		// ok
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -465,7 +475,7 @@ func TestHandleMessage_LogStreamStop(t *testing.T) {
 func TestHandleMessage_Unregister(t *testing.T) {
 	c := &Client{
 		tailSessions: make(map[string]chan struct{}),
-		hubAddr:      "localhost:9090",
+		hubAddr:      testHubAddr,
 		certStore:    certs.NewMemoryStore(),
 	}
 	sendCh := make(chan *pb.AgentMessage, 2)
@@ -481,6 +491,6 @@ func TestHandleMessage_Unregister(t *testing.T) {
 	case <-sendCh:
 		// got ack (rejected without cert, but ack is still sent)
 	default:
-		t.Fatal("expected ack on sendCh")
+		t.Fatal(testExpectedAckOnSendCh)
 	}
 }

@@ -36,9 +36,9 @@ func (m *mockGRPCStreamReadError) Send(msg *pb.HubMessage) error {
 // testServerWithReadErrorAgent creates a test server whose mock agent returns read errors.
 func testServerWithReadErrorAgent(t *testing.T) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -81,8 +81,8 @@ func testServerWithReadErrorAgent(t *testing.T) (s *Server, adminToken, serverID
 func TestHandleReadFile_AgentReturnsError(t *testing.T) {
 	s, adminToken, serverID := testServerWithReadErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/nonexistent/file.txt", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/nonexistent/file.txt", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -121,9 +121,9 @@ func (m *mockGRPCStreamCaptureOffset) Send(msg *pb.HubMessage) error {
 // TestHandleReadFile_SendsNegativeOffset verifies the hub sends offset=-1
 // to request the tail of the file.
 func TestHandleReadFile_SendsNegativeOffset(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -155,13 +155,13 @@ func TestHandleReadFile_SendsNegativeOffset(t *testing.T) {
 	cm.Register(serverID, stream)
 	t.Cleanup(func() { cm.Unregister(serverID) })
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/var/log/big.log", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/var/log/big.log", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	// Verify the hub sent offset=-1 (tail request)

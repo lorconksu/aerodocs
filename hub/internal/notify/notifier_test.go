@@ -83,7 +83,7 @@ func TestNotifier_SendsWhenConfigured(t *testing.T) {
 
 	// Configure SMTP in the store
 	smtpCfgs := []struct{ k, v string }{
-		{"smtp_host", "127.0.0.1"},
+		{"smtp_host", testLocalhost},
 		{"smtp_port", strconv.Itoa(addr.Port)},
 		{"smtp_from", "noreply@aerodocs.local"},
 		{"smtp_enabled", "true"},
@@ -142,9 +142,9 @@ func TestNotifier_SendFailure(t *testing.T) {
 
 	// Configure SMTP with an unreachable port to force send failure
 	smtpCfgs := []struct{ k, v string }{
-		{"smtp_host", "127.0.0.1"},
+		{"smtp_host", testLocalhost},
 		{"smtp_port", "1"}, // port 1 is unreachable
-		{"smtp_from", "test@test.com"},
+		{"smtp_from", testFromEmail},
 		{"smtp_enabled", "true"},
 		{"smtp_tls", "false"},
 	}
@@ -190,9 +190,9 @@ func TestNotifier_DebounceAgentOffline(t *testing.T) {
 	t.Cleanup(func() { DebounceDelay = origDelay })
 
 	// Configure SMTP (even though it won't connect, we need it enabled to pass the check)
-	st.SetConfig("smtp_host", "127.0.0.1")
+	st.SetConfig("smtp_host", testLocalhost)
 	st.SetConfig("smtp_port", "1")
-	st.SetConfig("smtp_from", "test@test.com")
+	st.SetConfig("smtp_from", testFromEmail)
 	st.SetConfig("smtp_enabled", "true")
 
 	n := New(st)
@@ -200,14 +200,14 @@ func TestNotifier_DebounceAgentOffline(t *testing.T) {
 
 	// Agent goes offline
 	n.Notify(model.NotifyAgentOffline, map[string]string{
-		"server_name": "web-01", "server_id": "srv-1",
-		"timestamp": "2026-03-30 12:00:00 UTC",
+		"server_name": testServerNameWeb01, "server_id": "srv-1",
+		"timestamp": testTimestamp20260330,
 	})
 
 	// Agent comes back within debounce window
 	time.Sleep(50 * time.Millisecond)
 	n.Notify(model.NotifyAgentOnline, map[string]string{
-		"server_name": "web-01", "server_id": "srv-1",
+		"server_name": testServerNameWeb01, "server_id": "srv-1",
 		"timestamp": "2026-03-30 12:00:01 UTC",
 	})
 
@@ -230,17 +230,17 @@ func TestNotifier_DebounceExpires(t *testing.T) {
 	DebounceDelay = 100 * time.Millisecond
 	t.Cleanup(func() { DebounceDelay = origDelay })
 
-	st.SetConfig("smtp_host", "127.0.0.1")
+	st.SetConfig("smtp_host", testLocalhost)
 	st.SetConfig("smtp_port", "1") // will fail to send, but that's fine
-	st.SetConfig("smtp_from", "test@test.com")
+	st.SetConfig("smtp_from", testFromEmail)
 	st.SetConfig("smtp_enabled", "true")
 
 	n := New(st)
 	defer n.Close()
 
 	n.Notify(model.NotifyAgentOffline, map[string]string{
-		"server_name": "web-01", "server_id": "srv-1",
-		"timestamp": "2026-03-30 12:00:00 UTC",
+		"server_name": testServerNameWeb01, "server_id": "srv-1",
+		"timestamp": testTimestamp20260330,
 	})
 
 	// Wait past debounce window + processing time
@@ -292,7 +292,7 @@ func TestEnqueueJob_MainQueue(t *testing.T) {
 	defer n.Close()
 
 	job := emailJob{
-		To: "test@test.com", UserID: "u1",
+		To: testFromEmail, UserID: "u1",
 		EventType: model.NotifyAgentOffline,
 		Subject:   "Test", Body: "body",
 	}
@@ -488,9 +488,9 @@ func TestLoadSMTPConfig_TLSVariants(t *testing.T) {
 func TestNotifier_AgentOnlineWithoutPendingOffline(t *testing.T) {
 	st := testStoreAndUser(t)
 
-	st.SetConfig("smtp_host", "127.0.0.1")
+	st.SetConfig("smtp_host", testLocalhost)
 	st.SetConfig("smtp_port", "1")
-	st.SetConfig("smtp_from", "test@test.com")
+	st.SetConfig("smtp_from", testFromEmail)
 	st.SetConfig("smtp_enabled", "true")
 
 	// Enable agent.online for user1
@@ -501,8 +501,8 @@ func TestNotifier_AgentOnlineWithoutPendingOffline(t *testing.T) {
 
 	// Send agent.online without any prior offline — should enqueue (will fail to send, that's ok)
 	n.Notify(model.NotifyAgentOnline, map[string]string{
-		"server_name": "web-01", "server_id": "srv-1",
-		"timestamp": "2026-03-30 12:00:00 UTC",
+		"server_name": testServerNameWeb01, "server_id": "srv-1",
+		"timestamp": testTimestamp20260330,
 	})
 
 	// Wait for worker to process

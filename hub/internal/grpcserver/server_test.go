@@ -8,6 +8,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const testStale1 = "stale-1"
+
 func testGRPCServer(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
 	st, err := store.New(":memory:")
@@ -100,11 +102,11 @@ func TestSweepStaleConnections_StaleConn(t *testing.T) {
 	s, st := testGRPCServer(t)
 
 	// Create a server as "online"
-	st.CreateServer(&model.Server{ID: "stale-1", Name: "stale", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testStale1, Name: "stale", Status: "online", Labels: "{}"})
 
 	// Register a stale stream (no heartbeat will come)
 	stream := &mockStream{}
-	s.connMgr.Register("stale-1", stream)
+	s.connMgr.Register(testStale1, stream)
 
 	// The heartbeat is old by default since we never called UpdateHeartbeat.
 	// sweepStaleConnections sweeps after 30 seconds of no heartbeat.
@@ -112,10 +114,10 @@ func TestSweepStaleConnections_StaleConn(t *testing.T) {
 	// But the orphan check should still run — servers online but not in connMgr.
 
 	// Unregister from connMgr and check orphan handling
-	s.connMgr.Unregister("stale-1")
+	s.connMgr.Unregister(testStale1)
 	s.sweepStaleConnections()
 
-	srv, _ := st.GetServerByID("stale-1")
+	srv, _ := st.GetServerByID(testStale1)
 	if srv.Status != "offline" {
 		t.Fatalf("expected 'offline' for orphaned server, got '%s'", srv.Status)
 	}

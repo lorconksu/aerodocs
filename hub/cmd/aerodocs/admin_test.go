@@ -10,6 +10,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const testFlagUsername = "--username"
+
 // TestRunAdmin_NoArgs verifies that runAdmin with no arguments returns a usage error.
 func TestRunAdmin_NoArgs(t *testing.T) {
 	err := runAdmin([]string{})
@@ -36,7 +38,7 @@ func TestRunResetTOTP_NoUsername(t *testing.T) {
 
 // TestRunResetTOTP_BadDB verifies that reset-totp with an invalid db path returns an error.
 func TestRunResetTOTP_BadDB(t *testing.T) {
-	err := runResetTOTP([]string{"--username", "testuser", "--db", "/dev/null/nonexistent/path.db"})
+	err := runResetTOTP([]string{testFlagUsername, "testuser", "--db", "/dev/null/nonexistent/path.db"})
 	if err == nil {
 		t.Fatal("expected error for bad db path")
 	}
@@ -54,7 +56,7 @@ func TestRunResetTOTP_UserNotFound(t *testing.T) {
 	}
 	st.Close()
 
-	err = runResetTOTP([]string{"--username", "nonexistentuser", "--db", dbPath})
+	err = runResetTOTP([]string{testFlagUsername, "nonexistentuser", "--db", dbPath})
 	if err == nil {
 		t.Fatal("expected error for nonexistent user")
 	}
@@ -87,7 +89,7 @@ func TestRunResetTOTP_Success(t *testing.T) {
 	st.Close()
 
 	// Now call reset-totp — should succeed.
-	err = runResetTOTP([]string{"--username", "testadmin", "--db", dbPath})
+	err = runResetTOTP([]string{testFlagUsername, "testadmin", "--db", dbPath})
 	if err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}

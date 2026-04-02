@@ -18,6 +18,25 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const (
+	testSMTPGreeting     = "220 localhost ESMTP\r\n"
+	testSMTPMailFrom     = "MAIL FROM"
+	testSMTPOK           = "250 OK\r\n"
+	testSMTPRcptTo       = "RCPT TO"
+	testSMTPSendData     = "354 Send data\r\n"
+	testSMTPDataEnd      = "\r\n.\r\n"
+	testSMTPBye          = "221 Bye\r\n"
+	testRecipient        = "to@example.com"
+	testListenAddr       = "127.0.0.1:0"
+	testMockServerFmt    = "failed to start mock server: %v"
+	testLocalhost        = "127.0.0.1"
+	testSenderEmail      = "sender@example.com"
+	testRecipientEmail   = "recipient@example.com"
+	testFromEmail        = "test@test.com"
+	testServerNameWeb01  = "web-01"
+	testTimestamp20260330 = "2026-03-30 12:00:00 UTC"
+)
+
 // mockSMTPServer handles a minimal SMTP conversation on ln,
 // then sends all received data to the received channel.
 func mockSMTPServer(t *testing.T, ln net.Listener, received chan<- string) {
@@ -27,7 +46,7 @@ func mockSMTPServer(t *testing.T, ln net.Listener, received chan<- string) {
 		return
 	}
 	defer conn.Close()
-	fmt.Fprintf(conn, "220 localhost ESMTP\r\n")
+	fmt.Fprintf(conn, testSMTPGreeting)
 	buf := make([]byte, 4096)
 	var allData string
 	for {
@@ -39,16 +58,16 @@ func mockSMTPServer(t *testing.T, ln net.Listener, received chan<- string) {
 		allData += data
 		if strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO") {
 			fmt.Fprintf(conn, "250-localhost\r\n250 OK\r\n")
-		} else if strings.HasPrefix(data, "MAIL FROM") {
-			fmt.Fprintf(conn, "250 OK\r\n")
-		} else if strings.HasPrefix(data, "RCPT TO") {
-			fmt.Fprintf(conn, "250 OK\r\n")
+		} else if strings.HasPrefix(data, testSMTPMailFrom) {
+			fmt.Fprintf(conn, testSMTPOK)
+		} else if strings.HasPrefix(data, testSMTPRcptTo) {
+			fmt.Fprintf(conn, testSMTPOK)
 		} else if strings.HasPrefix(data, "DATA") {
-			fmt.Fprintf(conn, "354 Send data\r\n")
-		} else if strings.Contains(data, "\r\n.\r\n") {
-			fmt.Fprintf(conn, "250 OK\r\n")
+			fmt.Fprintf(conn, testSMTPSendData)
+		} else if strings.Contains(data, testSMTPDataEnd) {
+			fmt.Fprintf(conn, testSMTPOK)
 		} else if strings.HasPrefix(data, "QUIT") {
-			fmt.Fprintf(conn, "221 Bye\r\n")
+			fmt.Fprintf(conn, testSMTPBye)
 			break
 		}
 	}
@@ -61,16 +80,16 @@ func TestSendEmail_Disabled(t *testing.T) {
 		Port:    25,
 		Enabled: false,
 	}
-	err := SendEmail(cfg, "to@example.com", "Subject", "Body")
+	err := SendEmail(cfg, testRecipient, "Subject", "Body")
 	if err != nil {
 		t.Errorf("expected nil error when disabled, got: %v", err)
 	}
 }
 
 func TestSendEmail_PlainSMTP(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", testListenAddr)
 	if err != nil {
-		t.Fatalf("failed to start mock server: %v", err)
+		t.Fatalf(testMockServerFmt, err)
 	}
 	defer ln.Close()
 
@@ -79,24 +98,24 @@ func TestSendEmail_PlainSMTP(t *testing.T) {
 
 	addr := ln.Addr().(*net.TCPAddr)
 	cfg := model.SMTPConfig{
-		Host:    "127.0.0.1",
+		Host:    testLocalhost,
 		Port:    addr.Port,
-		From:    "sender@example.com",
+		From:    testSenderEmail,
 		Enabled: true,
 		TLS:     false,
 	}
 
-	err = SendEmail(cfg, "recipient@example.com", "[AeroDocs] Test Subject", "Hello from AeroDocs.")
+	err = SendEmail(cfg, testRecipientEmail, "[AeroDocs] Test Subject", "Hello from AeroDocs.")
 	if err != nil {
 		t.Fatalf("SendEmail returned error: %v", err)
 	}
 
 	select {
 	case data := <-received:
-		if !strings.Contains(data, "MAIL FROM") {
+		if !strings.Contains(data, testSMTPMailFrom) {
 			t.Errorf("expected MAIL FROM in SMTP exchange, got: %q", data)
 		}
-		if !strings.Contains(data, "RCPT TO") {
+		if !strings.Contains(data, testSMTPRcptTo) {
 			t.Errorf("expected RCPT TO in SMTP exchange, got: %q", data)
 		}
 	case <-time.After(3 * time.Second):
@@ -105,9 +124,9 @@ func TestSendEmail_PlainSMTP(t *testing.T) {
 }
 
 func TestSendEmail_MessageContents(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", testListenAddr)
 	if err != nil {
-		t.Fatalf("failed to start mock server: %v", err)
+		t.Fatalf(testMockServerFmt, err)
 	}
 	defer ln.Close()
 
@@ -116,7 +135,7 @@ func TestSendEmail_MessageContents(t *testing.T) {
 
 	addr := ln.Addr().(*net.TCPAddr)
 	cfg := model.SMTPConfig{
-		Host:    "127.0.0.1",
+		Host:    testLocalhost,
 		Port:    addr.Port,
 		From:    "noreply@aerodocs.local",
 		Enabled: true,
@@ -146,7 +165,7 @@ func TestSendEmail_MessageContents(t *testing.T) {
 }
 
 func TestBuildMessage(t *testing.T) {
-	msg := buildMessage("from@example.com", "to@example.com", "Test Subject", "Test body content.")
+	msg := buildMessage("from@example.com", testRecipient, "Test Subject", "Test body content.")
 
 	if !strings.Contains(msg, "From: from@example.com") {
 		t.Errorf("missing From header in message: %q", msg)
@@ -206,9 +225,9 @@ func generateSelfSignedCert(t *testing.T) tls.Certificate {
 
 // TestSendEmail_WithAuth verifies that PlainAuth credentials are used when username and password are set.
 func TestSendEmail_WithAuth(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", testListenAddr)
 	if err != nil {
-		t.Fatalf("failed to start mock server: %v", err)
+		t.Fatalf(testMockServerFmt, err)
 	}
 	defer ln.Close()
 
@@ -221,7 +240,7 @@ func TestSendEmail_WithAuth(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		fmt.Fprintf(conn, "220 localhost ESMTP\r\n")
+		fmt.Fprintf(conn, testSMTPGreeting)
 		buf := make([]byte, 4096)
 		var allData string
 		for {
@@ -236,16 +255,16 @@ func TestSendEmail_WithAuth(t *testing.T) {
 				fmt.Fprintf(conn, "250-localhost\r\n250 AUTH PLAIN LOGIN\r\n")
 			case strings.HasPrefix(data, "AUTH"):
 				fmt.Fprintf(conn, "235 Authentication successful\r\n")
-			case strings.HasPrefix(data, "MAIL FROM"):
-				fmt.Fprintf(conn, "250 OK\r\n")
-			case strings.HasPrefix(data, "RCPT TO"):
-				fmt.Fprintf(conn, "250 OK\r\n")
+			case strings.HasPrefix(data, testSMTPMailFrom):
+				fmt.Fprintf(conn, testSMTPOK)
+			case strings.HasPrefix(data, testSMTPRcptTo):
+				fmt.Fprintf(conn, testSMTPOK)
 			case strings.HasPrefix(data, "DATA"):
-				fmt.Fprintf(conn, "354 Send data\r\n")
-			case strings.Contains(data, "\r\n.\r\n"):
-				fmt.Fprintf(conn, "250 OK\r\n")
+				fmt.Fprintf(conn, testSMTPSendData)
+			case strings.Contains(data, testSMTPDataEnd):
+				fmt.Fprintf(conn, testSMTPOK)
 			case strings.HasPrefix(data, "QUIT"):
-				fmt.Fprintf(conn, "221 Bye\r\n")
+				fmt.Fprintf(conn, testSMTPBye)
 				received <- allData
 				return
 			}
@@ -255,16 +274,16 @@ func TestSendEmail_WithAuth(t *testing.T) {
 
 	addr := ln.Addr().(*net.TCPAddr)
 	cfg := model.SMTPConfig{
-		Host:     "127.0.0.1",
+		Host:     testLocalhost,
 		Port:     addr.Port,
 		Username: "user@example.com",
 		Password: "secretpass",
-		From:     "sender@example.com",
+		From:     testSenderEmail,
 		Enabled:  true,
 		TLS:      false,
 	}
 
-	err = SendEmail(cfg, "recipient@example.com", "Auth Test", "Testing auth path.")
+	err = SendEmail(cfg, testRecipientEmail, "Auth Test", "Testing auth path.")
 	if err != nil {
 		t.Fatalf("SendEmail with auth returned error: %v", err)
 	}
@@ -282,13 +301,13 @@ func TestSendEmail_WithAuth(t *testing.T) {
 // TestSendEmail_TLS_DialError verifies that sendTLS returns a wrapped error when the TLS dial fails.
 func TestSendEmail_TLS_DialError(t *testing.T) {
 	cfg := model.SMTPConfig{
-		Host:    "127.0.0.1",
+		Host:    testLocalhost,
 		Port:    19998, // nothing listening here
-		From:    "sender@example.com",
+		From:    testSenderEmail,
 		Enabled: true,
 		TLS:     true,
 	}
-	err := SendEmail(cfg, "to@example.com", "Test Subject", "Test body.")
+	err := SendEmail(cfg, testRecipient, "Test Subject", "Test body.")
 	if err == nil {
 		t.Fatal("expected error when TLS dial fails, got nil")
 	}
@@ -297,54 +316,70 @@ func TestSendEmail_TLS_DialError(t *testing.T) {
 	}
 }
 
+// smtpResponse returns the SMTP response for a given client command line.
+func smtpResponse(data string) (response string, quit bool) {
+	switch {
+	case strings.HasPrefix(data, "EHLO"), strings.HasPrefix(data, "HELO"):
+		return "250-localhost\r\n250 OK\r\n", false
+	case strings.HasPrefix(data, testSMTPMailFrom):
+		return "250 OK\r\n", false
+	case strings.HasPrefix(data, testSMTPRcptTo):
+		return "250 OK\r\n", false
+	case strings.HasPrefix(data, "DATA"):
+		return "354 Send data\r\n", false
+	case strings.Contains(data, testSMTPDataEnd):
+		return "250 OK\r\n", false
+	case strings.HasPrefix(data, "QUIT"):
+		return "221 Bye\r\n", true
+	default:
+		return "", false
+	}
+}
+
+// runMockSMTPServer accepts one TLS connection and runs a minimal SMTP conversation,
+// sending the accumulated data on the received channel when done.
+func runMockSMTPServer(ln net.Listener, cert tls.Certificate, received chan<- string) {
+	tlsLn := tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cert}})
+	conn, err := tlsLn.Accept()
+	if err != nil {
+		received <- ""
+		return
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, testSMTPGreeting)
+	buf := make([]byte, 4096)
+	var allData string
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			break
+		}
+		data := string(buf[:n])
+		allData += data
+		resp, quit := smtpResponse(data)
+		if resp != "" {
+			fmt.Fprint(conn, resp)
+		}
+		if quit {
+			break
+		}
+	}
+	received <- allData
+}
+
 // TestSendEmail_TLS_Success verifies that sendTLS successfully sends a message over TLS.
 // It starts a mock TLS SMTP server with a self-signed certificate and uses InsecureSkipVerify.
 func TestSendEmail_TLS_Success(t *testing.T) {
 	cert := generateSelfSignedCert(t)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", testListenAddr)
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
 
-	// Accept one TLS connection and run a minimal SMTP conversation
 	received := make(chan string, 1)
-	go func() {
-		tlsLn := tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cert}})
-		conn, err := tlsLn.Accept()
-		if err != nil {
-			received <- ""
-			return
-		}
-		defer conn.Close()
-		fmt.Fprintf(conn, "220 localhost ESMTP\r\n")
-		buf := make([]byte, 4096)
-		var allData string
-		for {
-			n, err := conn.Read(buf)
-			if err != nil {
-				break
-			}
-			data := string(buf[:n])
-			allData += data
-			if strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO") {
-				fmt.Fprintf(conn, "250-localhost\r\n250 OK\r\n")
-			} else if strings.HasPrefix(data, "MAIL FROM") {
-				fmt.Fprintf(conn, "250 OK\r\n")
-			} else if strings.HasPrefix(data, "RCPT TO") {
-				fmt.Fprintf(conn, "250 OK\r\n")
-			} else if strings.HasPrefix(data, "DATA") {
-				fmt.Fprintf(conn, "354 Send data\r\n")
-			} else if strings.Contains(data, "\r\n.\r\n") {
-				fmt.Fprintf(conn, "250 OK\r\n")
-			} else if strings.HasPrefix(data, "QUIT") {
-				fmt.Fprintf(conn, "221 Bye\r\n")
-				break
-			}
-		}
-		received <- allData
-	}()
+	go runMockSMTPServer(ln, cert, received)
 
 	addr := ln.Addr().(*net.TCPAddr)
 
@@ -359,20 +394,20 @@ func TestSendEmail_TLS_Success(t *testing.T) {
 	defer func() { tlsDialer = origDialer }()
 
 	smtpCfg := model.SMTPConfig{
-		Host:    "127.0.0.1",
+		Host:    testLocalhost,
 		Port:    addr.Port,
-		From:    "sender@example.com",
+		From:    testSenderEmail,
 		Enabled: true,
 		TLS:     true,
 	}
 
-	if err := SendEmail(smtpCfg, "recipient@example.com", "TLS Test", "Hello over TLS."); err != nil {
+	if err := SendEmail(smtpCfg, testRecipientEmail, "TLS Test", "Hello over TLS."); err != nil {
 		t.Fatalf("SendEmail with TLS returned error: %v", err)
 	}
 
 	select {
 	case data := <-received:
-		if !strings.Contains(data, "MAIL FROM") {
+		if !strings.Contains(data, testSMTPMailFrom) {
 			t.Errorf("expected MAIL FROM in TLS SMTP exchange, got: %q", data)
 		}
 	case <-time.After(3 * time.Second):

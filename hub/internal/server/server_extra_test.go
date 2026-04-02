@@ -25,7 +25,7 @@ func testEmbedFS() *embed.FS {
 // testMapFS creates an fstest.MapFS simulating the embedded frontend.
 func testMapFS() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html":  {Data: []byte("<!doctype html><html><body>app</body></html>")},
+		testIndexHTML:  {Data: []byte("<!doctype html><html><body>app</body></html>")},
 		"favicon.svg":  {Data: []byte("<svg></svg>")},
 		"assets/main.js": {Data: []byte("console.log('app')")},
 	}
@@ -44,8 +44,8 @@ func TestSPAHandler_ProductionMode_ExistingFile(t *testing.T) {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		index, _ := sub.ReadFile("index.html")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		index, _ := sub.ReadFile(testIndexHTML)
+		w.Header().Set(testContentType, "text/html; charset=utf-8")
 		w.Write(index)
 	})
 
@@ -70,8 +70,8 @@ func TestSPAHandler_ProductionMode_FallbackToIndex(t *testing.T) {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		index, _ := sub.ReadFile("index.html")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		index, _ := sub.ReadFile(testIndexHTML)
+		w.Header().Set(testContentType, "text/html; charset=utf-8")
 		w.Write(index)
 	})
 
@@ -82,7 +82,7 @@ func TestSPAHandler_ProductionMode_FallbackToIndex(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for SPA fallback, got %d", rec.Code)
 	}
-	ct := rec.Header().Get("Content-Type")
+	ct := rec.Header().Get(testContentType)
 	if ct == "" {
 		t.Fatal("expected Content-Type")
 	}
@@ -90,9 +90,9 @@ func TestSPAHandler_ProductionMode_FallbackToIndex(t *testing.T) {
 
 // TestSPAHandler_NilFrontendFS verifies dev-mode behavior when FrontendFS is nil.
 func TestSPAHandler_NilFrontendFS(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	defer st.Close()
 
@@ -118,9 +118,9 @@ func TestSPAHandler_NilFrontendFS(t *testing.T) {
 
 // TestStart_ListenAndShutdown verifies that Start() can be started and shut down cleanly.
 func TestStart_ListenAndShutdown(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	defer st.Close()
 

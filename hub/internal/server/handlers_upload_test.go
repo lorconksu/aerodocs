@@ -24,9 +24,9 @@ func TestHandleUploadFile_NoFile(t *testing.T) {
 	writer := multipart.NewWriter(body)
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/s1/upload", body)
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testS1Upload, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -50,14 +50,14 @@ func TestHandleUploadFile_NoAgent(t *testing.T) {
 	part.Write([]byte("hello world"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/s1/upload", body)
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testS1Upload, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -67,7 +67,7 @@ func TestHandleDeleteDropzone_NoFilename(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/s1/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -82,12 +82,12 @@ func TestHandleDeleteDropzone_NoAgent(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/s1/dropzone?filename=test.txt", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -107,7 +107,7 @@ func TestDropzoneDeletePathTraversal(t *testing.T) {
 	for _, name := range traversalNames {
 		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest("DELETE", "/api/servers/s1/dropzone?filename="+name, nil)
-			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Authorization", testBearerPrefix+token)
 			rec := httptest.NewRecorder()
 			s.routes().ServeHTTP(rec, req)
 
@@ -132,7 +132,7 @@ func TestDropzoneDeleteDotFilename(t *testing.T) {
 	// filepath.Base(".") returns ".", filepath.Base("/") returns "/"
 	// but we only get "." from query param since "/" is part of URL path
 	req := httptest.NewRequest("DELETE", "/api/servers/s1/dropzone?filename=.", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -164,9 +164,9 @@ func TestDropzoneUploadPathTraversal(t *testing.T) {
 			part.Write([]byte("malicious content"))
 			writer.Close()
 
-			req := httptest.NewRequest("POST", "/api/servers/s1/upload", body)
-			req.Header.Set("Authorization", "Bearer "+token)
-			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req := httptest.NewRequest("POST", testS1Upload, body)
+			req.Header.Set("Authorization", testBearerPrefix+token)
+			req.Header.Set(testContentType, writer.FormDataContentType())
 			rec := httptest.NewRecorder()
 			s.routes().ServeHTTP(rec, req)
 
@@ -186,12 +186,12 @@ func TestHandleListDropzone_NoAgent(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -221,19 +221,19 @@ func TestHandleUploadFile_StreamingSuccess(t *testing.T) {
 	fileContent := []byte("hello world, this is test file content for streaming upload")
 	body, ct := buildMultipartBody(t, "file", "test-upload.txt", fileContent)
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp model.UploadFileResponse
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
+		t.Fatalf(testDecodeRespErr, err)
 	}
 	if resp.Filename != "test-upload.txt" {
 		t.Errorf("expected filename test-upload.txt, got %s", resp.Filename)
@@ -250,19 +250,19 @@ func TestHandleUploadFile_LargeFileMultiChunk(t *testing.T) {
 	fileContent := bytes.Repeat([]byte("A"), 100*1024) // 100KB
 	body, ct := buildMultipartBody(t, "file", "large-file.bin", fileContent)
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp model.UploadFileResponse
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
+		t.Fatalf(testDecodeRespErr, err)
 	}
 	if resp.Size != int64(len(fileContent)) {
 		t.Errorf("expected size %d, got %d", len(fileContent), resp.Size)
@@ -297,9 +297,9 @@ func TestHandleUploadFile_SizeLimitEnforced(t *testing.T) {
 		pw.Close()
 	}()
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", pr)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, pr)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -317,9 +317,9 @@ func TestHandleUploadFile_WrongFieldName(t *testing.T) {
 	// Send multipart with a different field name (not "file")
 	body, ct := buildMultipartBody(t, "notfile", "test.txt", []byte("data"))
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -333,9 +333,9 @@ func TestHandleUploadFile_EmptyFilename(t *testing.T) {
 
 	body, ct := buildMultipartBody(t, "file", "", []byte("data"))
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -351,19 +351,19 @@ func TestHandleUploadFile_FilenameSanitization(t *testing.T) {
 	fileContent := []byte("data")
 	body, ct := buildMultipartBody(t, "file", "../../../etc/passwd", fileContent)
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp model.UploadFileResponse
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
+		t.Fatalf(testDecodeRespErr, err)
 	}
 	if resp.Filename != "passwd" {
 		t.Errorf("expected sanitized filename 'passwd', got %s", resp.Filename)
@@ -371,28 +371,28 @@ func TestHandleUploadFile_FilenameSanitization(t *testing.T) {
 }
 
 func TestParseMultipartFileStream_NotMultipart(t *testing.T) {
-	req := httptest.NewRequest("POST", "/upload", strings.NewReader("plain body"))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest("POST", testUploadSuffix, strings.NewReader("plain body"))
+	req.Header.Set(testContentType, "application/json")
 
 	_, _, err := parseMultipartFileStream(req)
 	if err == nil {
 		t.Fatal("expected error for non-multipart request")
 	}
 	if err.statusCode != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", err.statusCode)
+		t.Errorf(testExpected400, err.statusCode)
 	}
 }
 
 func TestParseMultipartFileStream_MissingContentType(t *testing.T) {
-	req := httptest.NewRequest("POST", "/upload", strings.NewReader("body"))
-	req.Header.Del("Content-Type")
+	req := httptest.NewRequest("POST", testUploadSuffix, strings.NewReader("body"))
+	req.Header.Del(testContentType)
 
 	_, _, err := parseMultipartFileStream(req)
 	if err == nil {
 		t.Fatal("expected error for missing content type")
 	}
 	if err.statusCode != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", err.statusCode)
+		t.Errorf(testExpected400, err.statusCode)
 	}
 }
 
@@ -400,8 +400,8 @@ func TestParseMultipartFileStream_FilenameExtracted(t *testing.T) {
 	fileContent := []byte("test content")
 	body, ct := buildMultipartBody(t, "file", "my-document.pdf", fileContent)
 
-	req := httptest.NewRequest("POST", "/upload", body)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testUploadSuffix, body)
+	req.Header.Set(testContentType, ct)
 
 	reader, filename, parseErr := parseMultipartFileStream(req)
 	if parseErr != nil {
@@ -421,15 +421,15 @@ func TestParseMultipartFileStream_FilenameExtracted(t *testing.T) {
 }
 
 func TestParseMultipartFileStream_MissingBoundary(t *testing.T) {
-	req := httptest.NewRequest("POST", "/upload", strings.NewReader("body"))
-	req.Header.Set("Content-Type", "multipart/form-data") // no boundary param
+	req := httptest.NewRequest("POST", testUploadSuffix, strings.NewReader("body"))
+	req.Header.Set(testContentType, "multipart/form-data") // no boundary param
 
 	_, _, err := parseMultipartFileStream(req)
 	if err == nil {
 		t.Fatal("expected error for missing boundary")
 	}
 	if err.statusCode != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", err.statusCode)
+		t.Errorf(testExpected400, err.statusCode)
 	}
 	if !strings.Contains(err.message, "boundary") {
 		t.Errorf("expected boundary error, got: %s", err.message)
@@ -452,8 +452,8 @@ func TestParseMultipartFileStream_SkipsNonFileParts(t *testing.T) {
 	fmt.Fprint(part, "file content here")
 	w.Close()
 
-	req := httptest.NewRequest("POST", "/upload", &buf)
-	req.Header.Set("Content-Type", w.FormDataContentType())
+	req := httptest.NewRequest("POST", testUploadSuffix, &buf)
+	req.Header.Set(testContentType, w.FormDataContentType())
 
 	reader, filename, parseErr := parseMultipartFileStream(req)
 	if parseErr != nil {

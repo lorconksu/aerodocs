@@ -6,6 +6,11 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const (
+	testListFmt         = "list: %v"
+	testExpectedTotal1  = "expected total 1, got %d"
+)
+
 func TestLogAndListAudit(t *testing.T) {
 	s := testStore(t)
 
@@ -33,7 +38,7 @@ func TestLogAndListAudit(t *testing.T) {
 		t.Fatalf("list audit: %v", err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
@@ -61,10 +66,10 @@ func TestListAuditWithDateRange(t *testing.T) {
 		Limit: 10,
 	})
 	if err != nil {
-		t.Fatalf("list: %v", err)
+		t.Fatalf(testListFmt, err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
@@ -87,10 +92,10 @@ func TestListAuditWithFromOnly(t *testing.T) {
 		Limit: 10,
 	})
 	if err != nil {
-		t.Fatalf("list: %v", err)
+		t.Fatalf(testListFmt, err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
 	if len(entries) != 1 || entries[0].ID != "a2" {
 		t.Fatalf("expected entry a2")
@@ -110,10 +115,10 @@ func TestListAuditWithToOnly(t *testing.T) {
 		Limit: 10,
 	})
 	if err != nil {
-		t.Fatalf("list: %v", err)
+		t.Fatalf(testListFmt, err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
 	if len(entries) != 1 || entries[0].ID != "a1" {
 		t.Fatalf("expected entry a1")
@@ -141,7 +146,7 @@ func TestListAuditWithUserIDAndOffset(t *testing.T) {
 		Offset: 1,
 	})
 	if err != nil {
-		t.Fatalf("list: %v", err)
+		t.Fatalf(testListFmt, err)
 	}
 	if total != 2 {
 		t.Fatalf("expected total 2 for user filter, got %d", total)
@@ -164,7 +169,7 @@ func TestListAuditWithFilter(t *testing.T) {
 		Limit:  10,
 	})
 	if err != nil {
-		t.Fatalf("list: %v", err)
+		t.Fatalf(testListFmt, err)
 	}
 	if total != 2 {
 		t.Fatalf("expected total 2, got %d", total)

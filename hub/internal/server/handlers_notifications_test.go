@@ -19,18 +19,18 @@ func TestGetSMTPConfig_Default(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/settings/smtp", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testSMTPPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var cfg model.SMTPConfig
 	if err := json.NewDecoder(rec.Body).Decode(&cfg); err != nil {
-		t.Fatalf("decode response: %v", err)
+		t.Fatalf(testDecodeRespErr, err)
 	}
 
 	if cfg.Host != "" {
@@ -52,16 +52,16 @@ func TestUpdateAndGetSMTPConfig(t *testing.T) {
 
 	// PUT new config
 	putBody := mustJSON(t, model.SMTPConfig{
-		Host:     "smtp.example.com",
+		Host:     testSMTPHost,
 		Port:     465,
 		Username: "user@example.com",
 		Password: "supersecret",
-		From:     "noreply@example.com",
+		From:     testNoReplyEmail,
 		TLS:      true,
 		Enabled:  true,
 	})
-	putReq := httptest.NewRequest("PUT", "/api/settings/smtp", putBody)
-	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq := httptest.NewRequest("PUT", testSMTPPath, putBody)
+	putReq.Header.Set("Authorization", testBearerPrefix+token)
 	putRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(putRec, putReq)
 
@@ -76,8 +76,8 @@ func TestUpdateAndGetSMTPConfig(t *testing.T) {
 	}
 
 	// GET the config back
-	getReq := httptest.NewRequest("GET", "/api/settings/smtp", nil)
-	getReq.Header.Set("Authorization", "Bearer "+token)
+	getReq := httptest.NewRequest("GET", testSMTPPath, nil)
+	getReq.Header.Set("Authorization", testBearerPrefix+token)
 	getRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(getRec, getReq)
 
@@ -88,7 +88,7 @@ func TestUpdateAndGetSMTPConfig(t *testing.T) {
 	var cfg model.SMTPConfig
 	json.NewDecoder(getRec.Body).Decode(&cfg)
 
-	if cfg.Host != "smtp.example.com" {
+	if cfg.Host != testSMTPHost {
 		t.Errorf("expected host smtp.example.com, got %q", cfg.Host)
 	}
 	if cfg.Port != 465 {
@@ -101,7 +101,7 @@ func TestUpdateAndGetSMTPConfig(t *testing.T) {
 	if cfg.Password != "********" {
 		t.Errorf("expected masked password, got %q", cfg.Password)
 	}
-	if cfg.From != "noreply@example.com" {
+	if cfg.From != testNoReplyEmail {
 		t.Errorf("expected from noreply@example.com, got %q", cfg.From)
 	}
 	if !cfg.TLS {
@@ -120,13 +120,13 @@ func TestUpdateSMTPConfig_MaskedPasswordPreservesExisting(t *testing.T) {
 
 	// First, store a real password
 	firstPut := mustJSON(t, model.SMTPConfig{
-		Host:     "smtp.example.com",
+		Host:     testSMTPHost,
 		Port:     587,
 		Password: "original-secret",
 		From:     "from@example.com",
 	})
-	req1 := httptest.NewRequest("PUT", "/api/settings/smtp", firstPut)
-	req1.Header.Set("Authorization", "Bearer "+token)
+	req1 := httptest.NewRequest("PUT", testSMTPPath, firstPut)
+	req1.Header.Set("Authorization", testBearerPrefix+token)
 	s.routes().ServeHTTP(httptest.NewRecorder(), req1)
 
 	// Now update with masked password — original should be preserved
@@ -136,13 +136,13 @@ func TestUpdateSMTPConfig_MaskedPasswordPreservesExisting(t *testing.T) {
 		Password: "********",
 		From:     "from@example.com",
 	})
-	req2 := httptest.NewRequest("PUT", "/api/settings/smtp", secondPut)
-	req2.Header.Set("Authorization", "Bearer "+token)
+	req2 := httptest.NewRequest("PUT", testSMTPPath, secondPut)
+	req2.Header.Set("Authorization", testBearerPrefix+token)
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
 	if rec2.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec2.Code, rec2.Body.String())
+		t.Fatalf(testExpected200Body, rec2.Code, rec2.Body.String())
 	}
 
 	// Read password directly from store to confirm it wasn't overwritten
@@ -166,13 +166,13 @@ func TestGetNotificationPreferences_Default(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/notifications/preferences", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testPrefsPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -205,8 +205,8 @@ func TestUpdateNotificationPreferences(t *testing.T) {
 			{EventType: model.NotifyAgentOffline, Enabled: false},
 		},
 	})
-	putReq := httptest.NewRequest("PUT", "/api/notifications/preferences", updateBody)
-	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq := httptest.NewRequest("PUT", testPrefsPath, updateBody)
+	putReq.Header.Set("Authorization", testBearerPrefix+token)
 	putRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(putRec, putReq)
 
@@ -221,8 +221,8 @@ func TestUpdateNotificationPreferences(t *testing.T) {
 	}
 
 	// Verify by GETting preferences
-	getReq := httptest.NewRequest("GET", "/api/notifications/preferences", nil)
-	getReq.Header.Set("Authorization", "Bearer "+token)
+	getReq := httptest.NewRequest("GET", testPrefsPath, nil)
+	getReq.Header.Set("Authorization", testBearerPrefix+token)
 	getRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(getRec, getReq)
 
@@ -249,13 +249,13 @@ func TestListNotificationLog_Empty(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/notifications/log", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testNotifLogPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -289,15 +289,15 @@ func TestSMTPConfig_NonAdminForbidden(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"GET", "/api/settings/smtp"},
-		{"PUT", "/api/settings/smtp"},
-		{"POST", "/api/settings/smtp/test"},
-		{"GET", "/api/notifications/log"},
+		{"GET", testSMTPPath},
+		{"PUT", testSMTPPath},
+		{"POST", testSMTPTestPath},
+		{"GET", testNotifLogPath},
 	}
 
 	for _, ep := range endpoints {
 		req := httptest.NewRequest(ep.method, ep.path, nil)
-		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 		rec := httptest.NewRecorder()
 		s.routes().ServeHTTP(rec, req)
 
@@ -313,8 +313,8 @@ func TestTestSMTP_EmptyRecipient(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body := mustJSON(t, model.SMTPTestRequest{Recipient: ""})
-	req := httptest.NewRequest("POST", "/api/settings/smtp/test", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testSMTPTestPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -328,8 +328,8 @@ func TestTestSMTP_InvalidBody(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/settings/smtp/test", bytes.NewBufferString("not-json"))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testSMTPTestPath, bytes.NewBufferString(testNotJSON))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -345,18 +345,18 @@ func TestTestSMTP_SMTPDialError(t *testing.T) {
 
 	// Configure SMTP with an unreachable host/port so SendEmail fails
 	putBody := mustJSON(t, model.SMTPConfig{
-		Host:    "127.0.0.1",
+		Host:    testLocalhost,
 		Port:    19999, // unlikely to be listening
-		From:    "noreply@example.com",
+		From:    testNoReplyEmail,
 		Enabled: true,
 	})
-	putReq := httptest.NewRequest("PUT", "/api/settings/smtp", putBody)
-	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq := httptest.NewRequest("PUT", testSMTPPath, putBody)
+	putReq.Header.Set("Authorization", testBearerPrefix+token)
 	s.routes().ServeHTTP(httptest.NewRecorder(), putReq)
 
 	body := mustJSON(t, model.SMTPTestRequest{Recipient: "admin@example.com"})
-	req := httptest.NewRequest("POST", "/api/settings/smtp/test", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testSMTPTestPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -386,13 +386,13 @@ func mockSMTPServerForTest(t *testing.T, ln net.Listener, done chan<- struct{}) 
 		if strings.HasPrefix(data, "EHLO") || strings.HasPrefix(data, "HELO") {
 			fmt.Fprintf(conn, "250-localhost\r\n250 OK\r\n")
 		} else if strings.HasPrefix(data, "MAIL FROM") {
-			fmt.Fprintf(conn, "250 OK\r\n")
+			fmt.Fprintf(conn, testSMTP250OK)
 		} else if strings.HasPrefix(data, "RCPT TO") {
-			fmt.Fprintf(conn, "250 OK\r\n")
+			fmt.Fprintf(conn, testSMTP250OK)
 		} else if strings.HasPrefix(data, "DATA") {
 			fmt.Fprintf(conn, "354 Send data\r\n")
 		} else if strings.Contains(data, "\r\n.\r\n") {
-			fmt.Fprintf(conn, "250 OK\r\n")
+			fmt.Fprintf(conn, testSMTP250OK)
 		} else if strings.HasPrefix(data, "QUIT") {
 			fmt.Fprintf(conn, "221 Bye\r\n")
 			break
@@ -420,19 +420,19 @@ func TestTestSMTP_Success(t *testing.T) {
 
 	// Configure SMTP pointing at mock server
 	putBody := mustJSON(t, model.SMTPConfig{
-		Host:    "127.0.0.1",
+		Host:    testLocalhost,
 		Port:    addr.Port,
 		From:    "noreply@aerodocs.local",
 		Enabled: true,
 	})
-	putReq := httptest.NewRequest("PUT", "/api/settings/smtp", putBody)
-	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq := httptest.NewRequest("PUT", testSMTPPath, putBody)
+	putReq.Header.Set("Authorization", testBearerPrefix+token)
 	s.routes().ServeHTTP(httptest.NewRecorder(), putReq)
 
 	// Send test email
 	body := mustJSON(t, model.SMTPTestRequest{Recipient: "admin@example.com"})
-	req := httptest.NewRequest("POST", "/api/settings/smtp/test", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testSMTPTestPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -476,19 +476,19 @@ func TestListNotificationLog_WithEntries(t *testing.T) {
 	// Insert notification log entries using the real admin user ID
 	errMsg := "dial error"
 	if err := s.store.LogNotification("test-id-1", adminID, model.NotifyAgentOnline, "Agent online", "failed", &errMsg); err != nil {
-		t.Fatalf("log notification: %v", err)
+		t.Fatalf(testLogNotifErr, err)
 	}
 	if err := s.store.LogNotification("test-id-2", adminID, model.NotifyAgentOffline, "Agent offline", "sent", nil); err != nil {
-		t.Fatalf("log notification: %v", err)
+		t.Fatalf(testLogNotifErr, err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/notifications/log", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testNotifLogPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -515,18 +515,18 @@ func TestNotificationLog_Pagination(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("log-id-%d", i)
 		if err := s.store.LogNotification(id, adminID, model.NotifyAgentOnline, "subj", "sent", nil); err != nil {
-			t.Fatalf("log notification: %v", err)
+			t.Fatalf(testLogNotifErr, err)
 		}
 	}
 
 	// Fetch with limit=2, offset=1
 	req := httptest.NewRequest("GET", "/api/notifications/log?limit=2&offset=1", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -549,8 +549,8 @@ func TestGetNotificationPreferences_Viewer(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/notifications/preferences", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testPrefsPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -577,8 +577,8 @@ func TestUpdateNotificationPreferences_Viewer(t *testing.T) {
 			{EventType: model.NotifyAgentOnline, Enabled: false},
 		},
 	})
-	req := httptest.NewRequest("PUT", "/api/notifications/preferences", updateBody)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("PUT", testPrefsPath, updateBody)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -592,8 +592,8 @@ func TestUpdateNotificationPreferences_InvalidBody(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/notifications/preferences", bytes.NewBufferString("not-json"))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testPrefsPath, bytes.NewBufferString(testNotJSON))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -608,8 +608,8 @@ func TestUpdateNotificationPreferences_UnknownEventType(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body := bytes.NewBufferString(`{"preferences":[{"event_type":"fake.event","enabled":true}]}`)
-	req := httptest.NewRequest("PUT", "/api/notifications/preferences", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testPrefsPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

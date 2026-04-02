@@ -18,7 +18,7 @@ func TestGetServer_ViewerNonexistentReturns403(t *testing.T) {
 
 	// Request a nonexistent server as viewer — should get 403, not 404
 	req := httptest.NewRequest("GET", "/api/servers/nonexistent-id", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -33,7 +33,7 @@ func TestGetServer_AdminNonexistentReturns404(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/nonexistent-id", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -48,8 +48,8 @@ func TestCreateServer_DuplicateName(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body1, _ := json.Marshal(model.CreateServerRequest{Name: "same-name"})
-	req1 := httptest.NewRequest("POST", "/api/servers", bytes.NewReader(body1))
-	req1.Header.Set("Authorization", "Bearer "+token)
+	req1 := httptest.NewRequest("POST", testServersPath, bytes.NewReader(body1))
+	req1.Header.Set("Authorization", testBearerPrefix+token)
 	rec1 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec1, req1)
 
@@ -58,8 +58,8 @@ func TestCreateServer_DuplicateName(t *testing.T) {
 	}
 
 	body2, _ := json.Marshal(model.CreateServerRequest{Name: "same-name"})
-	req2 := httptest.NewRequest("POST", "/api/servers", bytes.NewReader(body2))
-	req2.Header.Set("Authorization", "Bearer "+token)
+	req2 := httptest.NewRequest("POST", testServersPath, bytes.NewReader(body2))
+	req2.Header.Set("Authorization", testBearerPrefix+token)
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
@@ -75,10 +75,10 @@ func TestDeleteUser_ExclusiveServerAccess(t *testing.T) {
 
 	// Create a viewer user
 	createBody, _ := json.Marshal(model.CreateUserRequest{
-		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+		Username: "viewer1", Email: testViewerEmail, Role: model.RoleViewer,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -88,11 +88,11 @@ func TestDeleteUser_ExclusiveServerAccess(t *testing.T) {
 
 	// Create a server and give only this viewer access
 	s.store.CreateServer(&model.Server{ID: "srv-exclusive", Name: "exclusive-srv", Status: "online", Labels: "{}"})
-	s.store.CreatePermission(viewerID, "srv-exclusive", "/var/log")
+	s.store.CreatePermission(viewerID, "srv-exclusive", testVarLog)
 
 	// Try to delete without force — should get 409
-	delReq := httptest.NewRequest("DELETE", "/api/users/"+viewerID, nil)
-	delReq.Header.Set("Authorization", "Bearer "+adminToken)
+	delReq := httptest.NewRequest("DELETE", testUsersPrefix+viewerID, nil)
+	delReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	delRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec, delReq)
 
@@ -107,8 +107,8 @@ func TestDeleteUser_ExclusiveServerAccess(t *testing.T) {
 	}
 
 	// Delete with force=true — should succeed
-	delReq2 := httptest.NewRequest("DELETE", "/api/users/"+viewerID+"?force=true", nil)
-	delReq2.Header.Set("Authorization", "Bearer "+adminToken)
+	delReq2 := httptest.NewRequest("DELETE", testUsersPrefix+viewerID+"?force=true", nil)
+	delReq2.Header.Set("Authorization", testBearerPrefix+adminToken)
 	delRec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec2, delReq2)
 
@@ -126,8 +126,8 @@ func TestDeleteUser_NoExclusiveAccess(t *testing.T) {
 	createBody, _ := json.Marshal(model.CreateUserRequest{
 		Username: "viewer2", Email: "viewer2@test.com", Role: model.RoleViewer,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -135,12 +135,12 @@ func TestDeleteUser_NoExclusiveAccess(t *testing.T) {
 	json.NewDecoder(createRec.Body).Decode(&createResp)
 
 	// Delete without force — should succeed (no exclusive access)
-	delReq := httptest.NewRequest("DELETE", "/api/users/"+createResp.User.ID, nil)
-	delReq.Header.Set("Authorization", "Bearer "+adminToken)
+	delReq := httptest.NewRequest("DELETE", testUsersPrefix+createResp.User.ID, nil)
+	delReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	delRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec, delReq)
 
 	if delRec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", delRec.Code, delRec.Body.String())
+		t.Fatalf(testExpected200Body, delRec.Code, delRec.Body.String())
 	}
 }

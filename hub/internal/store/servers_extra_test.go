@@ -6,13 +6,19 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const (
+	testViewer2 = "viewer-2"
+	testViewer3 = "viewer-3"
+	testViewer4 = "viewer-4"
+)
+
 // TestUpdateServer_NotFound verifies updating a non-existent server returns an error.
 func TestUpdateServer_NotFound(t *testing.T) {
 	s := testStore(t)
 
 	err := s.UpdateServer("nonexistent", "new-name", "{}")
 	if err == nil {
-		t.Fatal("expected error for missing server")
+		t.Fatal(testErrMissingServer)
 	}
 }
 
@@ -39,7 +45,7 @@ func TestActivateServer_NotFound(t *testing.T) {
 
 	err := s.ActivateServer("nonexistent", "host", "1.2.3.4", "linux", "0.1.0")
 	if err == nil {
-		t.Fatal("expected error for missing server")
+		t.Fatal(testErrMissingServer)
 	}
 }
 
@@ -49,7 +55,7 @@ func TestUpdateServerLastSeen_NotFound(t *testing.T) {
 
 	err := s.UpdateServerLastSeen("nonexistent", nil)
 	if err == nil {
-		t.Fatal("expected error for missing server")
+		t.Fatal(testErrMissingServer)
 	}
 }
 
@@ -58,18 +64,18 @@ func TestListServersForUser_WithStatusFilter(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "viewer-2", Username: "viewer2", Email: "v2@v.com",
+		ID: testViewer2, Username: "viewer2", Email: "v2@v.com",
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
 	s.CreateServer(&model.Server{ID: "s1", Name: "online-srv", Status: "online", Labels: "{}"})
 	s.CreateServer(&model.Server{ID: "s2", Name: "offline-srv", Status: "offline", Labels: "{}"})
 
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p1", "viewer-2", "s1", "/")
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p2", "viewer-2", "s2", "/")
+	s.DB().Exec(testInsertPermSQL, "p1", testViewer2, "s1", "/")
+	s.DB().Exec(testInsertPermSQL, "p2", testViewer2, "s2", "/")
 
 	status := "online"
-	servers, total, err := s.ListServersForUser("viewer-2", model.ServerFilter{Status: &status, Limit: 50})
+	servers, total, err := s.ListServersForUser(testViewer2, model.ServerFilter{Status: &status, Limit: 50})
 	if err != nil {
 		t.Fatalf("list servers for user: %v", err)
 	}
@@ -86,18 +92,18 @@ func TestListServersForUser_WithSearchFilter(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "viewer-3", Username: "viewer3", Email: "v3@v.com",
+		ID: testViewer3, Username: "viewer3", Email: "v3@v.com",
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
 	s.CreateServer(&model.Server{ID: "s1", Name: "web-prod", Status: "online", Labels: "{}"})
 	s.CreateServer(&model.Server{ID: "s2", Name: "db-prod", Status: "online", Labels: "{}"})
 
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p1", "viewer-3", "s1", "/")
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p2", "viewer-3", "s2", "/")
+	s.DB().Exec(testInsertPermSQL, "p1", testViewer3, "s1", "/")
+	s.DB().Exec(testInsertPermSQL, "p2", testViewer3, "s2", "/")
 
 	search := "web"
-	servers, total, err := s.ListServersForUser("viewer-3", model.ServerFilter{Search: &search, Limit: 50})
+	servers, total, err := s.ListServersForUser(testViewer3, model.ServerFilter{Search: &search, Limit: 50})
 	if err != nil {
 		t.Fatalf("list servers for user: %v", err)
 	}
@@ -114,18 +120,18 @@ func TestListServersForUser_Pagination(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "viewer-4", Username: "viewer4", Email: "v4@v.com",
+		ID: testViewer4, Username: "viewer4", Email: "v4@v.com",
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
 	for i := 0; i < 5; i++ {
 		id := "s" + string(rune('1'+i))
 		s.CreateServer(&model.Server{ID: id, Name: "srv-" + id, Status: "online", Labels: "{}"})
-		s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)",
-			"p"+id, "viewer-4", id, "/")
+		s.DB().Exec(testInsertPermSQL,
+			"p"+id, testViewer4, id, "/")
 	}
 
-	servers, total, err := s.ListServersForUser("viewer-4", model.ServerFilter{Limit: 2, Offset: 0})
+	servers, total, err := s.ListServersForUser(testViewer4, model.ServerFilter{Limit: 2, Offset: 0})
 	if err != nil {
 		t.Fatalf("list servers: %v", err)
 	}

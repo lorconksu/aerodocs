@@ -35,8 +35,8 @@ func TestHandleTailLog_ViewerWithPermissionNoAgent(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "srv-tail-perm")
 
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
@@ -46,10 +46,10 @@ func TestHandleTailLog_ViewerWithPermissionNoAgent(t *testing.T) {
 	viewerID := viewerMap["id"].(string)
 
 	// Grant permission for /var/log on this server
-	s.store.CreatePermission(viewerID, serverID, "/var/log")
+	s.store.CreatePermission(viewerID, serverID, testVarLog)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testLogsTailQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -68,14 +68,14 @@ func TestHandleTailLog_AdminWithNoAgent(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "srv-tail-admin")
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testLogsTailQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	// Should reach the agent check and return 502
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -85,8 +85,8 @@ func TestHandleTailLog_WithGrepParam(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "srv-tail-grep")
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog&grep=error", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/logs/tail?path=/var/log/syslog&grep=error", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -103,7 +103,7 @@ func TestHandleTailLog_GrepTooLong(t *testing.T) {
 
 	longGrep := strings.Repeat("x", 257)
 	req := httptest.NewRequest("GET", "/api/servers/s1/logs/tail?path=/var/log/syslog&grep="+longGrep, nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -120,15 +120,15 @@ func TestHandleTailLog_OverflowSSE(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testLogsTailQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	req = req.WithContext(ctx)
 
 	rec := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	body := rec.Body.String()
@@ -141,9 +141,9 @@ func TestHandleTailLog_OverflowSSE(t *testing.T) {
 // that fills the log channel buffer to trigger overflow, then delivers one more chunk.
 func testServerWithAgentAndLogOverflow(t *testing.T) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 

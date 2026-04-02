@@ -14,6 +14,16 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	testGenerateCAFmt          = "generate CA: %v"
+	testServerIDCert           = "s-cert"
+	testExpectCertRenewResp    = "expected a CertRenewResponse to be sent"
+	testExpectCertRenewPayload = "expected CertRenewResponse payload"
+	testServerIDNoCA           = "s-noca"
+	testServerIDBadCSR         = "s-badcsr"
+	testServerIDRouteCert      = "s-route-cert"
+)
+
 func TestExtractServerIDFromCert(t *testing.T) {
 	cert := &x509.Certificate{
 		Subject: pkix.Name{CommonName: "server-42"},
@@ -37,15 +47,15 @@ func TestHandleCertRenewal(t *testing.T) {
 	// Set up CA
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("generate CA: %v", err)
+		t.Fatalf(testGenerateCAFmt, err)
 	}
 	h.caCert = caCert
 	h.caKey = caKey
 
 	// Create and register server
-	st.CreateServer(&model.Server{ID: "s-cert", Name: "cert-test", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testServerIDCert, Name: "cert-test", Status: "online", Labels: "{}"})
 	stream := &mockStream{}
-	h.connMgr.Register("s-cert", stream)
+	h.connMgr.Register(testServerIDCert, stream)
 
 	// Generate a CSR
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -53,7 +63,7 @@ func TestHandleCertRenewal(t *testing.T) {
 		t.Fatalf("generate client key: %v", err)
 	}
 	csrTemplate := &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: "s-cert"},
+		Subject: pkix.Name{CommonName: testServerIDCert},
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, clientKey)
 	if err != nil {
@@ -61,15 +71,15 @@ func TestHandleCertRenewal(t *testing.T) {
 	}
 
 	req := &pb.CertRenewRequest{Csr: csrDER}
-	h.handleCertRenewal("s-cert", stream, req)
+	h.handleCertRenewal(testServerIDCert, stream, req)
 
 	if len(stream.sent) == 0 {
-		t.Fatal("expected a CertRenewResponse to be sent")
+		t.Fatal(testExpectCertRenewResp)
 	}
 
 	resp := stream.sent[0].GetCertRenewResponse()
 	if resp == nil {
-		t.Fatal("expected CertRenewResponse payload")
+		t.Fatal(testExpectCertRenewPayload)
 	}
 	if resp.Error != "" {
 		t.Fatalf("unexpected error: %s", resp.Error)
@@ -86,7 +96,7 @@ func TestHandleCertRenewal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse returned client cert: %v", err)
 	}
-	if clientCert.Subject.CommonName != "s-cert" {
+	if clientCert.Subject.CommonName != testServerIDCert {
 		t.Fatalf("expected CN 's-cert', got '%s'", clientCert.Subject.CommonName)
 	}
 	if time.Until(clientCert.NotAfter) < 11*time.Hour {
@@ -98,19 +108,19 @@ func TestHandleCertRenewal_NoCA(t *testing.T) {
 	h, st := testHandler(t)
 	// No CA configured (caCert and caKey are nil)
 
-	st.CreateServer(&model.Server{ID: "s-noca", Name: "noca-test", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testServerIDNoCA, Name: "noca-test", Status: "online", Labels: "{}"})
 	stream := &mockStream{}
-	h.connMgr.Register("s-noca", stream)
+	h.connMgr.Register(testServerIDNoCA, stream)
 
 	req := &pb.CertRenewRequest{Csr: []byte("fake-csr")}
-	h.handleCertRenewal("s-noca", stream, req)
+	h.handleCertRenewal(testServerIDNoCA, stream, req)
 
 	if len(stream.sent) == 0 {
-		t.Fatal("expected a CertRenewResponse to be sent")
+		t.Fatal(testExpectCertRenewResp)
 	}
 	resp := stream.sent[0].GetCertRenewResponse()
 	if resp == nil {
-		t.Fatal("expected CertRenewResponse payload")
+		t.Fatal(testExpectCertRenewPayload)
 	}
 	if resp.Error != "CA not configured" {
 		t.Fatalf("expected 'CA not configured' error, got '%s'", resp.Error)
@@ -122,24 +132,24 @@ func TestHandleCertRenewal_InvalidCSR(t *testing.T) {
 
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("generate CA: %v", err)
+		t.Fatalf(testGenerateCAFmt, err)
 	}
 	h.caCert = caCert
 	h.caKey = caKey
 
-	st.CreateServer(&model.Server{ID: "s-badcsr", Name: "badcsr-test", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testServerIDBadCSR, Name: "badcsr-test", Status: "online", Labels: "{}"})
 	stream := &mockStream{}
-	h.connMgr.Register("s-badcsr", stream)
+	h.connMgr.Register(testServerIDBadCSR, stream)
 
 	req := &pb.CertRenewRequest{Csr: []byte("not-a-valid-csr")}
-	h.handleCertRenewal("s-badcsr", stream, req)
+	h.handleCertRenewal(testServerIDBadCSR, stream, req)
 
 	if len(stream.sent) == 0 {
-		t.Fatal("expected a CertRenewResponse to be sent")
+		t.Fatal(testExpectCertRenewResp)
 	}
 	resp := stream.sent[0].GetCertRenewResponse()
 	if resp == nil {
-		t.Fatal("expected CertRenewResponse payload")
+		t.Fatal(testExpectCertRenewPayload)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected error for invalid CSR")
@@ -151,14 +161,14 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("generate CA: %v", err)
+		t.Fatalf(testGenerateCAFmt, err)
 	}
 	h.caCert = caCert
 	h.caKey = caKey
 
-	st.CreateServer(&model.Server{ID: "s-route-cert", Name: "route-cert", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testServerIDRouteCert, Name: "route-cert", Status: "online", Labels: "{}"})
 	stream := &mockStream{}
-	h.connMgr.Register("s-route-cert", stream)
+	h.connMgr.Register(testServerIDRouteCert, stream)
 
 	// Generate a valid CSR
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -166,7 +176,7 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 		t.Fatalf("generate client key: %v", err)
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: "s-route-cert"},
+		Subject: pkix.Name{CommonName: testServerIDRouteCert},
 	}, clientKey)
 	if err != nil {
 		t.Fatalf("create CSR: %v", err)
@@ -177,7 +187,7 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 			CertRenewRequest: &pb.CertRenewRequest{Csr: csrDER},
 		},
 	}
-	err = h.routeAgentMessage("s-route-cert", stream, msg)
+	err = h.routeAgentMessage(testServerIDRouteCert, stream, msg)
 	if err != nil {
 		t.Fatalf("route cert renew request: %v", err)
 	}
@@ -187,7 +197,7 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 	}
 	resp := stream.sent[0].GetCertRenewResponse()
 	if resp == nil {
-		t.Fatal("expected CertRenewResponse payload")
+		t.Fatal(testExpectCertRenewPayload)
 	}
 	if resp.Error != "" {
 		t.Fatalf("unexpected error: %s", resp.Error)

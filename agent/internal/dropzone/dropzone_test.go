@@ -6,6 +6,10 @@ import (
 	"testing"
 )
 
+const (
+	testExistingTxt = "existing.txt"
+)
+
 func TestHandleChunk_SingleFile(t *testing.T) {
 	dir := t.TempDir()
 	d := New(dir)
@@ -58,16 +62,16 @@ func TestHandleChunk_EmptyFile(t *testing.T) {
 
 func TestHandleChunk_Overwrite(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("old"), 0644)
+	os.WriteFile(filepath.Join(dir, testExistingTxt), []byte("old"), 0644)
 	d := New(dir)
 
-	d.HandleChunk("req-1", "existing.txt", []byte("new"), false)
+	d.HandleChunk("req-1", testExistingTxt, []byte("new"), false)
 	ack := d.HandleChunk("req-1", "", nil, true)
 	if ack == nil || !ack.Success {
 		t.Fatal("expected success on overwrite")
 	}
 
-	data, _ := os.ReadFile(filepath.Join(dir, "existing.txt"))
+	data, _ := os.ReadFile(filepath.Join(dir, testExistingTxt))
 	if string(data) != "new" {
 		t.Fatalf("expected 'new', got '%s'", string(data))
 	}

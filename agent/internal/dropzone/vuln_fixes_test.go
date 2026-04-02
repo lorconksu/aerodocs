@@ -6,25 +6,30 @@ import (
 	"testing"
 )
 
+const (
+	testVulnFileTxt    = "file.txt"
+	testUploadReqPrefix = ".upload-req-1"
+)
+
 // #41: Verify concurrent uploads to same filename don't corrupt each other.
 func TestHandleChunk_ConcurrentSameFilename(t *testing.T) {
 	dir := t.TempDir()
 	d := New(dir)
 
-	// Upload 1 starts writing "file.txt"
-	ack := d.HandleChunk("req-1", "file.txt", []byte("data-from-upload-1"), false)
+	// Upload 1 starts writing testVulnFileTxt
+	ack := d.HandleChunk("req-1", testVulnFileTxt, []byte("data-from-upload-1"), false)
 	if ack != nil {
 		t.Fatalf("unexpected ack for req-1 first chunk: %v", ack)
 	}
 
-	// Upload 2 starts writing "file.txt" concurrently (different request ID)
-	ack = d.HandleChunk("req-2", "file.txt", []byte("data-from-upload-2"), false)
+	// Upload 2 starts writing testVulnFileTxt concurrently (different request ID)
+	ack = d.HandleChunk("req-2", testVulnFileTxt, []byte("data-from-upload-2"), false)
 	if ack != nil {
 		t.Fatalf("unexpected ack for req-2 first chunk: %v", ack)
 	}
 
 	// Verify temp files exist (not the final file yet)
-	if _, err := os.Stat(filepath.Join(dir, ".upload-req-1")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, testUploadReqPrefix)); err != nil {
 		t.Fatalf("expected temp file for req-1: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".upload-req-2")); err != nil {
@@ -38,7 +43,7 @@ func TestHandleChunk_ConcurrentSameFilename(t *testing.T) {
 	}
 
 	// Verify final file contains upload 1 data
-	data, _ := os.ReadFile(filepath.Join(dir, "file.txt"))
+	data, _ := os.ReadFile(filepath.Join(dir, testVulnFileTxt))
 	if string(data) != "data-from-upload-1" {
 		t.Fatalf("expected 'data-from-upload-1', got '%s'", string(data))
 	}
@@ -50,7 +55,7 @@ func TestHandleChunk_ConcurrentSameFilename(t *testing.T) {
 	}
 
 	// Final file now has upload 2 data (atomic rename)
-	data, _ = os.ReadFile(filepath.Join(dir, "file.txt"))
+	data, _ = os.ReadFile(filepath.Join(dir, testVulnFileTxt))
 	if string(data) != "data-from-upload-2" {
 		t.Fatalf("expected 'data-from-upload-2', got '%s'", string(data))
 	}
@@ -68,7 +73,7 @@ func TestHandleChunk_TempFileCleanedOnSizeExceed(t *testing.T) {
 	}
 
 	// Verify temp file exists
-	tmpPath := filepath.Join(dir, ".upload-req-1")
+	tmpPath := filepath.Join(dir, testUploadReqPrefix)
 	if _, err := os.Stat(tmpPath); err != nil {
 		t.Fatalf("expected temp file: %v", err)
 	}
@@ -99,7 +104,7 @@ func TestCleanup_RemovesTempFiles(t *testing.T) {
 	// Start upload but don't finish
 	d.HandleChunk("req-1", "partial.txt", []byte("some data"), false)
 
-	tmpPath := filepath.Join(dir, ".upload-req-1")
+	tmpPath := filepath.Join(dir, testUploadReqPrefix)
 	if _, err := os.Stat(tmpPath); err != nil {
 		t.Fatalf("expected temp file: %v", err)
 	}

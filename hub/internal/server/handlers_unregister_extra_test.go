@@ -17,13 +17,13 @@ func TestHandleUnregisterServer_NilConnMgr(t *testing.T) {
 	serverID := createTestServer(t, s, token, "nilconn-unregister-server")
 
 	// testServer has nil connMgr, so the "if s.connMgr != nil" block is skipped
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/unregister", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testUnregSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -37,9 +37,9 @@ func TestHandleUploadFile_EmptyMultipart(t *testing.T) {
 	writer := multipart.NewWriter(body)
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/s1/upload", body)
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testS1Upload, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -57,13 +57,13 @@ func TestHandleListUsers_WithUsers(t *testing.T) {
 	// Create an additional user
 	createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/users", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testUsersPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -72,8 +72,8 @@ func TestHandleCreateServer_MissingName(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/servers", mustJSON(t, map[string]string{"name": ""}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testServersPath, mustJSON(t, map[string]string{"name": ""}))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -88,11 +88,11 @@ func TestHandleListAuditLogs_WithFilters(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/audit-logs?limit=5&offset=0", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }

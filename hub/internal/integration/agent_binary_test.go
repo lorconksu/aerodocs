@@ -11,68 +11,58 @@ import (
 	"time"
 )
 
-// TestAgentBinaryConnectAndFileList exercises the full agent binary (main → Run →
-// connectAndStream → dialHub) as a subprocess, producing cross-module coverage
-// via GOCOVERDIR.
-func TestAgentBinaryConnectAndFileList(t *testing.T) {
-	h := StartHarness(t)
-	token := h.SetupAdmin(t)
-	serverID, regToken := h.CreateServer(t, token, "binary-test-server")
-	t.Logf("created server: id=%s", serverID)
-
-	// Start the coverage-instrumented agent binary as a subprocess
-	cancelAgent := h.StartAgentProcess(t, regToken)
-
-	// Poll ConnMgr until agent connects (10s timeout — subprocess startup is slower)
-	deadline := time.Now().Add(10 * time.Second)
-	connected := false
+// waitForAgentConnect polls ConnMgr until the given serverID appears or the timeout expires.
+func waitForAgentConnect(h *TestHarness, serverID string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		for _, id := range h.ConnMgr.ActiveServerIDs() {
-			if id == serverID {
-				connected = true
-				break
-			}
-		}
-		if connected {
-			break
+		if isServerConnected(h, serverID) {
+			return true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !connected {
-		cancelAgent()
-		t.Fatal("agent binary did not connect within 10s")
-	}
-	t.Log("agent binary connected to hub")
+	return false
+}
 
-	// Verify server status is online
+// isServerConnected checks whether a server ID is present in the ConnMgr's active list.
+func isServerConnected(h *TestHarness, serverID string) bool {
+	for _, id := range h.ConnMgr.ActiveServerIDs() {
+		if id == serverID {
+			return true
+		}
+	}
+	return false
+}
+
+// assertServerStatus verifies the server's status in the store matches the expected value.
+func assertServerStatus(t *testing.T, h *TestHarness, serverID, expected string) {
+	t.Helper()
 	srv, err := h.Store.GetServerByID(serverID)
 	if err != nil {
-		cancelAgent()
-		t.Fatalf("get server: %v", err)
+		t.Fatalf("get server %s: %v", serverID, err)
 	}
-	if srv.Status != "online" {
-		cancelAgent()
-		t.Fatalf("expected status 'online', got %q", srv.Status)
+	if srv.Status != expected {
+		t.Fatalf("expected server status %q, got %q", expected, srv.Status)
 	}
+}
 
-	// Create a temp directory with test files for the file list round-trip
-	tmpDir := t.TempDir()
-	testFiles := []string{"readme.txt", "config.yaml", "data.json"}
-	for _, name := range testFiles {
-		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte("test content"), 0o644); err != nil {
-			cancelAgent()
+// createTestFiles writes test files into the given directory and returns the file names.
+func createTestFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	names := []string{"readme.txt", "config.yaml", "data.json"}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("test content"), 0o644); err != nil {
 			t.Fatalf("write test file %s: %v", name, err)
 		}
 	}
+	return names
+}
 
-	// Request file list via HTTP → Hub → gRPC → Agent binary → response
-	path := fmt.Sprintf("/api/servers/%s/files?path=%s", serverID, tmpDir)
-	resp := h.HTTPGet(t, path, token)
+// assertFileListContains verifies that the HTTP file-list response contains all expected files.
+func assertFileListContains(t *testing.T, resp *http.Response, expectedFiles []string) {
+	t.Helper()
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		cancelAgent()
 		t.Fatalf("file list: status=%d body=%s", resp.StatusCode, body)
 	}
 
@@ -82,44 +72,55 @@ func TestAgentBinaryConnectAndFileList(t *testing.T) {
 		} `json:"files"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		cancelAgent()
 		t.Fatalf("decode file list: %v", err)
 	}
 
-	// Verify all test files are present
 	nameSet := make(map[string]bool)
 	for _, f := range result.Files {
 		nameSet[f.Name] = true
 	}
-	for _, expected := range testFiles {
+	for _, expected := range expectedFiles {
 		if !nameSet[expected] {
-			cancelAgent()
 			t.Fatalf("expected %q in file list, got %+v", expected, result.Files)
 		}
 	}
+}
+
+// TestAgentBinaryConnectAndFileList exercises the full agent binary (main -> Run ->
+// connectAndStream -> dialHub) as a subprocess, producing cross-module coverage
+// via GOCOVERDIR.
+func TestAgentBinaryConnectAndFileList(t *testing.T) {
+	h := StartHarness(t)
+	token := h.SetupAdmin(t)
+	serverID, regToken := h.CreateServer(t, token, "binary-test-server")
+	t.Logf("created server: id=%s", serverID)
+
+	cancelAgent := h.StartAgentProcess(t, regToken)
+
+	if !waitForAgentConnect(h, serverID, 10*time.Second) {
+		cancelAgent()
+		t.Fatal("agent binary did not connect within 10s")
+	}
+	t.Log("agent binary connected to hub")
+
+	assertServerStatus(t, h, serverID, "online")
+
+	tmpDir := t.TempDir()
+	testFiles := createTestFiles(t, tmpDir)
+
+	path := fmt.Sprintf("/api/servers/%s/files?path=%s", serverID, tmpDir)
+	resp := h.HTTPGet(t, path, token)
+	assertFileListContains(t, resp, testFiles)
 	t.Logf("file list round-trip verified: found all %d test files", len(testFiles))
 
-	// Graceful shutdown — agent writes coverage data on SIGINT
 	cancelAgent()
-
-	// Give the gRPC handler a moment to process the disconnect
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify agent disconnected from ConnMgr
-	for _, id := range h.ConnMgr.ActiveServerIDs() {
-		if id == serverID {
-			t.Fatal("agent still in ConnMgr after shutdown")
-		}
+	if isServerConnected(h, serverID) {
+		t.Fatal("agent still in ConnMgr after shutdown")
 	}
 	t.Log("agent binary disconnected successfully")
 
-	// Verify server status is offline
-	srv2, err := h.Store.GetServerByID(serverID)
-	if err != nil {
-		t.Fatalf("get server after disconnect: %v", err)
-	}
-	if srv2.Status != "offline" {
-		t.Fatalf("expected status 'offline' after disconnect, got %q", srv2.Status)
-	}
+	assertServerStatus(t, h, serverID, "offline")
 	t.Log("server status is offline after agent binary shutdown")
 }

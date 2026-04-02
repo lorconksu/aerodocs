@@ -10,9 +10,13 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	testLogFile = "test.log"
+)
+
 func TestTailNewLines(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 	os.WriteFile(path, []byte("line1\n"), 0644)
 
 	sendCh := make(chan *pb.AgentMessage, 10)
@@ -46,7 +50,7 @@ func TestTailNewLines(t *testing.T) {
 
 func TestTailWithGrep(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 	os.WriteFile(path, []byte(""), 0644)
 
 	sendCh := make(chan *pb.AgentMessage, 10)
@@ -80,7 +84,7 @@ func TestTailWithGrep(t *testing.T) {
 
 func TestTailFileRotation(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 	os.WriteFile(path, []byte("old content that is quite long\n"), 0644)
 
 	sendCh := make(chan *pb.AgentMessage, 10)
@@ -111,7 +115,7 @@ func TestTailFileRotation(t *testing.T) {
 
 func TestTailStop(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 	os.WriteFile(path, []byte("line1\n"), 0644)
 
 	sendCh := make(chan *pb.AgentMessage, 10)

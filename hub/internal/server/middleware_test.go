@@ -11,26 +11,26 @@ import (
 )
 
 func TestAuthMiddleware_ValidToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testJWTSecret
 	s := &Server{jwtSecret: secret}
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+	access, _, _ := auth.GenerateTokenPair(secret, testUserID1, "admin", 0)
 
 	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uid := UserIDFromContext(r.Context())
-		if uid != "user-1" {
+		if uid != testUserID1 {
 			t.Fatalf("expected user-1, got %s", uid)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Authorization", "Bearer "+access)
+	req.Header.Set("Authorization", testBearerPrefix+access)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 }
 
@@ -38,7 +38,7 @@ func TestAuthMiddleware_MissingToken(t *testing.T) {
 	s := &Server{jwtSecret: "secret"}
 
 	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("handler should not be called")
+		t.Fatal(testHandlerNotCall)
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
@@ -46,23 +46,23 @@ func TestAuthMiddleware_MissingToken(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+		t.Fatalf(testExpected401, rec.Code)
 	}
 }
 
 func TestAuthMiddleware_WrongTokenType(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testJWTSecret
 	s := &Server{jwtSecret: secret}
 
 	// Generate a setup token, try to use it on an access-required endpoint
-	setupToken, _ := auth.GenerateSetupToken(secret, "user-1", "admin")
+	setupToken, _ := auth.GenerateSetupToken(secret, testUserID1, "admin")
 
 	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("handler should not be called")
+		t.Fatal(testHandlerNotCall)
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Authorization", "Bearer "+setupToken)
+	req.Header.Set("Authorization", testBearerPrefix+setupToken)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -75,12 +75,12 @@ func TestRateLimiter(t *testing.T) {
 	rl := newRateLimiter(3, time.Minute)
 
 	for i := 0; i < 3; i++ {
-		if !rl.allow("1.2.3.4") {
+		if !rl.allow(testIP1234) {
 			t.Fatalf("attempt %d should be allowed", i+1)
 		}
 	}
 
-	if rl.allow("1.2.3.4") {
+	if rl.allow(testIP1234) {
 		t.Fatal("4th attempt should be blocked")
 	}
 
@@ -98,7 +98,7 @@ func TestRateLimiter_Middleware_Blocked(t *testing.T) {
 	}))
 
 	// First request using RemoteAddr with port
-	req1 := httptest.NewRequest("POST", "/login", nil)
+	req1 := httptest.NewRequest("POST", testLoginRoute, nil)
 	req1.RemoteAddr = "10.0.0.1:12345"
 	rec1 := httptest.NewRecorder()
 	handler.ServeHTTP(rec1, req1)
@@ -107,7 +107,7 @@ func TestRateLimiter_Middleware_Blocked(t *testing.T) {
 	}
 
 	// Second request same IP, different port - should still be blocked
-	req2 := httptest.NewRequest("POST", "/login", nil)
+	req2 := httptest.NewRequest("POST", testLoginRoute, nil)
 	req2.RemoteAddr = "10.0.0.1:12346"
 	rec2 := httptest.NewRecorder()
 	handler.ServeHTTP(rec2, req2)
@@ -126,7 +126,7 @@ func TestRateLimiter_Middleware_XFFSpoofIgnored(t *testing.T) {
 	}))
 
 	// First request exhausts the limit for RemoteAddr 10.0.0.1
-	req1 := httptest.NewRequest("POST", "/login", nil)
+	req1 := httptest.NewRequest("POST", testLoginRoute, nil)
 	req1.RemoteAddr = "10.0.0.1:40000"
 	rec1 := httptest.NewRecorder()
 	handler.ServeHTTP(rec1, req1)
@@ -136,9 +136,9 @@ func TestRateLimiter_Middleware_XFFSpoofIgnored(t *testing.T) {
 
 	// Second request: same RemoteAddr but spoofed X-Forwarded-For
 	// Should still be blocked because we ignore XFF
-	req2 := httptest.NewRequest("POST", "/login", nil)
+	req2 := httptest.NewRequest("POST", testLoginRoute, nil)
 	req2.RemoteAddr = "10.0.0.1:40001"
-	req2.Header.Set("X-Forwarded-For", "99.99.99.99")
+	req2.Header.Set(testXForwardedFor, "99.99.99.99")
 	rec2 := httptest.NewRecorder()
 	handler.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
@@ -157,7 +157,7 @@ func TestRateLimiter_Middleware_PortStripped(t *testing.T) {
 
 	// Two requests from the same IP but different ports
 	for i, addr := range []string{"192.168.1.1:50000", "192.168.1.1:50001"} {
-		req := httptest.NewRequest("POST", "/login", nil)
+		req := httptest.NewRequest("POST", testLoginRoute, nil)
 		req.RemoteAddr = addr
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -167,7 +167,7 @@ func TestRateLimiter_Middleware_PortStripped(t *testing.T) {
 	}
 
 	// Third request from same IP, different port - should be blocked
-	req3 := httptest.NewRequest("POST", "/login", nil)
+	req3 := httptest.NewRequest("POST", testLoginRoute, nil)
 	req3.RemoteAddr = "192.168.1.1:50002"
 	rec3 := httptest.NewRecorder()
 	handler.ServeHTTP(rec3, req3)
@@ -183,12 +183,12 @@ func TestCORSMiddleware_Dev(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("GET", "/api/test", nil)
+	req := httptest.NewRequest("GET", testAPITest, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 	if rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
 		t.Fatal("expected CORS header in dev mode")
@@ -202,7 +202,7 @@ func TestCORSMiddleware_DevOptions(t *testing.T) {
 		t.Fatal("handler should not be called for OPTIONS preflight")
 	}))
 
-	req := httptest.NewRequest("OPTIONS", "/api/test", nil)
+	req := httptest.NewRequest("OPTIONS", testAPITest, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -218,12 +218,12 @@ func TestCORSMiddleware_Production(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("GET", "/api/test", nil)
+	req := httptest.NewRequest("GET", testAPITest, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("expected no CORS header in production mode")
@@ -231,7 +231,7 @@ func TestCORSMiddleware_Production(t *testing.T) {
 }
 
 func TestAdminOnly_Viewer(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testJWTSecret
 	s := &Server{jwtSecret: secret}
 
 	_, viewerRefresh, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer", 0)
@@ -246,7 +246,7 @@ func TestAdminOnly_Viewer(t *testing.T) {
 		})))
 
 	req := httptest.NewRequest("GET", "/admin", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerAccess)
+	req.Header.Set("Authorization", testBearerPrefix+viewerAccess)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -256,7 +256,7 @@ func TestAdminOnly_Viewer(t *testing.T) {
 }
 
 func TestAdminOnly_Admin(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testJWTSecret
 	s := &Server{jwtSecret: secret}
 
 	adminAccess, _, _ := auth.GenerateTokenPair(secret, "admin-1", "admin", 0)
@@ -269,12 +269,12 @@ func TestAdminOnly_Admin(t *testing.T) {
 		})))
 
 	req := httptest.NewRequest("GET", "/admin", nil)
-	req.Header.Set("Authorization", "Bearer "+adminAccess)
+	req.Header.Set("Authorization", testBearerPrefix+adminAccess)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 	if !called {
 		t.Fatal("expected handler to be called for admin")
@@ -285,7 +285,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	s := &Server{jwtSecret: "test-secret"}
 
 	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("handler should not be called")
+		t.Fatal(testHandlerNotCall)
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
@@ -294,7 +294,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+		t.Fatalf(testExpected401, rec.Code)
 	}
 }
 
@@ -313,14 +313,14 @@ func TestLoggingMiddleware(t *testing.T) {
 		t.Fatal("expected handler to be called")
 	}
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 }
 
 func TestClientIP_UsesXForwardedFor(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1:54321"
-	req.Header.Set("X-Forwarded-For", "203.0.113.1, 10.0.0.1")
+	req.RemoteAddr = testIP10054321
+	req.Header.Set(testXForwardedFor, "203.0.113.1, 10.0.0.1")
 
 	ip := clientIP(req)
 	if ip != "203.0.113.1" {
@@ -330,11 +330,11 @@ func TestClientIP_UsesXForwardedFor(t *testing.T) {
 
 func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1:54321"
+	req.RemoteAddr = testIP10054321
 	// No X-Forwarded-For header
 
 	ip := clientIP(req)
-	if ip != "10.0.0.1" {
+	if ip != testIP10001 {
 		t.Fatalf("expected '10.0.0.1' (RemoteAddr fallback), got '%s'", ip)
 	}
 }
@@ -344,7 +344,7 @@ func TestClientIP_RemoteAddr(t *testing.T) {
 	req.RemoteAddr = "192.168.1.1:12345"
 
 	ip := clientIP(req)
-	if ip != "192.168.1.1" {
+	if ip != testIP19216811 {
 		t.Fatalf("expected '192.168.1.1', got '%s'", ip)
 	}
 }
@@ -357,7 +357,7 @@ func TestSecurityHeaders(t *testing.T) {
 	handler := securityHeaders(dummy)
 
 	t.Run("common headers on API request", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/servers", nil)
+		req := httptest.NewRequest("GET", testServersPath, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -373,7 +373,7 @@ func TestSecurityHeaders(t *testing.T) {
 			}
 		}
 
-		if csp := rec.Header().Get("Content-Security-Policy"); csp != "" {
+		if csp := rec.Header().Get(testCSPHeader); csp != "" {
 			t.Errorf("CSP should not be set on /api/ paths, got %q", csp)
 		}
 	})
@@ -383,7 +383,7 @@ func TestSecurityHeaders(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
-		if rec.Header().Get("Content-Security-Policy") == "" {
+		if rec.Header().Get(testCSPHeader) == "" {
 			t.Error("expected Content-Security-Policy on root path, got empty")
 		}
 	})
@@ -393,7 +393,7 @@ func TestSecurityHeaders(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
-		if rec.Header().Get("Content-Security-Policy") == "" {
+		if rec.Header().Get(testCSPHeader) == "" {
 			t.Error("expected Content-Security-Policy on non-API path, got empty")
 		}
 	})
@@ -421,15 +421,15 @@ func TestEvictOldest(t *testing.T) {
 	now := time.Now()
 
 	// Add entries with different timestamps
-	rl.attempts["1.1.1.1"] = []time.Time{now.Add(-3 * time.Minute)}
+	rl.attempts[testIP1111] = []time.Time{now.Add(-3 * time.Minute)}
 	rl.attempts["2.2.2.2"] = []time.Time{now.Add(-1 * time.Minute)}
 	rl.attempts["3.3.3.3"] = []time.Time{now.Add(-2 * time.Minute)}
 
 	// Evict oldest, skipping 1.1.1.1 (oldest but should be preserved)
-	rl.evictOldest("1.1.1.1")
+	rl.evictOldest(testIP1111)
 
 	// 1.1.1.1 should still exist (skipped)
-	if _, ok := rl.attempts["1.1.1.1"]; !ok {
+	if _, ok := rl.attempts[testIP1111]; !ok {
 		t.Fatal("expected 1.1.1.1 to be preserved (skipIP)")
 	}
 	// 3.3.3.3 should be evicted (oldest after skip)
@@ -445,15 +445,15 @@ func TestEvictOldest(t *testing.T) {
 // TestEvictOldest_EmptyMap verifies evictOldest is a no-op on empty map.
 func TestEvictOldest_EmptyMap(t *testing.T) {
 	rl := newRateLimiter(10, time.Minute)
-	rl.evictOldest("1.1.1.1") // should not panic
+	rl.evictOldest(testIP1111) // should not panic
 }
 
 // TestEvictOldest_OnlySkipIP verifies evictOldest when only the skipIP exists.
 func TestEvictOldest_OnlySkipIP(t *testing.T) {
 	rl := newRateLimiter(10, time.Minute)
-	rl.attempts["1.1.1.1"] = []time.Time{time.Now()}
-	rl.evictOldest("1.1.1.1")
-	if _, ok := rl.attempts["1.1.1.1"]; !ok {
+	rl.attempts[testIP1111] = []time.Time{time.Now()}
+	rl.evictOldest(testIP1111)
+	if _, ok := rl.attempts[testIP1111]; !ok {
 		t.Fatal("expected skipIP to be preserved")
 	}
 }
@@ -490,17 +490,17 @@ func TestRateLimiter_EvictsWhenFull(t *testing.T) {
 func TestRateLimiter_ExpiredEntriesCleanedUp(t *testing.T) {
 	rl := newRateLimiter(5, 100*time.Millisecond)
 
-	rl.allow("1.2.3.4")
+	rl.allow(testIP1234)
 	time.Sleep(150 * time.Millisecond) // let the entry expire
 
 	// Next call should clean up the expired entry
-	if !rl.allow("1.2.3.4") {
+	if !rl.allow(testIP1234) {
 		t.Fatal("expected allow after expiry")
 	}
 
 	// The map should have exactly one entry (the new one)
-	if len(rl.attempts["1.2.3.4"]) != 1 {
-		t.Fatalf("expected 1 attempt after cleanup, got %d", len(rl.attempts["1.2.3.4"]))
+	if len(rl.attempts[testIP1234]) != 1 {
+		t.Fatalf("expected 1 attempt after cleanup, got %d", len(rl.attempts[testIP1234]))
 	}
 }
 
@@ -514,17 +514,17 @@ func TestRateLimiter_Middleware_NoPort(t *testing.T) {
 	}))
 
 	// RemoteAddr without port
-	req := httptest.NewRequest("POST", "/login", nil)
-	req.RemoteAddr = "10.0.0.1" // no port
+	req := httptest.NewRequest("POST", testLoginRoute, nil)
+	req.RemoteAddr = testIP10001 // no port
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 
 	// Second request same IP (no port) - should be blocked
-	req2 := httptest.NewRequest("POST", "/login", nil)
-	req2.RemoteAddr = "10.0.0.1"
+	req2 := httptest.NewRequest("POST", testLoginRoute, nil)
+	req2.RemoteAddr = testIP10001
 	rec2 := httptest.NewRecorder()
 	handler.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
@@ -535,8 +535,8 @@ func TestRateLimiter_Middleware_NoPort(t *testing.T) {
 // TestClientIP_SingleXFF verifies clientIP with a single X-Forwarded-For value (no comma).
 func TestClientIP_SingleXFF(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1:54321"
-	req.Header.Set("X-Forwarded-For", "203.0.113.5")
+	req.RemoteAddr = testIP10054321
+	req.Header.Set(testXForwardedFor, "203.0.113.5")
 
 	ip := clientIP(req)
 	if ip != "203.0.113.5" {
@@ -547,21 +547,21 @@ func TestClientIP_SingleXFF(t *testing.T) {
 // TestClientIP_RemoteAddrNoPort verifies clientIP when RemoteAddr has no port.
 func TestClientIP_RemoteAddrNoPort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "192.168.1.1" // no port
+	req.RemoteAddr = testIP19216811 // no port
 
 	ip := clientIP(req)
-	if ip != "192.168.1.1" {
+	if ip != testIP19216811 {
 		t.Fatalf("expected '192.168.1.1', got '%s'", ip)
 	}
 }
 
 // TestAuthMiddleware_BlacklistedToken verifies that a blacklisted token is rejected.
 func TestAuthMiddleware_BlacklistedToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testJWTSecret
 	bl := auth.NewTokenBlacklist()
 	s := &Server{jwtSecret: secret, tokenBlacklist: bl}
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+	access, _, _ := auth.GenerateTokenPair(secret, testUserID1, "admin", 0)
 
 	// Parse the token to get its JTI and blacklist it
 	claims, err := auth.ValidateToken(secret, access)
@@ -575,11 +575,11 @@ func TestAuthMiddleware_BlacklistedToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Authorization", "Bearer "+access)
+	req.Header.Set("Authorization", testBearerPrefix+access)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+		t.Fatalf(testExpected401, rec.Code)
 	}
 }

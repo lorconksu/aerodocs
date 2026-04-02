@@ -6,10 +6,20 @@ import (
 	"testing"
 )
 
+const (
+	testUnexpectedErrFmt = "unexpected error: %v"
+	testEtcShadow        = "/etc/shadow"
+	testFileTxt          = "file.txt"
+	testHelloWorld       = "hello world"
+	testTestTxt          = "test.txt"
+	testReadFileFmt      = "read file: %v"
+	testTextPlain        = "text/plain"
+)
+
 func TestListDir(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "subdir"), 0755)
-	os.WriteFile(filepath.Join(dir, "file.txt"), []byte("hello"), 0644)
+	os.WriteFile(filepath.Join(dir, testFileTxt), []byte("hello"), 0644)
 	os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# hi"), 0644)
 
 	resp, err := ListDir(dir)
@@ -27,8 +37,8 @@ func TestListDir(t *testing.T) {
 	if resp.Files[0].Name != "subdir" || !resp.Files[0].IsDir {
 		t.Fatalf("expected first entry to be dir 'subdir', got %s (is_dir=%v)", resp.Files[0].Name, resp.Files[0].IsDir)
 	}
-	if resp.Files[1].Name != "file.txt" || resp.Files[1].IsDir {
-		t.Fatalf("expected second entry to be file 'file.txt', got %s", resp.Files[1].Name)
+	if resp.Files[1].Name != testFileTxt || resp.Files[1].IsDir {
+		t.Fatalf("expected second entry to be file '%s', got %s", testFileTxt, resp.Files[1].Name)
 	}
 }
 
@@ -52,18 +62,18 @@ func TestListDir_PathTraversal(t *testing.T) {
 
 func TestReadFile(t *testing.T) {
 	dir := t.TempDir()
-	content := []byte("hello world")
-	path := filepath.Join(dir, "test.txt")
+	content := []byte(testHelloWorld)
+	path := filepath.Join(dir, testTestTxt)
 	os.WriteFile(path, content, 0644)
 
 	resp, err := ReadFile(path, 0, 1048576)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
 		t.Fatalf("unexpected error: %s", resp.Error)
 	}
-	if string(resp.Data) != "hello world" {
+	if string(resp.Data) != testHelloWorld {
 		t.Fatalf("expected 'hello world', got '%s'", string(resp.Data))
 	}
 	if resp.TotalSize != 11 {
@@ -73,13 +83,13 @@ func TestReadFile(t *testing.T) {
 
 func TestReadFile_WithOffset(t *testing.T) {
 	dir := t.TempDir()
-	content := []byte("hello world")
-	path := filepath.Join(dir, "test.txt")
+	content := []byte(testHelloWorld)
+	path := filepath.Join(dir, testTestTxt)
 	os.WriteFile(path, content, 0644)
 
 	resp, err := ReadFile(path, 6, 1048576)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if string(resp.Data) != "world" {
 		t.Fatalf("expected 'world', got '%s'", string(resp.Data))
@@ -89,12 +99,12 @@ func TestReadFile_WithOffset(t *testing.T) {
 func TestReadFile_LimitEnforced(t *testing.T) {
 	dir := t.TempDir()
 	content := make([]byte, 100)
-	path := filepath.Join(dir, "test.txt")
+	path := filepath.Join(dir, testTestTxt)
 	os.WriteFile(path, content, 0644)
 
 	resp, err := ReadFile(path, 0, 50)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if len(resp.Data) != 50 {
 		t.Fatalf("expected 50 bytes, got %d", len(resp.Data))
@@ -138,7 +148,7 @@ func TestListDir_SymlinkEscape(t *testing.T) {
 	// Listing through the symlink should be rejected
 	resp, err := ListDir(linkPath)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testUnexpectedErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected symlink escape to be rejected, but it was allowed")
@@ -164,7 +174,7 @@ func TestReadFile_SymlinkEscape(t *testing.T) {
 	// Reading through the symlink should be rejected
 	resp, err := ReadFile(linkPath, 0, 1048576)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testUnexpectedErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected symlink escape to be rejected, but it was allowed")
@@ -179,7 +189,7 @@ func TestValidatePath_BlockedPaths(t *testing.T) {
 		path      string
 		shouldErr bool
 	}{
-		{"/etc/shadow", true},
+		{testEtcShadow, true},
 		{"/etc/shadow/subpath", true},
 		{"/etc/gshadow", true},
 		{"/etc/sudoers", true},
@@ -206,9 +216,9 @@ func TestValidatePath_BlockedPaths(t *testing.T) {
 }
 
 func TestListDir_BlockedPath(t *testing.T) {
-	resp, err := ListDir("/etc/shadow")
+	resp, err := ListDir(testEtcShadow)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testUnexpectedErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected blocked path error")
@@ -216,9 +226,9 @@ func TestListDir_BlockedPath(t *testing.T) {
 }
 
 func TestReadFile_BlockedPath(t *testing.T) {
-	resp, err := ReadFile("/etc/shadow", 0, 1048576)
+	resp, err := ReadFile(testEtcShadow, 0, 1048576)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testUnexpectedErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected blocked path error")
@@ -227,7 +237,7 @@ func TestReadFile_BlockedPath(t *testing.T) {
 
 func TestDetectMIME(t *testing.T) {
 	tests := map[string]string{
-		"file.txt":    "text/plain",
+		testFileTxt:   testTextPlain,
 		"file.json":   "application/json",
 		"file.md":     "text/markdown",
 		"file.yaml":   "text/yaml",
@@ -235,8 +245,8 @@ func TestDetectMIME(t *testing.T) {
 		"file.go":     "text/x-go",
 		"file.py":     "text/x-python",
 		"file.sh":     "text/x-sh",
-		"file.conf":   "text/plain",
-		"file.log":    "text/plain",
+		"file.conf":   testTextPlain,
+		"file.log":    testTextPlain,
 		"unknown.xyz": "application/octet-stream",
 	}
 	for name, expected := range tests {

@@ -9,6 +9,12 @@ import (
 	"testing"
 )
 
+const (
+	testUnexpectedErrStrFmt = "unexpected error: %s"
+	testUnexpectedGoErrFmt  = "unexpected Go error: %v"
+	testListDirFmt          = "list dir: %v"
+)
+
 // TestListDir_Empty verifies listing an empty directory returns empty list.
 func TestListDir_Empty(t *testing.T) {
 	dir := t.TempDir()
@@ -18,7 +24,7 @@ func TestListDir_Empty(t *testing.T) {
 		t.Fatalf("list empty dir: %v", err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if len(resp.Files) != 0 {
 		t.Fatalf("expected 0 files, got %d", len(resp.Files))
@@ -29,7 +35,7 @@ func TestListDir_Empty(t *testing.T) {
 func TestListDir_RelativePath(t *testing.T) {
 	resp, err := ListDir("relative/path")
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf(testUnexpectedGoErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected error in response for relative path")
@@ -40,7 +46,7 @@ func TestListDir_RelativePath(t *testing.T) {
 func TestReadFile_PathTraversal(t *testing.T) {
 	resp, err := ReadFile("/tmp/../etc/passwd", 0, 100)
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf(testUnexpectedGoErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected error in response for path traversal")
@@ -53,7 +59,7 @@ func TestReadFile_Directory(t *testing.T) {
 
 	resp, err := ReadFile(dir, 0, 1048576)
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf(testUnexpectedGoErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected error when reading a directory")
@@ -70,10 +76,10 @@ func TestReadFile_LimitOverMax(t *testing.T) {
 	// Request more than MaxReadSize — should be clamped
 	resp, err := ReadFile(path, 0, MaxReadSize*2)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 }
 
@@ -86,10 +92,10 @@ func TestReadFile_ZeroLimit(t *testing.T) {
 
 	resp, err := ReadFile(path, 0, 0)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if string(resp.Data) != "test content" {
 		t.Fatalf("expected 'test content', got '%s'", string(resp.Data))
@@ -99,12 +105,12 @@ func TestReadFile_ZeroLimit(t *testing.T) {
 // TestDetectMIME_AllTypes covers all MIME type branches.
 func TestDetectMIME_AllTypes(t *testing.T) {
 	tests := map[string]string{
-		"file.txt":      "text/plain",
-		"file.conf":     "text/plain",
-		"file.cfg":      "text/plain",
-		"file.ini":      "text/plain",
-		"file.log":      "text/plain",
-		"file.env":      "text/plain",
+		"file.txt":      testTextPlain,
+		"file.conf":     testTextPlain,
+		"file.cfg":      testTextPlain,
+		"file.ini":      testTextPlain,
+		"file.log":      testTextPlain,
+		"file.env":      testTextPlain,
 		"file.json":     "application/json",
 		"file.md":       "text/markdown",
 		"file.markdown": "text/markdown",
@@ -199,7 +205,7 @@ func TestListDir_UnreadableDir(t *testing.T) {
 
 	resp, err := ListDir(noReadDir)
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf(testUnexpectedGoErrFmt, err)
 	}
 	// Should return an error in the response
 	if resp.Error == "" {
@@ -241,10 +247,10 @@ func TestReadFile_NegativeOffset_SmallFile(t *testing.T) {
 
 	resp, err := ReadFile(path, -1, MaxReadSize)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if string(resp.Data) != "small file content" {
 		t.Fatalf("expected full content, got %q", string(resp.Data))
@@ -268,10 +274,10 @@ func TestReadFile_NegativeOffset_LargeFile(t *testing.T) {
 
 	resp, err := ReadFile(path, -1, 50)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if len(resp.Data) != 50 {
 		t.Fatalf("expected 50 bytes, got %d", len(resp.Data))
@@ -296,10 +302,10 @@ func TestReadFile_NegativeOffset_ExactLimit(t *testing.T) {
 
 	resp, err := ReadFile(path, -1, 100)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if len(resp.Data) != 100 {
 		t.Fatalf("expected 100 bytes, got %d", len(resp.Data))
@@ -315,7 +321,7 @@ func TestReadFile_PositiveOffset_StillWorks(t *testing.T) {
 
 	resp, err := ReadFile(path, 5, 100)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if string(resp.Data) != "56789" {
 		t.Fatalf("expected '56789', got %q", string(resp.Data))
@@ -342,10 +348,10 @@ func TestListDir_SkipsFIFO(t *testing.T) {
 
 	resp, err := ListDir(dir)
 	if err != nil {
-		t.Fatalf("list dir: %v", err)
+		t.Fatalf(testListDirFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 
 	// Should only have the regular file, not the FIFO
@@ -372,10 +378,10 @@ func TestListDir_DirsFirstOrdering(t *testing.T) {
 
 	resp, err := ListDir(dir)
 	if err != nil {
-		t.Fatalf("list dir: %v", err)
+		t.Fatalf(testListDirFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if len(resp.Files) != 4 {
 		t.Fatalf("expected 4 entries, got %d", len(resp.Files))
@@ -406,10 +412,10 @@ func TestListDir_LargeDirectory(t *testing.T) {
 
 	resp, err := ListDir(dir)
 	if err != nil {
-		t.Fatalf("list dir: %v", err)
+		t.Fatalf(testListDirFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if len(resp.Files) != numFiles {
 		t.Fatalf("expected %d entries, got %d", numFiles, len(resp.Files))
@@ -423,7 +429,7 @@ func TestListDir_ReadableFlag(t *testing.T) {
 
 	resp, err := ListDir(dir)
 	if err != nil {
-		t.Fatalf("list dir: %v", err)
+		t.Fatalf(testListDirFmt, err)
 	}
 	if len(resp.Files) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(resp.Files))
@@ -448,7 +454,7 @@ func TestReadFile_NoReadPermission(t *testing.T) {
 
 	resp, err := ReadFile(path, 0, 100)
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf(testUnexpectedGoErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected error for unreadable file")
@@ -467,10 +473,10 @@ func TestReadFile_PooledBufferPath(t *testing.T) {
 	// io.ReadFull returns ErrUnexpectedEOF which exercises the pool return.
 	resp, err := ReadFile(path, 0, MaxReadSize)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if string(resp.Data) != string(content) {
 		t.Fatalf("expected %q, got %q", string(content), string(resp.Data))
@@ -482,7 +488,7 @@ func TestReadFile_PooledBufferPath(t *testing.T) {
 func TestListDir_NonexistentPath(t *testing.T) {
 	resp, err := ListDir("/nonexistent/dir/12345")
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf(testUnexpectedGoErrFmt, err)
 	}
 	if resp.Error == "" {
 		t.Fatal("expected error for nonexistent path")
@@ -498,10 +504,10 @@ func TestReadFile_NegativeLimit(t *testing.T) {
 
 	resp, err := ReadFile(path, 0, -5)
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf(testReadFileFmt, err)
 	}
 	if resp.Error != "" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+		t.Fatalf(testUnexpectedErrStrFmt, resp.Error)
 	}
 	if string(resp.Data) != string(content) {
 		t.Fatalf("expected %q, got %q", string(content), string(resp.Data))

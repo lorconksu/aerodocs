@@ -14,6 +14,9 @@ import (
 
 const (
 	testGenerateCAFmt         = "GenerateCA: %v"
+	testGenerateCAErrFmt      = "GenerateCA() error: %v"
+	testGenerateKeyErrFmt     = "GenerateKey error: %v"
+	testCreateCSRErrFmt       = "CreateCertificateRequest error: %v"
 	testServerCN              = "aerodocs-hub"
 	testGenerateServerCertFmt = "GenerateServerCert() error: %v"
 )
@@ -21,7 +24,7 @@ const (
 func TestGenerateCA(t *testing.T) {
 	cert, key, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA() error: %v", err)
+		t.Fatalf(testGenerateCAErrFmt, err)
 	}
 
 	if cert == nil {
@@ -54,13 +57,13 @@ func TestGenerateCA(t *testing.T) {
 func TestSignCSR(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA() error: %v", err)
+		t.Fatalf(testGenerateCAErrFmt, err)
 	}
 
 	// Generate agent keypair and CSR
 	agentKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("GenerateKey error: %v", err)
+		t.Fatalf(testGenerateKeyErrFmt, err)
 	}
 
 	csrTemplate := &x509.CertificateRequest{
@@ -68,7 +71,7 @@ func TestSignCSR(t *testing.T) {
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, agentKey)
 	if err != nil {
-		t.Fatalf("CreateCertificateRequest error: %v", err)
+		t.Fatalf(testCreateCSRErrFmt, err)
 	}
 
 	serverID := "agent-server-001"
@@ -124,12 +127,12 @@ func TestSignCSR(t *testing.T) {
 func TestSignCSR_ExpiredCert(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA() error: %v", err)
+		t.Fatalf(testGenerateCAErrFmt, err)
 	}
 
 	agentKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("GenerateKey error: %v", err)
+		t.Fatalf(testGenerateKeyErrFmt, err)
 	}
 
 	csrTemplate := &x509.CertificateRequest{
@@ -137,7 +140,7 @@ func TestSignCSR_ExpiredCert(t *testing.T) {
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, agentKey)
 	if err != nil {
-		t.Fatalf("CreateCertificateRequest error: %v", err)
+		t.Fatalf(testCreateCSRErrFmt, err)
 	}
 
 	// Sign with 0 duration => already expired
@@ -160,7 +163,7 @@ func TestSignCSR_ExpiredCert(t *testing.T) {
 func TestSignCSR_InvalidCSR(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA() error: %v", err)
+		t.Fatalf(testGenerateCAErrFmt, err)
 	}
 
 	_, err = ca.SignCSR(caCert, caKey, []byte("garbage"), "server-1", 12*time.Hour)
@@ -172,12 +175,12 @@ func TestSignCSR_InvalidCSR(t *testing.T) {
 func TestSignCSR_BadSignature(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA() error: %v", err)
+		t.Fatalf(testGenerateCAErrFmt, err)
 	}
 
 	agentKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("GenerateKey error: %v", err)
+		t.Fatalf(testGenerateKeyErrFmt, err)
 	}
 
 	csrTemplate := &x509.CertificateRequest{
@@ -185,7 +188,7 @@ func TestSignCSR_BadSignature(t *testing.T) {
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, agentKey)
 	if err != nil {
-		t.Fatalf("CreateCertificateRequest error: %v", err)
+		t.Fatalf(testCreateCSRErrFmt, err)
 	}
 
 	// Tamper with the last few bytes (signature portion)
@@ -223,12 +226,12 @@ func TestGenerateCA_UniqueSerials(t *testing.T) {
 func TestSignCSR_UniqueSerials(t *testing.T) {
 	caCert, caKey, err := ca.GenerateCA()
 	if err != nil {
-		t.Fatalf("GenerateCA() error: %v", err)
+		t.Fatalf(testGenerateCAErrFmt, err)
 	}
 
 	agentKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("GenerateKey error: %v", err)
+		t.Fatalf(testGenerateKeyErrFmt, err)
 	}
 
 	csrTemplate := &x509.CertificateRequest{
@@ -236,7 +239,7 @@ func TestSignCSR_UniqueSerials(t *testing.T) {
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, agentKey)
 	if err != nil {
-		t.Fatalf("CreateCertificateRequest error: %v", err)
+		t.Fatalf(testCreateCSRErrFmt, err)
 	}
 
 	cert1, err := ca.SignCSR(caCert, caKey, csrDER, "agent-1", 12*time.Hour)

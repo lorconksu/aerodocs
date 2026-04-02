@@ -12,8 +12,8 @@ import (
 // createTestServer creates a server in the store and returns its ID.
 func createTestServer(t *testing.T, s *Server, adminToken, name string) string {
 	t.Helper()
-	req := httptest.NewRequest("POST", "/api/servers", mustJSON(t, model.CreateServerRequest{Name: name}))
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("POST", testServersPath, mustJSON(t, model.CreateServerRequest{Name: name}))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
@@ -29,10 +29,10 @@ func createTestViewer(t *testing.T, s *Server, adminToken, username, email strin
 	t.Helper()
 
 	// Create user
-	createReq := httptest.NewRequest("POST", "/api/users", mustJSON(t, model.CreateUserRequest{
+	createReq := httptest.NewRequest("POST", testUsersPath, mustJSON(t, model.CreateUserRequest{
 		Username: username, Email: email, Role: model.RoleViewer,
 	}))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
@@ -49,13 +49,13 @@ func TestHandleListPaths_Empty(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "srv-list-empty")
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/paths", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testPathsSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -77,10 +77,10 @@ func TestHandleCreatePath_Success(t *testing.T) {
 
 	body := mustJSON(t, map[string]string{
 		"user_id": viewerID,
-		"path":    "/var/log",
+		"path":    testVarLog,
 	})
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/paths", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testPathsSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -90,7 +90,7 @@ func TestHandleCreatePath_Success(t *testing.T) {
 
 	var perm model.Permission
 	json.NewDecoder(rec.Body).Decode(&perm)
-	if perm.Path != "/var/log" {
+	if perm.Path != testVarLog {
 		t.Fatalf("expected path '/var/log', got '%s'", perm.Path)
 	}
 	if perm.UserID != viewerID {
@@ -111,20 +111,20 @@ func TestHandleCreatePath_MissingFields(t *testing.T) {
 		name string
 		body interface{}
 	}{
-		{"missing user_id", map[string]string{"path": "/var/log"}},
+		{"missing user_id", map[string]string{"path": testVarLog}},
 		{"missing path", map[string]string{"user_id": "some-id"}},
 		{"both missing", map[string]string{}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/paths", mustJSON(t, tc.body))
-			req.Header.Set("Authorization", "Bearer "+adminToken)
+			req := httptest.NewRequest("POST", testServersPrefix+serverID+testPathsSuffix, mustJSON(t, tc.body))
+			req.Header.Set("Authorization", testBearerPrefix+adminToken)
 			rec := httptest.NewRecorder()
 			s.routes().ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+				t.Fatalf(testExpected400Body, rec.Code, rec.Body.String())
 			}
 		})
 	}
@@ -139,11 +139,11 @@ func TestHandleDeletePath_Success(t *testing.T) {
 	viewerID, _ := createTestViewer(t, s, adminToken, "pathdelviewer", "pathdelviewer@test.com")
 
 	// Create the permission
-	createReq := httptest.NewRequest("POST", "/api/servers/"+serverID+"/paths", mustJSON(t, map[string]string{
+	createReq := httptest.NewRequest("POST", testServersPrefix+serverID+testPathsSuffix, mustJSON(t, map[string]string{
 		"user_id": viewerID,
-		"path":    "/var/log",
+		"path":    testVarLog,
 	}))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
@@ -154,8 +154,8 @@ func TestHandleDeletePath_Success(t *testing.T) {
 	json.NewDecoder(createRec.Body).Decode(&perm)
 
 	// Delete the permission
-	delReq := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/paths/"+perm.ID, nil)
-	delReq.Header.Set("Authorization", "Bearer "+adminToken)
+	delReq := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/paths/"+perm.ID, nil)
+	delReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	delRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec, delReq)
 
@@ -170,8 +170,8 @@ func TestHandleDeletePath_NotFound(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "srv-delete-notfound")
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/paths/nonexistent-id", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/paths/nonexistent-id", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -186,13 +186,13 @@ func TestHandleGetUserPaths_Admin(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "srv-my-paths-admin")
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/my-paths", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/my-paths", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -214,7 +214,7 @@ func TestHandleGetUserPaths_Viewer(t *testing.T) {
 	_ = viewerToken // We won't use this — we'll register a second viewer
 
 	// Grant path to the viewer
-	s.store.CreatePermission(viewerID, serverID, "/var/log")
+	s.store.CreatePermission(viewerID, serverID, testVarLog)
 
 	// To test the viewer's own my-paths, we need a token for viewerID.
 	// The createViewerAndGetToken helper creates a "viewertest" user.
@@ -229,13 +229,13 @@ func TestHandleGetUserPaths_Viewer(t *testing.T) {
 	// Grant path to viewertest
 	s.store.CreatePermission(user.ID, serverID, "/etc")
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/my-paths", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/my-paths", nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -253,8 +253,8 @@ func TestHandleListPaths_RequiresAdmin(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "srv-list-requires-admin")
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/paths", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testPathsSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -285,8 +285,8 @@ func TestHandleCreatePath_PathTraversal(t *testing.T) {
 				"user_id": viewerID,
 				"path":    tc.path,
 			})
-			req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/paths", body)
-			req.Header.Set("Authorization", "Bearer "+adminToken)
+			req := httptest.NewRequest("POST", testServersPrefix+serverID+testPathsSuffix, body)
+			req.Header.Set("Authorization", testBearerPrefix+adminToken)
 			rec := httptest.NewRecorder()
 			s.routes().ServeHTTP(rec, req)
 
@@ -303,13 +303,13 @@ func TestHandleCreatePath_InvalidBody(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, adminToken, "srv-invalid-body")
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/paths", mustJSON(t, "not an object"))
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testPathsSuffix, mustJSON(t, "not an object"))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	// A string body parses to empty struct fields, so expect 400
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected400Body, rec.Code, rec.Body.String())
 	}
 }

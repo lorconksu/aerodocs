@@ -71,9 +71,9 @@ func (m *mockGRPCStreamWithLog) Send(msg *pb.HubMessage) error {
 // that also handles log session delivery.
 func testServerWithAgentAndLog(t *testing.T) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -121,8 +121,8 @@ func TestHandleTailLog_StreamsData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testLogsTailQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	req = req.WithContext(ctx)
 
 	// Use a flusherRecorder to support SSE (http.Flusher interface)
@@ -143,8 +143,8 @@ func TestHandleTailLog_StreamsData(t *testing.T) {
 func TestHandleTailLog_InvalidPath(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=../etc/passwd", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/logs/tail?path=../etc/passwd", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -160,8 +160,8 @@ func TestHandleTailLog_ViewerDenied(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "srv-tail-denied")
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testLogsTailQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

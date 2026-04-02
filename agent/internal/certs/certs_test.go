@@ -13,6 +13,12 @@ import (
 	"time"
 )
 
+const (
+	testServerID      = "srv-abc123"
+	testGenerateCSRFmt = "GenerateCSR: %v"
+	testStoreCertFmt   = "StoreCert: %v"
+)
+
 // newTestCA creates a self-signed CA certificate and key for testing.
 func newTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
@@ -64,9 +70,9 @@ func signCSR(t *testing.T, csrDER []byte, caCert *x509.Certificate, caKey *ecdsa
 
 func TestGenerateCSR(t *testing.T) {
 	s := NewMemoryStore()
-	csrDER, err := s.GenerateCSR("srv-abc123")
+	csrDER, err := s.GenerateCSR(testServerID)
 	if err != nil {
-		t.Fatalf("GenerateCSR: %v", err)
+		t.Fatalf(testGenerateCSRFmt, err)
 	}
 	if len(csrDER) == 0 {
 		t.Fatal("CSR is empty")
@@ -79,8 +85,8 @@ func TestGenerateCSR(t *testing.T) {
 	if err := csr.CheckSignature(); err != nil {
 		t.Fatalf("CSR signature invalid: %v", err)
 	}
-	if csr.Subject.CommonName != "srv-abc123" {
-		t.Errorf("CN = %q, want %q", csr.Subject.CommonName, "srv-abc123")
+	if csr.Subject.CommonName != testServerID {
+		t.Errorf("CN = %q, want %q", csr.Subject.CommonName, testServerID)
 	}
 }
 
@@ -90,7 +96,7 @@ func TestStoreCertAndTLSConfig(t *testing.T) {
 	s := NewMemoryStore()
 	csrDER, err := s.GenerateCSR("test-server")
 	if err != nil {
-		t.Fatalf("GenerateCSR: %v", err)
+		t.Fatalf(testGenerateCSRFmt, err)
 	}
 
 	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
@@ -99,7 +105,7 @@ func TestStoreCertAndTLSConfig(t *testing.T) {
 	caCertDER := caCert.Raw
 
 	if err := s.StoreCert(certDER, caCertDER); err != nil {
-		t.Fatalf("StoreCert: %v", err)
+		t.Fatalf(testStoreCertFmt, err)
 	}
 
 	tlsCfg := s.TLSConfig()
@@ -125,13 +131,13 @@ func TestNeedsRenewal(t *testing.T) {
 
 	csrDER, err := s.GenerateCSR("test")
 	if err != nil {
-		t.Fatalf("GenerateCSR: %v", err)
+		t.Fatalf(testGenerateCSRFmt, err)
 	}
 
 	// Cert that expires in 2 hours
 	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(2*time.Hour))
 	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
-		t.Fatalf("StoreCert: %v", err)
+		t.Fatalf(testStoreCertFmt, err)
 	}
 
 	// Threshold 1 hour — cert has ~2h left, should NOT need renewal
@@ -155,7 +161,7 @@ func TestHasCert(t *testing.T) {
 
 	csrDER, err := s.GenerateCSR("test")
 	if err != nil {
-		t.Fatalf("GenerateCSR: %v", err)
+		t.Fatalf(testGenerateCSRFmt, err)
 	}
 
 	// After GenerateCSR we have a key but no cert yet
@@ -165,7 +171,7 @@ func TestHasCert(t *testing.T) {
 
 	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
 	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
-		t.Fatalf("StoreCert: %v", err)
+		t.Fatalf(testStoreCertFmt, err)
 	}
 
 	if !s.HasCert() {
@@ -180,12 +186,12 @@ func TestDiskPersistence(t *testing.T) {
 	s := NewStore(dir)
 	csrDER, err := s.GenerateCSR("disk-test")
 	if err != nil {
-		t.Fatalf("GenerateCSR: %v", err)
+		t.Fatalf(testGenerateCSRFmt, err)
 	}
 
 	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
 	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
-		t.Fatalf("StoreCert: %v", err)
+		t.Fatalf(testStoreCertFmt, err)
 	}
 
 	// Verify files exist with correct permissions

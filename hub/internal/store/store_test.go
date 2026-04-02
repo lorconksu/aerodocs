@@ -6,18 +6,23 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const (
+	testMemoryDB   = ":memory:"
+	testCreateStore = "create store: %v"
+)
+
 func testStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := store.New(":memory:")
+	s, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStore, err)
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
 }
 
 func TestNew_InMemory(t *testing.T) {
-	s, err := store.New(":memory:")
+	s, err := store.New(testMemoryDB)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -29,9 +34,9 @@ func TestNew_InMemory(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	s, err := store.New(":memory:")
+	s, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStore, err)
 	}
 
 	if err := s.Close(); err != nil {

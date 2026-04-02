@@ -15,7 +15,7 @@ func TestHandleUnregisterServer_NotFound(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/nonexistent-id/unregister", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -33,13 +33,13 @@ func TestHandleUnregisterServer_Success(t *testing.T) {
 	// Create a server first
 	serverID := createTestServer(t, s, token, "doomed-server")
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/unregister", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testUnregSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]string
@@ -63,8 +63,8 @@ func TestHandleUnregisterServer_RequiresAdmin(t *testing.T) {
 
 	serverID := createTestServer(t, s, adminToken, "protected-server")
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/unregister", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testUnregSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -99,8 +99,8 @@ func TestHandleSelfUnregister_Success(t *testing.T) {
 	// Compute the correct HMAC unregister token
 	unregToken := s.selfUnregisterToken(serverID)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
-	req.Header.Set("X-Unregister-Token", unregToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testSelfUnregSuffix, nil)
+	req.Header.Set(testUnregTokenHdr, unregToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -124,8 +124,8 @@ func TestHandleSelfUnregister_RemoteAddrNoPort(t *testing.T) {
 
 	unregToken := s.selfUnregisterToken(serverID)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
-	req.Header.Set("X-Unregister-Token", unregToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testSelfUnregSuffix, nil)
+	req.Header.Set(testUnregTokenHdr, unregToken)
 	req.RemoteAddr = "10.0.0.5" // no port
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
@@ -144,7 +144,7 @@ func TestHandleSelfUnregister_WrongIP(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "wrong-ip-server")
 
 	// No HMAC token header — should be rejected
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testSelfUnregSuffix, nil)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -171,8 +171,8 @@ func TestHandleSelfUnregister_NilIP(t *testing.T) {
 	// Use a token computed for a different server ID
 	wrongToken := s.selfUnregisterToken("wrong-server-id")
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
-	req.Header.Set("X-Unregister-Token", wrongToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testSelfUnregSuffix, nil)
+	req.Header.Set(testUnregTokenHdr, wrongToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -193,13 +193,13 @@ func TestHandleUnregisterServer_CleansUpAuditLog(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, token, "audit-unregister-server")
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/unregister", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testUnregSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	// Verify an audit log entry was created for this action

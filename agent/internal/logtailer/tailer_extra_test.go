@@ -10,10 +10,15 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	testExpectedLogStreamChunk = "expected LogStreamChunk"
+	testExpectedMsgOnSendCh    = "expected message on sendCh"
+)
+
 // TestTailWithOffset verifies that starting at a positive offset skips earlier content.
 func TestTailWithOffset(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 
 	// Write initial content
 	content := "old line\n"
@@ -61,7 +66,7 @@ func TestSendFiltered_NoGrepWithData(t *testing.T) {
 	case msg := <-sendCh:
 		chunk := msg.GetLogStreamChunk()
 		if chunk == nil {
-			t.Fatal("expected LogStreamChunk")
+			t.Fatal(testExpectedLogStreamChunk)
 		}
 		if string(chunk.Data) != string(data) {
 			t.Fatalf("expected all data, got %q", string(chunk.Data))
@@ -70,7 +75,7 @@ func TestSendFiltered_NoGrepWithData(t *testing.T) {
 			t.Fatalf("expected request_id 'req-1', got %q", chunk.RequestId)
 		}
 	default:
-		t.Fatal("expected message on sendCh")
+		t.Fatal(testExpectedMsgOnSendCh)
 	}
 }
 
@@ -114,7 +119,7 @@ func TestSendFiltered_WithGrepMatches(t *testing.T) {
 	case msg := <-sendCh:
 		chunk := msg.GetLogStreamChunk()
 		if chunk == nil {
-			t.Fatal("expected LogStreamChunk")
+			t.Fatal(testExpectedLogStreamChunk)
 		}
 		result := string(chunk.Data)
 		if !strings.Contains(result, "ERROR: something bad") {
@@ -127,14 +132,14 @@ func TestSendFiltered_WithGrepMatches(t *testing.T) {
 			t.Fatal("should not have included info line")
 		}
 	default:
-		t.Fatal("expected message on sendCh")
+		t.Fatal(testExpectedMsgOnSendCh)
 	}
 }
 
 // TestReadNewData_NoChange verifies readNewData returns same offset when file unchanged.
 func TestReadNewData_NoChange(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 	content := []byte("existing content\n")
 	os.WriteFile(path, content, 0644)
 
@@ -160,7 +165,7 @@ func TestReadNewData_NoChange(t *testing.T) {
 // TestReadNewData_NewContent verifies readNewData detects and sends new content.
 func TestReadNewData_NewContent(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.log")
+	path := filepath.Join(dir, testLogFile)
 	initial := []byte("first line\n")
 	os.WriteFile(path, initial, 0644)
 
@@ -184,13 +189,13 @@ func TestReadNewData_NewContent(t *testing.T) {
 	case msg := <-sendCh:
 		chunk := msg.GetLogStreamChunk()
 		if chunk == nil {
-			t.Fatal("expected LogStreamChunk")
+			t.Fatal(testExpectedLogStreamChunk)
 		}
 		if !strings.Contains(string(chunk.Data), "second line") {
 			t.Fatalf("expected 'second line', got: %q", string(chunk.Data))
 		}
 	default:
-		t.Fatal("expected message on sendCh")
+		t.Fatal(testExpectedMsgOnSendCh)
 	}
 }
 

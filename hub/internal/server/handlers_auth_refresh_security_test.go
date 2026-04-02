@@ -19,8 +19,8 @@ func TestRefresh_DeletedUser_Returns401(t *testing.T) {
 	createBody, _ := json.Marshal(model.CreateUserRequest{
 		Username: "victim", Email: "victim@test.com", Role: model.RoleViewer,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -47,7 +47,7 @@ func TestRefresh_DeletedUser_Returns401(t *testing.T) {
 	refreshBody, _ := json.Marshal(model.RefreshRequest{
 		RefreshToken: refreshToken,
 	})
-	refreshReq := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(refreshBody))
+	refreshReq := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(refreshBody))
 	refreshRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(refreshRec, refreshReq)
 
@@ -64,8 +64,8 @@ func TestRefresh_DemotedUser_GetsCurrentRole(t *testing.T) {
 	createBody, _ := json.Marshal(model.CreateUserRequest{
 		Username: "promoted", Email: "promoted@test.com", Role: model.RoleAdmin,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -92,12 +92,12 @@ func TestRefresh_DemotedUser_GetsCurrentRole(t *testing.T) {
 	refreshBody, _ := json.Marshal(model.RefreshRequest{
 		RefreshToken: refreshToken,
 	})
-	refreshReq := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(refreshBody))
+	refreshReq := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(refreshBody))
 	refreshRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(refreshRec, refreshReq)
 
 	if refreshRec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", refreshRec.Code, refreshRec.Body.String())
+		t.Fatalf(testExpected200Body, refreshRec.Code, refreshRec.Body.String())
 	}
 
 	var tokenPair model.TokenPair

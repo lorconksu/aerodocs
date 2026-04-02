@@ -7,10 +7,15 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 )
 
-func TestGenerateAndValidateAccessToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+const (
+	testSecretKey = "test-secret-key-256-bits-long!!!"
+	testUserID    = "user-1"
+)
 
-	access, _, err := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+func TestGenerateAndValidateAccessToken(t *testing.T) {
+	secret := testSecretKey
+
+	access, _, err := auth.GenerateTokenPair(secret, testUserID, "admin", 0)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -20,7 +25,7 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 		t.Fatalf("validate access: %v", err)
 	}
 
-	if claims.Subject != "user-1" {
+	if claims.Subject != testUserID {
 		t.Fatalf("expected sub 'user-1', got '%s'", claims.Subject)
 	}
 	if claims.Role != "admin" {
@@ -32,9 +37,9 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 }
 
 func TestValidateRefreshToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	_, refresh, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+	_, refresh, _ := auth.GenerateTokenPair(secret, testUserID, "admin", 0)
 
 	claims, err := auth.ValidateToken(secret, refresh)
 	if err != nil {
@@ -46,9 +51,9 @@ func TestValidateRefreshToken(t *testing.T) {
 }
 
 func TestGenerateSetupToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	token, err := auth.GenerateSetupToken(secret, "user-1", "admin")
+	token, err := auth.GenerateSetupToken(secret, testUserID, "admin")
 	if err != nil {
 		t.Fatalf("generate setup: %v", err)
 	}
@@ -63,9 +68,9 @@ func TestGenerateSetupToken(t *testing.T) {
 }
 
 func TestGenerateTOTPToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	token, err := auth.GenerateTOTPToken(secret, "user-1", "admin")
+	token, err := auth.GenerateTOTPToken(secret, testUserID, "admin")
 	if err != nil {
 		t.Fatalf("generate totp: %v", err)
 	}
@@ -80,10 +85,10 @@ func TestGenerateTOTPToken(t *testing.T) {
 }
 
 func TestExpiredToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
 	// Create a token that's already expired
-	token, _ := auth.GenerateTokenWithExpiry(secret, "user-1", "admin", auth.TokenTypeAccess, -1*time.Minute)
+	token, _ := auth.GenerateTokenWithExpiry(secret, testUserID, "admin", auth.TokenTypeAccess, -1*time.Minute)
 
 	_, err := auth.ValidateToken(secret, token)
 	if err == nil {
@@ -92,7 +97,7 @@ func TestExpiredToken(t *testing.T) {
 }
 
 func TestWrongSecret(t *testing.T) {
-	access, _, _ := auth.GenerateTokenPair("correct-secret-key-256-bits!!!!", "user-1", "admin", 0)
+	access, _, _ := auth.GenerateTokenPair("correct-secret-key-256-bits!!!!", testUserID, "admin", 0)
 
 	_, err := auth.ValidateToken("wrong-secret-key-256-bits-long!", access)
 	if err == nil {

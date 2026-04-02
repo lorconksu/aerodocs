@@ -16,9 +16,9 @@ func registerAndGetAdminToken(t *testing.T, s *Server) string {
 
 	// Register first admin
 	body, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
+		Username: "admin", Email: testAdminEmail, Password: testPassword,
 	})
-	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testRegisterPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -27,8 +27,8 @@ func registerAndGetAdminToken(t *testing.T, s *Server) string {
 	setupToken := regResp["setup_token"].(string)
 
 	// Setup TOTP
-	req2 := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
-	req2.Header.Set("Authorization", "Bearer "+setupToken)
+	req2 := httptest.NewRequest("POST", testTOTPSetupPath, nil)
+	req2.Header.Set("Authorization", testBearerPrefix+setupToken)
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
@@ -39,8 +39,8 @@ func registerAndGetAdminToken(t *testing.T, s *Server) string {
 	code, _ := auth.GenerateValidCode(totpResp.Secret)
 
 	enableBody, _ := json.Marshal(model.TOTPEnableRequest{Code: code})
-	req3 := httptest.NewRequest("POST", "/api/auth/totp/enable", bytes.NewReader(enableBody))
-	req3.Header.Set("Authorization", "Bearer "+setupToken)
+	req3 := httptest.NewRequest("POST", testTOTPEnablePath, bytes.NewReader(enableBody))
+	req3.Header.Set("Authorization", testBearerPrefix+setupToken)
 	rec3 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec3, req3)
 
@@ -56,10 +56,10 @@ func TestUpdateUserRole_Success(t *testing.T) {
 
 	// Create a viewer user first
 	createBody, _ := json.Marshal(model.CreateUserRequest{
-		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+		Username: "viewer1", Email: testViewerEmail, Role: model.RoleViewer,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+token)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+token)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -68,13 +68,13 @@ func TestUpdateUserRole_Success(t *testing.T) {
 
 	// Update role to admin
 	body, _ := json.Marshal(model.UpdateRoleRequest{Role: model.RoleAdmin})
-	req := httptest.NewRequest("PUT", "/api/users/"+createResp.User.ID+"/role", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testUsersPrefix+createResp.User.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -90,8 +90,8 @@ func TestUpdateUserRole_CannotChangeOwnRole(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	// Get own user ID from /api/auth/me
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+token)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+token)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
@@ -100,13 +100,13 @@ func TestUpdateUserRole_CannotChangeOwnRole(t *testing.T) {
 
 	// Try to change own role
 	body, _ := json.Marshal(model.UpdateRoleRequest{Role: model.RoleViewer})
-	req := httptest.NewRequest("PUT", "/api/users/"+me.ID+"/role", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testUsersPrefix+me.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected400Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -116,10 +116,10 @@ func TestUpdateUserRole_InvalidRole(t *testing.T) {
 
 	// Create a user first
 	createBody, _ := json.Marshal(model.CreateUserRequest{
-		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+		Username: "viewer1", Email: testViewerEmail, Role: model.RoleViewer,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+token)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+token)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -128,13 +128,13 @@ func TestUpdateUserRole_InvalidRole(t *testing.T) {
 
 	// Try invalid role
 	body := []byte(`{"role": "superadmin"}`)
-	req := httptest.NewRequest("PUT", "/api/users/"+createResp.User.ID+"/role", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testUsersPrefix+createResp.User.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected400Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -144,12 +144,12 @@ func TestCreateUser(t *testing.T) {
 
 	body, _ := json.Marshal(model.CreateUserRequest{
 		Username: "viewer1",
-		Email:    "viewer@test.com",
+		Email:    testViewerEmail,
 		Role:     model.RoleViewer,
 	})
 
-	req := httptest.NewRequest("POST", "/api/users", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -171,13 +171,13 @@ func TestCreateUser_InvalidJSON(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/users", bytes.NewReader([]byte("not-json")))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testUsersPath, bytes.NewReader([]byte(testNotJSON)))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -190,13 +190,13 @@ func TestCreateUser_InvalidUsername(t *testing.T) {
 		Email:    "test@test.com",
 		Role:     model.RoleViewer,
 	})
-	req := httptest.NewRequest("POST", "/api/users", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -205,13 +205,13 @@ func TestCreateUser_InvalidRole(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body := []byte(`{"username":"validuser","email":"test@test.com","role":"superadmin"}`)
-	req := httptest.NewRequest("POST", "/api/users", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -220,17 +220,17 @@ func TestCreateUser_Duplicate(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body, _ := json.Marshal(model.CreateUserRequest{
-		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+		Username: "viewer1", Email: testViewerEmail, Role: model.RoleViewer,
 	})
-	req1 := httptest.NewRequest("POST", "/api/users", bytes.NewReader(body))
-	req1.Header.Set("Authorization", "Bearer "+token)
+	req1 := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(body))
+	req1.Header.Set("Authorization", testBearerPrefix+token)
 	s.routes().ServeHTTP(httptest.NewRecorder(), req1)
 
 	body2, _ := json.Marshal(model.CreateUserRequest{
 		Username: "viewer1", Email: "viewer2@test.com", Role: model.RoleViewer,
 	})
-	req2 := httptest.NewRequest("POST", "/api/users", bytes.NewReader(body2))
-	req2.Header.Set("Authorization", "Bearer "+token)
+	req2 := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(body2))
+	req2.Header.Set("Authorization", testBearerPrefix+token)
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
@@ -243,13 +243,13 @@ func TestListUsers(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/users", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testUsersPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -265,10 +265,10 @@ func TestDeleteUser_Success(t *testing.T) {
 
 	// Create a viewer user
 	createBody, _ := json.Marshal(model.CreateUserRequest{
-		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+		Username: "viewer1", Email: testViewerEmail, Role: model.RoleViewer,
 	})
-	createReq := httptest.NewRequest("POST", "/api/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Authorization", "Bearer "+token)
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+token)
 	createRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(createRec, createReq)
 
@@ -276,13 +276,13 @@ func TestDeleteUser_Success(t *testing.T) {
 	json.NewDecoder(createRec.Body).Decode(&createResp)
 
 	// Delete user
-	delReq := httptest.NewRequest("DELETE", "/api/users/"+createResp.User.ID, nil)
-	delReq.Header.Set("Authorization", "Bearer "+token)
+	delReq := httptest.NewRequest("DELETE", testUsersPrefix+createResp.User.ID, nil)
+	delReq.Header.Set("Authorization", testBearerPrefix+token)
 	delRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec, delReq)
 
 	if delRec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", delRec.Code, delRec.Body.String())
+		t.Fatalf(testExpected200Body, delRec.Code, delRec.Body.String())
 	}
 }
 
@@ -290,21 +290,21 @@ func TestDeleteUser_CannotDeleteSelf(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+token)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+token)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
 	var me model.User
 	json.NewDecoder(meRec.Body).Decode(&me)
 
-	delReq := httptest.NewRequest("DELETE", "/api/users/"+me.ID, nil)
-	delReq.Header.Set("Authorization", "Bearer "+token)
+	delReq := httptest.NewRequest("DELETE", testUsersPrefix+me.ID, nil)
+	delReq.Header.Set("Authorization", testBearerPrefix+token)
 	delRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec, delReq)
 
 	if delRec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", delRec.Code, delRec.Body.String())
+		t.Fatalf(testExpected400Body, delRec.Code, delRec.Body.String())
 	}
 }
 
@@ -313,7 +313,7 @@ func TestDeleteUser_NotFound(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	delReq := httptest.NewRequest("DELETE", "/api/users/nonexistent-id", nil)
-	delReq.Header.Set("Authorization", "Bearer "+token)
+	delReq.Header.Set("Authorization", testBearerPrefix+token)
 	delRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(delRec, delReq)
 
@@ -328,7 +328,7 @@ func TestUpdateUserRole_NotFound(t *testing.T) {
 
 	body, _ := json.Marshal(model.UpdateRoleRequest{Role: model.RoleAdmin})
 	req := httptest.NewRequest("PUT", "/api/users/nonexistent-id/role", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -341,13 +341,13 @@ func TestUpdateUserRole_InvalidJSON(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/users/some-id/role", bytes.NewReader([]byte("not-json")))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", "/api/users/some-id/role", bytes.NewReader([]byte(testNotJSON)))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -358,8 +358,8 @@ func TestViewerCannotAccessAdminEndpoints(t *testing.T) {
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
 	// Viewer tries to list users (admin-only)
-	req := httptest.NewRequest("GET", "/api/users", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testUsersPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

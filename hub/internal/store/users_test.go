@@ -6,6 +6,12 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const (
+	testAliceEmail = "alice@test.com"
+	testGetUserFmt = "get user: %v"
+	testEmailAAcom = "a@a.com"
+)
+
 func TestCreateAndGetUser(t *testing.T) {
 	s := testStore(t)
 
@@ -23,7 +29,7 @@ func TestCreateAndGetUser(t *testing.T) {
 
 	got, err := s.GetUserByUsername("admin")
 	if err != nil {
-		t.Fatalf("get user: %v", err)
+		t.Fatalf(testGetUserFmt, err)
 	}
 	if got.ID != "test-uuid-1" {
 		t.Fatalf("expected id 'test-uuid-1', got '%s'", got.ID)
@@ -37,7 +43,7 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 	s := testStore(t)
 
 	user := &model.User{
-		ID: "u1", Username: "dup", Email: "a@a.com",
+		ID: "u1", Username: "dup", Email: testEmailAAcom,
 		PasswordHash: "hash", Role: model.RoleViewer,
 	}
 	if err := s.CreateUser(user); err != nil {
@@ -65,7 +71,7 @@ func TestUserCount(t *testing.T) {
 	}
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "a", Email: "a@a.com",
+		ID: "u1", Username: "a", Email: testEmailAAcom,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -79,7 +85,7 @@ func TestUpdateUserTOTP(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "a", Email: "a@a.com",
+		ID: "u1", Username: "a", Email: testEmailAAcom,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -101,7 +107,7 @@ func TestUpdateUserRole(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
@@ -111,7 +117,7 @@ func TestUpdateUserRole(t *testing.T) {
 
 	user, err := s.GetUserByID("u1")
 	if err != nil {
-		t.Fatalf("get user: %v", err)
+		t.Fatalf(testGetUserFmt, err)
 	}
 	if user.Role != model.RoleAdmin {
 		t.Fatalf("expected role 'admin', got '%s'", user.Role)
@@ -131,7 +137,7 @@ func TestListUsers(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 	s.CreateUser(&model.User{
@@ -152,7 +158,7 @@ func TestDeleteUser(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -179,7 +185,7 @@ func TestUpdateUserAvatar(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -190,7 +196,7 @@ func TestUpdateUserAvatar(t *testing.T) {
 
 	user, err := s.GetUserByID("u1")
 	if err != nil {
-		t.Fatalf("get user: %v", err)
+		t.Fatalf(testGetUserFmt, err)
 	}
 	if user.Avatar == nil || *user.Avatar != avatar {
 		t.Fatalf("expected avatar '%s', got '%v'", avatar, user.Avatar)
@@ -201,7 +207,7 @@ func TestUpdateUserAvatar_ClearAvatar(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -224,7 +230,7 @@ func TestUpdateUserPassword(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "oldhash", Role: model.RoleAdmin,
 	})
 
@@ -260,7 +266,7 @@ func TestUpdateUserTOTP_Clear(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -285,7 +291,7 @@ func TestIncrementTokenGeneration(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin,
 	})
 
@@ -326,7 +332,7 @@ func TestInitializedUserCount(t *testing.T) {
 
 	// Add a user with TOTP disabled (not initialized)
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "alice", Email: "alice@test.com",
+		ID: "u1", Username: "alice", Email: testAliceEmail,
 		PasswordHash: "h", Role: model.RoleAdmin, TOTPEnabled: false,
 	})
 

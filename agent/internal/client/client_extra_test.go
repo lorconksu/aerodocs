@@ -8,6 +8,10 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	testLogReqMsg = "log-req-msg"
+)
+
 // TestHandleFileListRequest_InvalidPath verifies file list for invalid path returns error response.
 func TestHandleFileListRequest_InvalidPath(t *testing.T) {
 	c := &Client{tailSessions: make(map[string]chan struct{})}
@@ -35,7 +39,7 @@ func TestHandleFileListRequest_InvalidPath(t *testing.T) {
 			t.Fatal("expected error in response for nonexistent path")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -64,7 +68,7 @@ func TestHandleFileReadRequest_InvalidPath(t *testing.T) {
 			t.Fatal("expected error in response for nonexistent file")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -145,7 +149,7 @@ func TestHandleFileDeleteRequest_PathTraversal(t *testing.T) {
 			t.Fatal("expected failure for path traversal")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -178,7 +182,7 @@ func TestHandleMessage_FileRead(t *testing.T) {
 	case <-sendCh:
 		// ok
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -210,7 +214,7 @@ func TestHandleMessage_FileUpload(t *testing.T) {
 			t.Fatal("expected FileUploadAck")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -230,7 +234,7 @@ func TestHandleMessage_LogStreamRequest(t *testing.T) {
 	msg := &pb.HubMessage{
 		Payload: &pb.HubMessage_LogStreamRequest{
 			LogStreamRequest: &pb.LogStreamRequest{
-				RequestId: "log-req-msg",
+				RequestId: testLogReqMsg,
 				Path:      tmpFile.Name(),
 				Grep:      "",
 				Offset:    0,
@@ -240,13 +244,13 @@ func TestHandleMessage_LogStreamRequest(t *testing.T) {
 	c.handleMessage(msg, sendCh)
 
 	// Verify session was registered
-	if _, ok := c.tailSessions["log-req-msg"]; !ok {
+	if _, ok := c.tailSessions[testLogReqMsg]; !ok {
 		t.Fatal("expected tail session to be registered")
 	}
 
 	// Cleanup
-	close(c.tailSessions["log-req-msg"])
-	delete(c.tailSessions, "log-req-msg")
+	close(c.tailSessions[testLogReqMsg])
+	delete(c.tailSessions, testLogReqMsg)
 }
 
 // TestNewClient_DefaultValues verifies client is initialized with sensible defaults.
@@ -308,7 +312,7 @@ func TestHandleFileListRequest_RootDir(t *testing.T) {
 			t.Fatal("expected at least one file in listing")
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
 
@@ -345,6 +349,6 @@ func TestHandleFileDeleteRequest_InDropzone_WithActualFile(t *testing.T) {
 			t.Fatalf("expected success, got error: %s", ack.Error)
 		}
 	default:
-		t.Fatal("expected response on sendCh")
+		t.Fatal(testExpectedRespOnSendCh)
 	}
 }
