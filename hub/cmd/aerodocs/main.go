@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -81,15 +82,26 @@ func runServer() error {
 		Notifier:    notifier,
 	})
 
+	// Extract hostname from external gRPC address for TLS SAN
+	var grpcExternalHost string
+	if *grpcExternalAddr != "" {
+		if h, _, err := net.SplitHostPort(*grpcExternalAddr); err == nil {
+			grpcExternalHost = h
+		} else {
+			grpcExternalHost = *grpcExternalAddr
+		}
+	}
+
 	grpcSrv := grpcserver.New(grpcserver.Config{
-		Addr:        *grpcAddr,
-		Store:       st,
-		ConnMgr:     cm,
-		Pending:     pending,
-		LogSessions: logSessions,
-		CACert:      caCert,
-		CAKey:       caKey,
-		Notifier:    notifier,
+		Addr:             *grpcAddr,
+		ExternalHostname: grpcExternalHost,
+		Store:            st,
+		ConnMgr:          cm,
+		Pending:          pending,
+		LogSessions:      logSessions,
+		CACert:           caCert,
+		CAKey:            caKey,
+		Notifier:         notifier,
 	})
 
 	// Start heartbeat monitor

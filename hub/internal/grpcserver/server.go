@@ -31,14 +31,15 @@ type Server struct {
 }
 
 type Config struct {
-	Addr        string
-	Store       *store.Store
-	ConnMgr     *connmgr.ConnManager
-	Pending     *PendingRequests
-	LogSessions *LogSessions
-	CACert      *x509.Certificate
-	CAKey       *ecdsa.PrivateKey
-	Notifier    *notify.Notifier
+	Addr             string
+	ExternalHostname string // public hostname for TLS SAN (extracted from --grpc-external-addr)
+	Store            *store.Store
+	ConnMgr          *connmgr.ConnManager
+	Pending          *PendingRequests
+	LogSessions      *LogSessions
+	CACert           *x509.Certificate
+	CAKey            *ecdsa.PrivateKey
+	Notifier         *notify.Notifier
 }
 
 func New(cfg Config) *Server {
@@ -74,7 +75,12 @@ func New(cfg Config) *Server {
 	)
 
 	if cfg.CACert != nil && cfg.CAKey != nil {
-		serverCert, serverKey, err := ca.GenerateServerCert(cfg.CACert, cfg.CAKey, "aerodocs-hub")
+		var dnsNames []string
+		if cfg.ExternalHostname != "" {
+			dnsNames = append(dnsNames, cfg.ExternalHostname)
+		}
+		dnsNames = append(dnsNames, "aerodocs-hub", "localhost")
+		serverCert, serverKey, err := ca.GenerateServerCert(cfg.CACert, cfg.CAKey, "aerodocs-hub", dnsNames...)
 		if err != nil {
 			log.Fatalf("grpc: generate server TLS cert: %v", err)
 		}
