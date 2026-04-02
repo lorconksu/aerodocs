@@ -1368,6 +1368,33 @@ describe('onToggleMarkdownView (line 1806)', () => {
       expect(refreshBtn).not.toBeDisabled()
     })
 
+    it('refreshes expanded directories when clicked', async () => {
+      mockApiFetch.mockResolvedValueOnce(mockServer)
+      mockApiFetch.mockResolvedValueOnce({ paths: ['/etc'] })
+      // First call to expand /etc
+      mockApiFetch.mockResolvedValueOnce({ files: [
+        { name: 'nginx.conf', path: '/etc/nginx.conf', is_dir: false, size: 1024, readable: true },
+      ]})
+      // Refresh call
+      mockApiFetch.mockResolvedValueOnce({ files: [
+        { name: 'nginx.conf', path: '/etc/nginx.conf', is_dir: false, size: 1024, readable: true },
+        { name: 'hosts', path: '/etc/hosts', is_dir: false, size: 256, readable: true },
+      ]})
+      mockApiFetch.mockResolvedValue(mockServer)
+      renderPage()
+      await waitFor(() => expect(screen.getByText('/etc')).toBeInTheDocument())
+
+      // Expand directory
+      fireEvent.click(screen.getByText('/etc'))
+      await waitFor(() => expect(screen.getByText('nginx.conf')).toBeInTheDocument())
+
+      // Click refresh
+      fireEvent.click(screen.getByTitle('Refresh file tree'))
+
+      // Should show the new file from the refresh response
+      await waitFor(() => expect(screen.getByText('hosts')).toBeInTheDocument())
+    })
+
     it('hides refresh button when sidebar is collapsed', async () => {
       mockApiFetch.mockImplementation((url: string) => {
         if (url.includes('/my-paths')) return Promise.resolve({ paths: ['/etc'] })
