@@ -30,9 +30,9 @@ func TestHandleUploadFile_WithAgent(t *testing.T) {
 	part.Write([]byte("hello world"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -51,14 +51,14 @@ func TestHandleUploadFile_TooBig(t *testing.T) {
 	writer.CreateFormFile("file", "big.bin")
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	// Override body with oversized content
 	bigBody := bytes.Repeat([]byte("x"), 100*1024*1024+2048)
-	req2 := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", bytes.NewReader(bigBody))
-	req2.Header.Set("Authorization", "Bearer "+adminToken)
-	req2.Header.Set("Content-Type", writer.FormDataContentType())
+	req2 := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, bytes.NewReader(bigBody))
+	req2.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req2.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req2)
 
@@ -80,14 +80,14 @@ func TestHandleUploadFile_NoAgentConnected(t *testing.T) {
 	part.Write([]byte("hello"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -100,9 +100,9 @@ func TestHandleUploadFile_NoFileField(t *testing.T) {
 	writer.WriteField("other", "value")
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -115,8 +115,8 @@ func TestHandleUploadFile_NoFileField(t *testing.T) {
 func TestHandleListDropzone_WithAgent(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testDropzoneSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -131,8 +131,8 @@ func TestHandleListDropzone_NoAgentConnected(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, token, "dropzone-no-agent")
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testDropzoneSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -145,8 +145,8 @@ func TestHandleListDropzone_NoAgentConnected(t *testing.T) {
 func TestHandleDeleteDropzoneFile_WithAgent(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/dropzone?filename=test.txt", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/dropzone?filename=test.txt", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -160,8 +160,8 @@ func TestHandleDeleteDropzoneFile_WithAgent(t *testing.T) {
 func TestHandleDeleteDropzoneFile_NoFilename(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testDropzoneSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -176,8 +176,8 @@ func TestHandleDeleteDropzoneFile_NoAgentConnected(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 	serverID := createTestServer(t, s, token, "dropzone-del-no-agent")
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/dropzone?filename=test.txt", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/dropzone?filename=test.txt", nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -190,13 +190,13 @@ func TestHandleDeleteDropzoneFile_NoAgentConnected(t *testing.T) {
 func TestHandleUnregisterServer_WithConnectedAgent(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/unregister", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testUnregSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -208,8 +208,8 @@ func TestHandleSelfUnregister_AgentExists(t *testing.T) {
 	// Use HMAC token for self-unregister authentication
 	unregToken := s.selfUnregisterToken(serverID)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/self-unregister", nil)
-	req.Header.Set("X-Unregister-Token", unregToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testSelfUnregSuffix, nil)
+	req.Header.Set(testUnregTokenHdr, unregToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -241,7 +241,7 @@ func TestHandleAuthStatus_Initialized(t *testing.T) {
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
 	if body == "" {
@@ -258,7 +258,7 @@ func TestHandleAuthStatus_Uninitialized(t *testing.T) {
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -267,13 +267,13 @@ func TestHandleMe_ValidUser(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/auth/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testMePath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -282,13 +282,13 @@ func TestHandleListUsers_Empty(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/users", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testUsersPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -298,8 +298,8 @@ func TestHandleUpdateUserRole_SelfRole(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 	user, _ := s.store.GetUserByUsername("admin")
 
-	req := httptest.NewRequest("PUT", "/api/users/"+user.ID+"/role", mustJSON(t, map[string]string{"role": "viewer"}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testUsersPrefix+user.ID+"/role", mustJSON(t, map[string]string{"role": "viewer"}))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -314,12 +314,12 @@ func TestHandleUpdateUserRole_InvalidRole(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("PUT", "/api/users/some-other-id/role", mustJSON(t, map[string]string{"role": "superadmin"}))
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected400Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -329,8 +329,8 @@ func TestHandleDeleteUser_SelfDelete(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 	user, _ := s.store.GetUserByUsername("admin")
 
-	req := httptest.NewRequest("DELETE", "/api/users/"+user.ID, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("DELETE", testUsersPrefix+user.ID, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -345,7 +345,7 @@ func TestHandleDeleteUser_NotFound(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("DELETE", "/api/users/nonexistent-id", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -372,15 +372,15 @@ func TestHandleListPaths_WithPermissions(t *testing.T) {
 		}
 	}
 
-	s.store.CreatePermission(viewerID, serverID, "/var/log")
+	s.store.CreatePermission(viewerID, serverID, testVarLog)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/paths", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testPathsSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -401,11 +401,11 @@ func TestHandleDeletePath_WrongServer(t *testing.T) {
 	}
 
 	// create permission on otherServer
-	perm, _ := s.store.CreatePermission(viewerID, otherServerID, "/var/log")
+	perm, _ := s.store.CreatePermission(viewerID, otherServerID, testVarLog)
 
 	// try to delete via serverID (wrong server)
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/paths/"+perm.ID, nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/paths/"+perm.ID, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -418,8 +418,8 @@ func TestHandleDeletePath_WrongServer(t *testing.T) {
 func TestHandleTailLog_MissingPath(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/logs/tail", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/logs/tail", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -434,8 +434,8 @@ func TestHandleRegister_Disabled(t *testing.T) {
 	registerAndGetAdminToken(t, s)
 
 	// Try to register again
-	req := httptest.NewRequest("POST", "/api/auth/register", mustJSON(t, map[string]string{
-		"username": "second", "email": "second@test.com", "password": "MyP@ssw0rd!234",
+	req := httptest.NewRequest("POST", testRegisterPath, mustJSON(t, map[string]string{
+		"username": "second", "email": "second@test.com", "password": testPassword,
 	}))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
@@ -450,16 +450,16 @@ func TestHandleChangePassword_WrongCurrentPassword(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/auth/password", mustJSON(t, map[string]string{
+	req := httptest.NewRequest("PUT", testPasswordPath, mustJSON(t, map[string]string{
 		"current_password": "WrongPassword!123",
 		"new_password":     "NewP@ssw0rd!234",
 	}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected401Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -495,7 +495,9 @@ func (m *mockGRPCStreamFailedAck) SendMsg(interface{}) error        { return nil
 func (m *mockGRPCStreamFailedAck) RecvMsg(interface{}) error        { return nil }
 func (m *mockGRPCStreamFailedAck) SetHeader(metadata.MD) error     { return nil }
 func (m *mockGRPCStreamFailedAck) SendHeader(metadata.MD) error    { return nil }
-func (m *mockGRPCStreamFailedAck) SetTrailer(metadata.MD)          {}
+func (m *mockGRPCStreamFailedAck) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 
 // mockGRPCStreamWrongAckType delivers a wrong message type for upload ack.
 type mockGRPCStreamWrongAckType struct {
@@ -524,14 +526,16 @@ func (m *mockGRPCStreamWrongAckType) SendMsg(interface{}) error        { return 
 func (m *mockGRPCStreamWrongAckType) RecvMsg(interface{}) error        { return nil }
 func (m *mockGRPCStreamWrongAckType) SetHeader(metadata.MD) error     { return nil }
 func (m *mockGRPCStreamWrongAckType) SendHeader(metadata.MD) error    { return nil }
-func (m *mockGRPCStreamWrongAckType) SetTrailer(metadata.MD)          {}
+func (m *mockGRPCStreamWrongAckType) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 
 // testServerWithCustomAgent creates a test server with a custom mock stream.
 func testServerWithCustomAgent(t *testing.T, streamFactory func(pending *grpcserver.PendingRequests, serverID string) pb.AgentService_ConnectServer) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -597,7 +601,9 @@ func (m *mockGRPCStreamFileListError) SendMsg(interface{}) error        { return
 func (m *mockGRPCStreamFileListError) RecvMsg(interface{}) error        { return nil }
 func (m *mockGRPCStreamFileListError) SetHeader(metadata.MD) error     { return nil }
 func (m *mockGRPCStreamFileListError) SendHeader(metadata.MD) error    { return nil }
-func (m *mockGRPCStreamFileListError) SetTrailer(metadata.MD)          {}
+func (m *mockGRPCStreamFileListError) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 
 // TestHandleListDropzone_ErrorFromAgent covers the resp.Error != "" branch in handleListDropzone.
 func TestHandleListDropzone_ErrorFromAgent(t *testing.T) {
@@ -605,14 +611,14 @@ func TestHandleListDropzone_ErrorFromAgent(t *testing.T) {
 		return &mockGRPCStreamFileListError{pending: pending, serverID: sid}
 	})
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testDropzoneSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	// When the agent returns an error for dropzone list, the handler returns 200 with empty list
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 	// Body should contain empty files array
 	if !strings.Contains(rec.Body.String(), "[]") {
@@ -650,7 +656,9 @@ func (m *mockGRPCStreamDeleteFailed) SendMsg(interface{}) error        { return 
 func (m *mockGRPCStreamDeleteFailed) RecvMsg(interface{}) error        { return nil }
 func (m *mockGRPCStreamDeleteFailed) SetHeader(metadata.MD) error     { return nil }
 func (m *mockGRPCStreamDeleteFailed) SendHeader(metadata.MD) error    { return nil }
-func (m *mockGRPCStreamDeleteFailed) SetTrailer(metadata.MD)          {}
+func (m *mockGRPCStreamDeleteFailed) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 
 // TestHandleDeleteDropzoneFile_AgentReportsFailure covers the resp.Success=false branch.
 func TestHandleDeleteDropzoneFile_AgentReportsFailure(t *testing.T) {
@@ -658,8 +666,8 @@ func TestHandleDeleteDropzoneFile_AgentReportsFailure(t *testing.T) {
 		return &mockGRPCStreamDeleteFailed{pending: pending, serverID: sid}
 	})
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/dropzone?filename=missing.txt", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/dropzone?filename=missing.txt", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -679,9 +687,9 @@ func TestHandleUploadFile_AckFailure(t *testing.T) {
 
 	body, ct := buildMultipartBody(t, "file", "test.txt", []byte("hello"))
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -701,9 +709,9 @@ func TestHandleUploadFile_WrongAckType(t *testing.T) {
 
 	body, ct := buildMultipartBody(t, "file", "test.txt", []byte("hello"))
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", ct)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, ct)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

@@ -6,6 +6,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/migrate"
 )
 
+const testRunFmt = "run: %v"
+
 // TestRunMigrations_SkipsAlreadyApplied verifies that already-applied migrations are skipped.
 func TestRunMigrations_SkipsAlreadyApplied(t *testing.T) {
 	db := testDB(t)
@@ -34,7 +36,7 @@ func TestRunMigrations_SkipsAlreadyApplied(t *testing.T) {
 func TestRunMigrations_TablesExist(t *testing.T) {
 	db := testDB(t)
 	if err := migrate.Run(db); err != nil {
-		t.Fatalf("run: %v", err)
+		t.Fatalf(testRunFmt, err)
 	}
 
 	tables := []string{"users", "servers", "audit_logs", "permissions", "_config"}
@@ -51,7 +53,7 @@ func TestRunMigrations_TablesExist(t *testing.T) {
 func TestRunMigrations_MigrationsTableExists(t *testing.T) {
 	db := testDB(t)
 	if err := migrate.Run(db); err != nil {
-		t.Fatalf("run: %v", err)
+		t.Fatalf(testRunFmt, err)
 	}
 
 	var name string
@@ -64,7 +66,7 @@ func TestRunMigrations_MigrationsTableExists(t *testing.T) {
 func TestRunMigrations_RecordsApplied(t *testing.T) {
 	db := testDB(t)
 	if err := migrate.Run(db); err != nil {
-		t.Fatalf("run: %v", err)
+		t.Fatalf(testRunFmt, err)
 	}
 
 	rows, err := db.Query("SELECT filename FROM _migrations ORDER BY filename")

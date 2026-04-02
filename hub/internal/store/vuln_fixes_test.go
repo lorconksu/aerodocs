@@ -6,6 +6,12 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const (
+	testInsertPermSQL   = "INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)"
+	testU1Email         = "u1@test.com"
+	testGetExclusiveFmt = "get exclusive: %v"
+)
+
 // #43: Verify parameterized LIMIT/OFFSET works correctly with actual queries.
 func TestListServersForUser_ParameterizedPagination(t *testing.T) {
 	s := testStore(t)
@@ -18,7 +24,7 @@ func TestListServersForUser_ParameterizedPagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := "s" + string(rune('1'+i))
 		s.CreateServer(&model.Server{ID: id, Name: "srv-" + id, Status: "online", Labels: "{}"})
-		s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)",
+		s.DB().Exec(testInsertPermSQL,
 			"p"+id, "u1", id, "/")
 	}
 
@@ -39,7 +45,7 @@ func TestGetExclusiveServerAccess_NoExclusive(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "user1", Email: "u1@test.com",
+		ID: "u1", Username: "user1", Email: testU1Email,
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 	s.CreateUser(&model.User{
@@ -50,12 +56,12 @@ func TestGetExclusiveServerAccess_NoExclusive(t *testing.T) {
 	s.CreateServer(&model.Server{ID: "s1", Name: "shared", Status: "online", Labels: "{}"})
 
 	// Both users have access
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p1", "u1", "s1", "/")
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p2", "u2", "s1", "/")
+	s.DB().Exec(testInsertPermSQL, "p1", "u1", "s1", "/")
+	s.DB().Exec(testInsertPermSQL, "p2", "u2", "s1", "/")
 
 	exclusive, err := s.GetExclusiveServerAccess("u1")
 	if err != nil {
-		t.Fatalf("get exclusive: %v", err)
+		t.Fatalf(testGetExclusiveFmt, err)
 	}
 	if len(exclusive) != 0 {
 		t.Fatalf("expected no exclusive servers, got %v", exclusive)
@@ -66,18 +72,18 @@ func TestGetExclusiveServerAccess_HasExclusive(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "user1", Email: "u1@test.com",
+		ID: "u1", Username: "user1", Email: testU1Email,
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
 	s.CreateServer(&model.Server{ID: "s1", Name: "exclusive", Status: "online", Labels: "{}"})
 
 	// Only u1 has access
-	s.DB().Exec("INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)", "p1", "u1", "s1", "/")
+	s.DB().Exec(testInsertPermSQL, "p1", "u1", "s1", "/")
 
 	exclusive, err := s.GetExclusiveServerAccess("u1")
 	if err != nil {
-		t.Fatalf("get exclusive: %v", err)
+		t.Fatalf(testGetExclusiveFmt, err)
 	}
 	if len(exclusive) != 1 || exclusive[0] != "s1" {
 		t.Fatalf("expected [s1], got %v", exclusive)
@@ -88,13 +94,13 @@ func TestGetExclusiveServerAccess_NoPermissions(t *testing.T) {
 	s := testStore(t)
 
 	s.CreateUser(&model.User{
-		ID: "u1", Username: "user1", Email: "u1@test.com",
+		ID: "u1", Username: "user1", Email: testU1Email,
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
 	exclusive, err := s.GetExclusiveServerAccess("u1")
 	if err != nil {
-		t.Fatalf("get exclusive: %v", err)
+		t.Fatalf(testGetExclusiveFmt, err)
 	}
 	if len(exclusive) != 0 {
 		t.Fatalf("expected no exclusive servers, got %v", exclusive)

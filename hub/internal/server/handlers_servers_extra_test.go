@@ -22,23 +22,23 @@ func TestListServers_Viewer(t *testing.T) {
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
 	// Get viewer's user ID
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 	var viewerUser model.User
 	json.NewDecoder(meRec.Body).Decode(&viewerUser)
 
 	// Grant permission for only s1
-	s.store.CreatePermission(viewerUser.ID, s1ID, "/var/log")
+	s.store.CreatePermission(viewerUser.ID, s1ID, testVarLog)
 
-	req := httptest.NewRequest("GET", "/api/servers", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -60,12 +60,12 @@ func TestListServers_SearchFilter(t *testing.T) {
 	s.store.CreateServer(&model.Server{ID: "s3", Name: "cache-dev", Status: "online", Labels: "{}"})
 
 	req := httptest.NewRequest("GET", "/api/servers?search=prod", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 
 	var resp map[string]interface{}
@@ -91,12 +91,12 @@ func TestListServers_PaginationParams(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("GET", "/api/servers?limit=2&offset=0", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 
 	var resp map[string]interface{}
@@ -115,18 +115,18 @@ func TestGetServer_ViewerWithPermission(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "viewer-permitted-srv")
 
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 	var viewerUser model.User
 	json.NewDecoder(meRec.Body).Decode(&viewerUser)
 
 	// Grant permission for this server
-	s.store.CreatePermission(viewerUser.ID, serverID, "/var/log")
+	s.store.CreatePermission(viewerUser.ID, serverID, testVarLog)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID, nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -143,8 +143,8 @@ func TestGetServer_ViewerWithoutPermission(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "no-perm-srv")
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID, nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -158,13 +158,13 @@ func TestUpdateServer_InvalidJSON(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/servers/s1", bytes.NewReader([]byte("not-json")))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testServerS1Path, bytes.NewReader([]byte(testNotJSON)))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -174,13 +174,13 @@ func TestUpdateServer_EmptyName(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body, _ := json.Marshal(map[string]string{"name": "", "labels": "{}"})
-	req := httptest.NewRequest("PUT", "/api/servers/s1", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testServerS1Path, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -191,7 +191,7 @@ func TestUpdateServer_NotFound(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"name": "new-name", "labels": "{}"})
 	req := httptest.NewRequest("PUT", "/api/servers/nonexistent-id", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -206,7 +206,7 @@ func TestDeleteServer_NotFound(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("DELETE", "/api/servers/nonexistent-id", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -220,13 +220,13 @@ func TestBatchDeleteServers_InvalidJSON(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/servers/batch-delete", bytes.NewReader([]byte("not-json")))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", "/api/servers/batch-delete", bytes.NewReader([]byte(testNotJSON)))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -235,13 +235,13 @@ func TestCreateServer_InvalidJSON(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/servers", bytes.NewReader([]byte("not-json")))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testServersPath, bytes.NewReader([]byte(testNotJSON)))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 

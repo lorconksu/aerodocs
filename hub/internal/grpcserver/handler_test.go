@@ -43,8 +43,16 @@ func (m *mockStream) SendMsg(msg interface{}) error  { return nil }
 func (m *mockStream) RecvMsg(msg interface{}) error  { return nil }
 func (m *mockStream) SetHeader(metadata.MD) error    { return nil }
 func (m *mockStream) SendHeader(metadata.MD) error   { return nil }
-func (m *mockStream) SetTrailer(metadata.MD)         {}
+func (m *mockStream) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 func (m *mockStream) SendAndClose(*pb.HubMessage) error { return nil }
+
+const (
+	testExpectDelivered        = "expected delivered message"
+	testExpectDeliveredPending = "expected message to be delivered to pending channel"
+	testIPAddr                 = "10.0.0.1"
+)
 
 func testHandler(t *testing.T) (*Handler, *store.Store) {
 	t.Helper()
@@ -72,7 +80,7 @@ func TestHandleRegister_ValidToken(t *testing.T) {
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
 	})
-	serverID, err := h.handleRegister("", "host1", "10.0.0.1", "Linux", "0.1.0")
+	serverID, err := h.handleRegister("", "host1", testIPAddr, "Linux", "0.1.0")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -87,7 +95,7 @@ func TestHandleRegister_ValidToken(t *testing.T) {
 
 func TestHandleRegister_InvalidToken(t *testing.T) {
 	h, _ := testHandler(t)
-	_, err := h.handleRegister("totally-fake", "host1", "10.0.0.1", "Linux", "0.1.0")
+	_, err := h.handleRegister("totally-fake", "host1", testIPAddr, "Linux", "0.1.0")
 	if err == nil {
 		t.Fatal("expected error for invalid token")
 	}
@@ -131,7 +139,7 @@ func TestHandleRegister_ExpiredToken(t *testing.T) {
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
 	})
-	_, err := h.handleRegister("", "host1", "10.0.0.1", "Linux", "0.1.0")
+	_, err := h.handleRegister("", "host1", testIPAddr, "Linux", "0.1.0")
 	if err == nil {
 		t.Fatal("expected error for expired token")
 	}
@@ -180,10 +188,10 @@ func TestRouteAgentMessage_FileListResponse(t *testing.T) {
 	select {
 	case delivered := <-ch:
 		if delivered == nil {
-			t.Fatal("expected delivered message")
+			t.Fatal(testExpectDelivered)
 		}
 	default:
-		t.Fatal("expected message to be delivered to pending channel")
+		t.Fatal(testExpectDeliveredPending)
 	}
 }
 
@@ -208,10 +216,10 @@ func TestRouteAgentMessage_FileReadResponse(t *testing.T) {
 	select {
 	case delivered := <-ch:
 		if delivered == nil {
-			t.Fatal("expected delivered message")
+			t.Fatal(testExpectDelivered)
 		}
 	default:
-		t.Fatal("expected message to be delivered to pending channel")
+		t.Fatal(testExpectDeliveredPending)
 	}
 }
 
@@ -236,10 +244,10 @@ func TestRouteAgentMessage_FileUploadAck(t *testing.T) {
 	select {
 	case delivered := <-ch:
 		if delivered == nil {
-			t.Fatal("expected delivered message")
+			t.Fatal(testExpectDelivered)
 		}
 	default:
-		t.Fatal("expected message to be delivered to pending channel")
+		t.Fatal(testExpectDeliveredPending)
 	}
 }
 
@@ -264,10 +272,10 @@ func TestRouteAgentMessage_FileDeleteResponse(t *testing.T) {
 	select {
 	case delivered := <-ch:
 		if delivered == nil {
-			t.Fatal("expected delivered message")
+			t.Fatal(testExpectDelivered)
 		}
 	default:
-		t.Fatal("expected message to be delivered to pending channel")
+		t.Fatal(testExpectDeliveredPending)
 	}
 }
 
@@ -292,10 +300,10 @@ func TestRouteAgentMessage_UnregisterAck(t *testing.T) {
 	select {
 	case delivered := <-ch:
 		if delivered == nil {
-			t.Fatal("expected delivered message")
+			t.Fatal(testExpectDelivered)
 		}
 	default:
-		t.Fatal("expected message to be delivered to pending channel")
+		t.Fatal(testExpectDeliveredPending)
 	}
 }
 

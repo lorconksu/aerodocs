@@ -60,9 +60,9 @@ func (m *mockGRPCStreamDropzoneError) Send(msg *pb.HubMessage) error {
 // testServerWithErrorAgent creates a test server whose mock agent returns errors for file operations.
 func testServerWithErrorAgent(t *testing.T) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -106,8 +106,8 @@ func testServerWithErrorAgent(t *testing.T) (s *Server, adminToken, serverID str
 func TestHandleListDropzone_WithErrorResponse(t *testing.T) {
 	s, adminToken, serverID := testServerWithErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/dropzone", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testDropzoneSuffix, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -121,8 +121,8 @@ func TestHandleListDropzone_WithErrorResponse(t *testing.T) {
 func TestHandleDeleteDropzone_FailureResponse(t *testing.T) {
 	s, adminToken, serverID := testServerWithErrorAgent(t)
 
-	req := httptest.NewRequest("DELETE", "/api/servers/"+serverID+"/dropzone?filename=test.txt", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+"/dropzone?filename=test.txt", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -142,9 +142,9 @@ func TestHandleUploadFile_AgentFailure(t *testing.T) {
 	part.Write([]byte("data"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/servers/"+serverID+"/upload", body)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testUploadSuffix, body)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	req.Header.Set(testContentType, writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

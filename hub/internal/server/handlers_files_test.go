@@ -43,8 +43,8 @@ func TestIsPathAllowed(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	// Create a server to get a valid server ID
-	req := httptest.NewRequest("POST", "/api/servers", mustJSON(t, model.CreateServerRequest{Name: "perm-server"}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testServersPath, mustJSON(t, model.CreateServerRequest{Name: "perm-server"}))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 	var srvResp model.CreateServerResponse
@@ -52,10 +52,10 @@ func TestIsPathAllowed(t *testing.T) {
 	serverID := srvResp.Server.ID
 
 	// Create a viewer user
-	viewerReq := httptest.NewRequest("POST", "/api/users", mustJSON(t, model.CreateUserRequest{
-		Username: "viewer1", Email: "viewer@test.com", Role: model.RoleViewer,
+	viewerReq := httptest.NewRequest("POST", testUsersPath, mustJSON(t, model.CreateUserRequest{
+		Username: "viewer1", Email: testViewerEmail, Role: model.RoleViewer,
 	}))
-	viewerReq.Header.Set("Authorization", "Bearer "+token)
+	viewerReq.Header.Set("Authorization", testBearerPrefix+token)
 	viewerRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(viewerRec, viewerReq)
 	var viewerResp model.CreateUserResponse
@@ -63,14 +63,14 @@ func TestIsPathAllowed(t *testing.T) {
 	viewerID := viewerResp.User.ID
 
 	// Add a path permission for the viewer
-	s.store.CreatePermission(viewerID, serverID, "/var/log")
+	s.store.CreatePermission(viewerID, serverID, testVarLog)
 
 	tests := []struct {
 		name          string
 		path          string
 		wantAllowed   bool
 	}{
-		{"exact match allowed", "/var/log", true},
+		{"exact match allowed", testVarLog, true},
 		{"child path allowed", "/var/log/syslog", true},
 		{"deep child path allowed", "/var/log/app/service.log", true},
 		{"unrelated path denied", "/etc/passwd", false},
@@ -97,7 +97,7 @@ func TestHandleListFiles_PathTraversal(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/files?path=/../etc/passwd", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -112,12 +112,12 @@ func TestHandleListFiles_NoAgent(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/files?path=/var/log", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -128,7 +128,7 @@ func TestHandleListFiles_DefaultPath(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/files", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -144,7 +144,7 @@ func TestHandleReadFile_NoPath(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/files/read", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -159,7 +159,7 @@ func TestHandleReadFile_PathTraversal(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/files/read?path=/../etc/passwd", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -174,12 +174,12 @@ func TestHandleReadFile_NoAgent(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/files/read?path=/etc/hosts", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -189,8 +189,8 @@ func TestHandleListFiles_ViewerPermissionDenied(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 
 	// Create server
-	srvReq := httptest.NewRequest("POST", "/api/servers", mustJSON(t, model.CreateServerRequest{Name: "test-srv"}))
-	srvReq.Header.Set("Authorization", "Bearer "+adminToken)
+	srvReq := httptest.NewRequest("POST", testServersPath, mustJSON(t, model.CreateServerRequest{Name: "test-srv"}))
+	srvReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	srvRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(srvRec, srvReq)
 	var srvResp model.CreateServerResponse
@@ -201,8 +201,8 @@ func TestHandleListFiles_ViewerPermissionDenied(t *testing.T) {
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
 	// Viewer tries to access a path they have no permission for
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=/etc", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files?path=/etc", nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -217,8 +217,8 @@ func TestHandleReadFile_ViewerPermissionDenied(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 
 	// Create server
-	srvReq := httptest.NewRequest("POST", "/api/servers", mustJSON(t, model.CreateServerRequest{Name: "test-srv2"}))
-	srvReq.Header.Set("Authorization", "Bearer "+adminToken)
+	srvReq := httptest.NewRequest("POST", testServersPath, mustJSON(t, model.CreateServerRequest{Name: "test-srv2"}))
+	srvReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	srvRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(srvRec, srvReq)
 	var srvResp model.CreateServerResponse
@@ -227,8 +227,8 @@ func TestHandleReadFile_ViewerPermissionDenied(t *testing.T) {
 
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/etc/passwd", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/etc/passwd", nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

@@ -15,6 +15,44 @@ func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 	return nil
 }
 
+// cookieExpectation describes expected properties of a cookie for assertion.
+type cookieExpectation struct {
+	name     string
+	value    string // empty means skip value check
+	httpOnly bool
+	sameSite http.SameSite
+	path     string
+	maxAge   int
+	valueLen int // if >0, check Value length instead of exact value
+}
+
+// assertCookie verifies a cookie matches the expected properties.
+func assertCookie(t *testing.T, cookies []*http.Cookie, exp cookieExpectation) {
+	t.Helper()
+	c := findCookie(cookies, exp.name)
+	if c == nil {
+		t.Fatalf("missing %s cookie", exp.name)
+	}
+	if exp.value != "" && c.Value != exp.value {
+		t.Errorf("%s value = %q, want %q", exp.name, c.Value, exp.value)
+	}
+	if exp.valueLen > 0 && len(c.Value) != exp.valueLen {
+		t.Errorf("%s token length = %d, want %d", exp.name, len(c.Value), exp.valueLen)
+	}
+	if c.HttpOnly != exp.httpOnly {
+		t.Errorf("%s HttpOnly = %v, want %v", exp.name, c.HttpOnly, exp.httpOnly)
+	}
+	if exp.sameSite != 0 && c.SameSite != exp.sameSite {
+		t.Errorf("%s SameSite = %v, want %v", exp.name, c.SameSite, exp.sameSite)
+	}
+	if exp.path != "" && c.Path != exp.path {
+		t.Errorf("%s path = %q, want %q", exp.name, c.Path, exp.path)
+	}
+	if c.MaxAge != exp.maxAge {
+		t.Errorf("%s MaxAge = %d, want %d", exp.name, c.MaxAge, exp.maxAge)
+	}
+}
+
 func TestSetAuthCookies(t *testing.T) {
 	w := httptest.NewRecorder()
 	setAuthCookies(w, "access123", "refresh456")
@@ -24,59 +62,18 @@ func TestSetAuthCookies(t *testing.T) {
 		t.Fatalf("expected 3 cookies, got %d", len(cookies))
 	}
 
-	access := findCookie(cookies, cookieAccess)
-	if access == nil {
-		t.Fatal("missing access cookie")
-	}
-	if access.Value != "access123" {
-		t.Errorf("access value = %q, want %q", access.Value, "access123")
-	}
-	if !access.HttpOnly {
-		t.Error("access cookie should be httpOnly")
-	}
-	if access.SameSite != http.SameSiteStrictMode {
-		t.Error("access cookie should be SameSite=Strict")
-	}
-	if access.Path != "/" {
-		t.Errorf("access path = %q, want /", access.Path)
-	}
-	if access.MaxAge != 900 {
-		t.Errorf("access MaxAge = %d, want 900", access.MaxAge)
-	}
-
-	refresh := findCookie(cookies, cookieRefresh)
-	if refresh == nil {
-		t.Fatal("missing refresh cookie")
-	}
-	if refresh.Value != "refresh456" {
-		t.Errorf("refresh value = %q, want %q", refresh.Value, "refresh456")
-	}
-	if !refresh.HttpOnly {
-		t.Error("refresh cookie should be httpOnly")
-	}
-	if refresh.Path != "/api/auth/refresh" {
-		t.Errorf("refresh path = %q, want /api/auth/refresh", refresh.Path)
-	}
-	if refresh.MaxAge != 604800 {
-		t.Errorf("refresh MaxAge = %d, want 604800", refresh.MaxAge)
-	}
-
-	csrf := findCookie(cookies, cookieCSRF)
-	if csrf == nil {
-		t.Fatal("missing CSRF cookie")
-	}
-	if csrf.HttpOnly {
-		t.Error("CSRF cookie should NOT be httpOnly")
-	}
-	if csrf.SameSite != http.SameSiteStrictMode {
-		t.Error("CSRF cookie should be SameSite=Strict")
-	}
-	if csrf.MaxAge != 604800 {
-		t.Errorf("CSRF MaxAge = %d, want 604800", csrf.MaxAge)
-	}
-	if len(csrf.Value) != 64 {
-		t.Errorf("CSRF token length = %d, want 64 hex chars", len(csrf.Value))
-	}
+	assertCookie(t, cookies, cookieExpectation{
+		name: cookieAccess, value: "access123", httpOnly: true,
+		sameSite: http.SameSiteStrictMode, path: "/", maxAge: 900,
+	})
+	assertCookie(t, cookies, cookieExpectation{
+		name: cookieRefresh, value: "refresh456", httpOnly: true,
+		path: testRefreshPath, maxAge: 604800,
+	})
+	assertCookie(t, cookies, cookieExpectation{
+		name: cookieCSRF, httpOnly: false,
+		sameSite: http.SameSiteStrictMode, maxAge: 604800, valueLen: 64,
+	})
 }
 
 func TestClearAuthCookies(t *testing.T) {
@@ -97,11 +94,11 @@ func TestClearAuthCookies(t *testing.T) {
 
 func TestReadAccessToken_FromCookie(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: cookieAccess, Value: "from-cookie"})
+	r.AddCookie(&http.Cookie{Name: cookieAccess, Value: testFromCookie})
 
 	got := readAccessToken(r)
-	if got != "from-cookie" {
-		t.Errorf("readAccessToken = %q, want %q", got, "from-cookie")
+	if got != testFromCookie {
+		t.Errorf("readAccessToken = %q, want %q", got, testFromCookie)
 	}
 }
 
@@ -117,12 +114,12 @@ func TestReadAccessToken_FallbackToBearer(t *testing.T) {
 
 func TestReadAccessToken_CookiePriority(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: cookieAccess, Value: "from-cookie"})
+	r.AddCookie(&http.Cookie{Name: cookieAccess, Value: testFromCookie})
 	r.Header.Set("Authorization", "Bearer from-header")
 
 	got := readAccessToken(r)
-	if got != "from-cookie" {
-		t.Errorf("readAccessToken = %q, want %q (cookie should take priority)", got, "from-cookie")
+	if got != testFromCookie {
+		t.Errorf("readAccessToken = %q, want %q (cookie should take priority)", got, testFromCookie)
 	}
 }
 

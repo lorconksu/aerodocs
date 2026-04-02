@@ -7,6 +7,8 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const testReqFull = "req-full"
+
 func TestPendingRequests_RegisterAndDeliver(t *testing.T) {
 	p := NewPendingRequests()
 	ch := p.Register("s1", "req-1")
@@ -54,17 +56,17 @@ func TestPendingRequests_Remove(t *testing.T) {
 // when the channel buffer is already full (default branch in select).
 func TestPendingRequests_DeliverChannelFull(t *testing.T) {
 	p := NewPendingRequests()
-	p.Register("s1", "req-full")
-	defer p.Remove("s1", "req-full")
+	p.Register("s1", testReqFull)
+	defer p.Remove("s1", testReqFull)
 
 	// First deliver fills the buffer (capacity 1)
-	ok := p.Deliver("s1", "req-full", &pb.FileListResponse{RequestId: "req-full"})
+	ok := p.Deliver("s1", testReqFull, &pb.FileListResponse{RequestId: testReqFull})
 	if !ok {
 		t.Fatal("first delivery should succeed")
 	}
 
 	// Second deliver should fail because the channel is full
-	ok = p.Deliver("s1", "req-full", &pb.FileListResponse{RequestId: "req-full"})
+	ok = p.Deliver("s1", testReqFull, &pb.FileListResponse{RequestId: testReqFull})
 	if ok {
 		t.Fatal("second delivery should fail (channel full)")
 	}

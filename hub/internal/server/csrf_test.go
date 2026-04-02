@@ -14,7 +14,7 @@ var ok200 = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 func TestCSRFMiddleware_BlocksMutationWithoutToken(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
 	// No X-CSRF-Token header.
 
@@ -29,24 +29,24 @@ func TestCSRFMiddleware_BlocksMutationWithoutToken(t *testing.T) {
 func TestCSRFMiddleware_AllowsMatchingToken(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
-	req.Header.Set("X-CSRF-Token", "tok123")
+	req.Header.Set(testCSRFTokenHdr, "tok123")
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
+		t.Errorf(testExpected200, rr.Code)
 	}
 }
 
 func TestCSRFMiddleware_MismatchToken(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
-	req.Header.Set("X-CSRF-Token", "different-value")
+	req.Header.Set(testCSRFTokenHdr, "different-value")
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -59,34 +59,34 @@ func TestCSRFMiddleware_MismatchToken(t *testing.T) {
 func TestCSRFMiddleware_AllowsGET(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodGet, testAPISomething, nil)
 	// No CSRF tokens at all.
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
+		t.Errorf(testExpected200, rr.Code)
 	}
 }
 
 func TestCSRFMiddleware_AllowsHEAD(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodHead, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodHead, testAPISomething, nil)
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
+		t.Errorf(testExpected200, rr.Code)
 	}
 }
 
 func TestCSRFMiddleware_AllowsBearerAuth(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.Header.Set("Authorization", "Bearer some-api-token")
 	// No CSRF tokens.
 
@@ -94,7 +94,7 @@ func TestCSRFMiddleware_AllowsBearerAuth(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
+		t.Errorf(testExpected200, rr.Code)
 	}
 }
 
@@ -103,8 +103,8 @@ func TestCSRFMiddleware_NoCookies_SkipsValidation(t *testing.T) {
 
 	// No cookies at all = not a cookie-based session (e.g., login/register).
 	// CSRF validation should be skipped.
-	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
-	req.Header.Set("X-CSRF-Token", "tok123")
+	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
+	req.Header.Set(testCSRFTokenHdr, "tok123")
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -118,7 +118,7 @@ func TestCSRFMiddleware_AccessCookiePresent_RequiresCSRF(t *testing.T) {
 	handler := csrfMiddleware(ok200)
 
 	// Access cookie present but no CSRF cookie/header = should be blocked.
-	req := httptest.NewRequest(http.MethodPost, "/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_access", Value: "some-token"})
 
 	rr := httptest.NewRecorder()

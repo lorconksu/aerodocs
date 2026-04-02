@@ -20,9 +20,9 @@ func registerAndLoginWithCookies(t *testing.T, s *Server) (cookies []*http.Cooki
 
 	// Step 1: Register
 	body, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
+		Username: "admin", Email: testAdminEmail, Password: testPassword,
 	})
-	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testRegisterPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -34,8 +34,8 @@ func registerAndLoginWithCookies(t *testing.T, s *Server) (cookies []*http.Cooki
 	setupToken := regResp["setup_token"].(string)
 
 	// Step 2: TOTP setup
-	req2 := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
-	req2.Header.Set("Authorization", "Bearer "+setupToken)
+	req2 := httptest.NewRequest("POST", testTOTPSetupPath, nil)
+	req2.Header.Set("Authorization", testBearerPrefix+setupToken)
 	rec2 := httptest.NewRecorder()
 	router.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusOK {
@@ -48,8 +48,8 @@ func registerAndLoginWithCookies(t *testing.T, s *Server) (cookies []*http.Cooki
 	// Step 3: TOTP enable (this sets auth cookies)
 	code, _ := auth.GenerateValidCode(totpResp.Secret)
 	enableBody, _ := json.Marshal(model.TOTPEnableRequest{Code: code})
-	req3 := httptest.NewRequest("POST", "/api/auth/totp/enable", bytes.NewReader(enableBody))
-	req3.Header.Set("Authorization", "Bearer "+setupToken)
+	req3 := httptest.NewRequest("POST", testTOTPEnablePath, bytes.NewReader(enableBody))
+	req3.Header.Set("Authorization", testBearerPrefix+setupToken)
 	rec3 := httptest.NewRecorder()
 	router.ServeHTTP(rec3, req3)
 	if rec3.Code != http.StatusOK {
@@ -67,9 +67,9 @@ func loginWithCookies(t *testing.T, s *Server, totpSecret string) []*http.Cookie
 
 	// Step 1: Login (returns TOTP token)
 	body, _ := json.Marshal(model.LoginRequest{
-		Username: "admin", Password: "MyP@ssw0rd!234",
+		Username: "admin", Password: testPassword,
 	})
-	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testLoginPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
@@ -85,7 +85,7 @@ func loginWithCookies(t *testing.T, s *Server, totpSecret string) []*http.Cookie
 		TOTPToken: loginResp.TOTPToken,
 		Code:      code,
 	})
-	req2 := httptest.NewRequest("POST", "/api/auth/login/totp", bytes.NewReader(totpBody))
+	req2 := httptest.NewRequest("POST", testLoginTOTPPath, bytes.NewReader(totpBody))
 	rec2 := httptest.NewRecorder()
 	router.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusOK {
@@ -123,7 +123,7 @@ func TestCookieAuth_LoginSetsCookies(t *testing.T) {
 	if !refresh.HttpOnly {
 		t.Error("aerodocs_refresh should be httpOnly")
 	}
-	if refresh.Path != "/api/auth/refresh" {
+	if refresh.Path != testRefreshPath {
 		t.Errorf("aerodocs_refresh path = %q, want /api/auth/refresh", refresh.Path)
 	}
 
@@ -147,9 +147,9 @@ func TestCookieAuth_LoginResponseStillContainsTokens(t *testing.T) {
 
 	// Login again via the normal login flow
 	body, _ := json.Marshal(model.LoginRequest{
-		Username: "admin", Password: "MyP@ssw0rd!234",
+		Username: "admin", Password: testPassword,
 	})
-	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testLoginPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -161,7 +161,7 @@ func TestCookieAuth_LoginResponseStillContainsTokens(t *testing.T) {
 		TOTPToken: loginResp.TOTPToken,
 		Code:      code,
 	})
-	req2 := httptest.NewRequest("POST", "/api/auth/login/totp", bytes.NewReader(totpBody))
+	req2 := httptest.NewRequest("POST", testLoginTOTPPath, bytes.NewReader(totpBody))
 	rec2 := httptest.NewRecorder()
 	router.ServeHTTP(rec2, req2)
 
@@ -185,13 +185,13 @@ func TestCookieAuth_RequestWithCookieOnly(t *testing.T) {
 	cookies, _ := registerAndLoginWithCookies(t, s)
 
 	// GET /api/auth/me using only cookies (no Bearer header)
-	req := httptest.NewRequest("GET", "/api/auth/me", nil)
+	req := httptest.NewRequest("GET", testMePath, nil)
 	addCookies(req, cookies)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var user model.User
@@ -212,10 +212,10 @@ func TestCookieAuth_PostWithoutCSRF(t *testing.T) {
 	// Use a POST endpoint that requires auth and uses cookie auth.
 	// Try changing password — it requires access token auth.
 	body, _ := json.Marshal(map[string]string{
-		"current_password": "MyP@ssw0rd!234",
+		"current_password": testPassword,
 		"new_password":     "NewP@ssw0rd!567",
 	})
-	req := httptest.NewRequest("PUT", "/api/auth/password", bytes.NewReader(body))
+	req := httptest.NewRequest("PUT", testPasswordPath, bytes.NewReader(body))
 	addCookies(req, cookies)
 	// Deliberately omit X-CSRF-Token
 	rec := httptest.NewRecorder()
@@ -237,12 +237,12 @@ func TestCookieAuth_PostWithCSRF(t *testing.T) {
 
 	// PUT /api/auth/password with cookies AND matching X-CSRF-Token header
 	body, _ := json.Marshal(map[string]string{
-		"current_password": "MyP@ssw0rd!234",
+		"current_password": testPassword,
 		"new_password":     "NewP@ssw0rd!567",
 	})
-	req := httptest.NewRequest("PUT", "/api/auth/password", bytes.NewReader(body))
+	req := httptest.NewRequest("PUT", testPasswordPath, bytes.NewReader(body))
 	addCookies(req, cookies)
-	req.Header.Set("X-CSRF-Token", csrfCookie.Value)
+	req.Header.Set(testCSRFTokenHdr, csrfCookie.Value)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -266,7 +266,7 @@ func TestCookieAuth_RefreshViaCookie(t *testing.T) {
 	// cookie which is scoped to /api/auth/refresh path, so only that cookie
 	// is present. Since there's no aerodocs_access or aerodocs_csrf cookie
 	// in the request, CSRF middleware will pass through.
-	req := httptest.NewRequest("POST", "/api/auth/refresh", nil)
+	req := httptest.NewRequest("POST", testRefreshPath, nil)
 	req.AddCookie(refreshCookie)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
@@ -312,9 +312,9 @@ func TestCookieAuth_Logout(t *testing.T) {
 	}
 
 	// POST /api/auth/logout with cookies and CSRF token
-	req := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	req := httptest.NewRequest("POST", testLogoutPath, nil)
 	addCookies(req, cookies)
-	req.Header.Set("X-CSRF-Token", csrfCookie.Value)
+	req.Header.Set(testCSRFTokenHdr, csrfCookie.Value)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

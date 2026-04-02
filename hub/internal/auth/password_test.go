@@ -6,13 +6,15 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 )
 
+const testPassword = "MyP@ssw0rd!23"
+
 func TestHashAndCompare(t *testing.T) {
-	hash, err := auth.HashPassword("MyP@ssw0rd!23")
+	hash, err := auth.HashPassword(testPassword)
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
 
-	if !auth.ComparePassword(hash, "MyP@ssw0rd!23") {
+	if !auth.ComparePassword(hash, testPassword) {
 		t.Fatal("expected password to match")
 	}
 
@@ -27,7 +29,7 @@ func TestValidatePasswordPolicy(t *testing.T) {
 		pw      string
 		wantErr bool
 	}{
-		{"valid", "MyP@ssw0rd!23", false},
+		{"valid", testPassword, false},
 		{"too short", "Short!1a", true},
 		{"no uppercase", "myp@ssw0rd!23", true},
 		{"no lowercase", "MYP@SSW0RD!23", true},

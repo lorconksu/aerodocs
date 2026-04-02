@@ -47,9 +47,9 @@ func (m *mockGRPCStreamFileErrors) Send(msg *pb.HubMessage) error {
 // testServerWithFileErrorAgent creates a test server whose mock agent returns file errors.
 func testServerWithFileErrorAgent(t *testing.T) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -92,8 +92,8 @@ func testServerWithFileErrorAgent(t *testing.T) (s *Server, adminToken, serverID
 func TestHandleListFiles_AgentReturnsError(t *testing.T) {
 	s, adminToken, serverID := testServerWithFileErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=/root/secret", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files?path=/root/secret", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -106,8 +106,8 @@ func TestHandleListFiles_AgentReturnsError(t *testing.T) {
 func TestHandleReadFile_FileTooLarge(t *testing.T) {
 	s, adminToken, serverID := testServerWithFileErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/var/log/huge.log", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/var/log/huge.log", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -120,8 +120,8 @@ func TestHandleReadFile_FileTooLarge(t *testing.T) {
 func TestHandleReadFile_MissingPath(t *testing.T) {
 	s, adminToken, serverID := testServerWithFileErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -134,8 +134,8 @@ func TestHandleReadFile_MissingPath(t *testing.T) {
 func TestHandleReadFile_PathTraversal2(t *testing.T) {
 	s, adminToken, serverID := testServerWithFileErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/var/../etc/passwd", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/var/../etc/passwd", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -148,8 +148,8 @@ func TestHandleReadFile_PathTraversal2(t *testing.T) {
 func TestHandleListFiles_RelativePath2(t *testing.T) {
 	s, adminToken, serverID := testServerWithFileErrorAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=relative/path", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files?path=relative/path", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

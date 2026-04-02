@@ -30,7 +30,7 @@ func TestHandleAgentBinaryChecksum_Success(t *testing.T) {
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	body := rec.Body.String()
@@ -38,7 +38,7 @@ func TestHandleAgentBinaryChecksum_Success(t *testing.T) {
 		t.Fatalf("expected checksum %q, got %q", expectedChecksum, body)
 	}
 
-	contentType := rec.Header().Get("Content-Type")
+	contentType := rec.Header().Get(testContentType)
 	if contentType != "text/plain" {
 		t.Fatalf("expected Content-Type text/plain, got %q", contentType)
 	}

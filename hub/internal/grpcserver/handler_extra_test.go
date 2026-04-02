@@ -14,6 +14,8 @@ const (
 	testFutureExpiry = "2099-12-31 23:59:59"
 	testConnectFmt   = "Connect: %v"
 	testServerHBIP   = "s-hb-ip"
+	testStaleSrv     = "stale-srv"
+	testTimeoutSrv   = "timeout-srv"
 )
 
 // sequenceStream returns messages from a slice and then io.EOF.
@@ -258,13 +260,13 @@ func TestConnect_HeartbeatUnknownServer(t *testing.T) {
 func TestSweepStaleConnections_ActualStale(t *testing.T) {
 	s, st := testGRPCServer(t)
 
-	st.CreateServer(&model.Server{ID: "stale-srv", Name: "stale", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testStaleSrv, Name: "stale", Status: "online", Labels: "{}"})
 
 	stream := &mockStream{}
-	s.connMgr.Register("stale-srv", stream)
+	s.connMgr.Register(testStaleSrv, stream)
 
 	// Get the connection and back-date its heartbeat
-	conn := s.connMgr.GetConn("stale-srv")
+	conn := s.connMgr.GetConn(testStaleSrv)
 	if conn != nil {
 		// Simulate stale connection by moving LastHeartbeat back in time
 		// We can't directly set the field, but we can use the stale check with a very short duration
@@ -273,10 +275,10 @@ func TestSweepStaleConnections_ActualStale(t *testing.T) {
 	}
 
 	// Test the orphan path: register then unregister (server is online but not connected)
-	s.connMgr.Unregister("stale-srv")
+	s.connMgr.Unregister(testStaleSrv)
 	s.sweepStaleConnections()
 
-	srv, _ := st.GetServerByID("stale-srv")
+	srv, _ := st.GetServerByID(testStaleSrv)
 	if srv.Status != "offline" {
 		t.Fatalf("expected orphaned server to be offline, got %s", srv.Status)
 	}
@@ -286,10 +288,10 @@ func TestSweepStaleConnections_ActualStale(t *testing.T) {
 func TestSweepStaleConnections_StaleTimeout(t *testing.T) {
 	s, st := testGRPCServer(t)
 
-	st.CreateServer(&model.Server{ID: "timeout-srv", Name: "timeout", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testTimeoutSrv, Name: "timeout", Status: "online", Labels: "{}"})
 
 	stream := &mockStream{}
-	s.connMgr.Register("timeout-srv", stream)
+	s.connMgr.Register(testTimeoutSrv, stream)
 
 	// Sweep with 0 duration — all connections are "stale" (registered time > 0 ago)
 	stale := s.connMgr.StaleConnections(0 * time.Second)
@@ -298,7 +300,7 @@ func TestSweepStaleConnections_StaleTimeout(t *testing.T) {
 		_ = st.UpdateServerStatus(id, "offline")
 	}
 
-	srv, _ := st.GetServerByID("timeout-srv")
+	srv, _ := st.GetServerByID(testTimeoutSrv)
 	if srv.Status != "offline" {
 		t.Fatalf("expected server marked offline after stale sweep, got %s", srv.Status)
 	}

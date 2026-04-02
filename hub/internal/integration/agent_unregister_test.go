@@ -11,12 +11,8 @@ import (
 	"github.com/wyiu/aerodocs/agent/agentclient"
 )
 
-func TestServerUnregister(t *testing.T) {
-	h := StartHarness(t)
-	token := h.SetupAdmin(t)
-	serverID, regToken := h.CreateServer(t, token, "unregister-server")
-
-	// Start agent
+// startTestAgent creates and starts an agent client, returning the cancel func and error channel.
+func startTestAgent(h *TestHarness, regToken string) (context.CancelFunc, <-chan error) {
 	agentClient := agentclient.New(agentclient.Config{
 		HubAddr:      h.GRPCAddr,
 		ServerID:     "",
@@ -28,27 +24,36 @@ func TestServerUnregister(t *testing.T) {
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 	agentErrCh := make(chan error, 1)
 	go func() {
 		agentErrCh <- agentClient.Run(ctx)
 	}()
+	return cancel, agentErrCh
+}
 
-	// Ensure cancel is called at test end regardless
-	defer cancel()
-
-	// Wait for agent to connect
-	deadline := time.Now().Add(5 * time.Second)
+// waitForAgentDisconnect polls ConnMgr until the given serverID disappears or the timeout expires.
+func waitForAgentDisconnect(h *TestHarness, serverID string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		for _, id := range h.ConnMgr.ActiveServerIDs() {
-			if id == serverID {
-				goto connected
-			}
+		if !isServerConnected(h, serverID) {
+			return true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatal("agent did not connect within 5s")
-connected:
+	return false
+}
+
+func TestServerUnregister(t *testing.T) {
+	h := StartHarness(t)
+	token := h.SetupAdmin(t)
+	serverID, regToken := h.CreateServer(t, token, "unregister-server")
+
+	cancel, agentErrCh := startTestAgent(h, regToken)
+	defer cancel()
+
+	if !waitForAgentConnect(h, serverID, 5*time.Second) {
+		t.Fatal("agent did not connect within 5s")
+	}
 	t.Log("agent connected")
 
 	// Send DELETE /api/servers/{id}/unregister
@@ -73,10 +78,8 @@ connected:
 
 	// Cancel the agent context immediately to prevent the agent's selfCleanup()
 	// from calling syscall.Exec (which would replace the test process).
-	// The agent has a 2-second delay before cleanup — cancelling now prevents it.
 	cancel()
 
-	// Wait for agent goroutine to exit
 	select {
 	case <-agentErrCh:
 		t.Log("agent goroutine exited")
@@ -84,24 +87,9 @@ connected:
 		t.Fatal("agent goroutine did not exit within 5s")
 	}
 
-	// Wait for agent to disconnect from ConnMgr
-	disconnectDeadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(disconnectDeadline) {
-		ids := h.ConnMgr.ActiveServerIDs()
-		found := false
-		for _, id := range ids {
-			if id == serverID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			goto disconnected
-		}
-		time.Sleep(100 * time.Millisecond)
+	if !waitForAgentDisconnect(h, serverID, 5*time.Second) {
+		t.Fatal("agent did not disconnect from ConnMgr within 5s after unregister")
 	}
-	t.Fatal("agent did not disconnect from ConnMgr within 5s after unregister")
-disconnected:
 	t.Log("agent disconnected from ConnMgr")
 
 	// Verify server no longer exists in store

@@ -7,16 +7,24 @@ import (
 	"testing"
 )
 
+const (
+	testAgentConf    = "agent.conf"
+	testHubAddr      = "localhost:9090"
+	testLoadConfigFmt = "loadConfig: %v"
+	testVarLogPath   = "/var/log"
+	testHomeAppPath  = "/home/app"
+)
+
 // TestRunSelfUnregister_ReadsTokenFromConfigOnly verifies that runSelfUnregister
 // reads the unregister token from the config file, not from the environment variable.
 func TestRunSelfUnregister_ReadsTokenFromConfigOnly(t *testing.T) {
 	// Create a temporary config file with an unregister token
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "agent.conf")
+	configPath := filepath.Join(dir, testAgentConf)
 
 	cfg := agentConfig{
 		ServerID:        "test-server-id",
-		HubURL:          "localhost:9090",
+		HubURL:          testHubAddr,
 		UnregisterToken: "config-file-token",
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -30,7 +38,7 @@ func TestRunSelfUnregister_ReadsTokenFromConfigOnly(t *testing.T) {
 	// Verify loadConfig reads the token correctly
 	loaded, err := loadConfig(configPath)
 	if err != nil {
-		t.Fatalf("loadConfig: %v", err)
+		t.Fatalf(testLoadConfigFmt, err)
 	}
 	if loaded.UnregisterToken != "config-file-token" {
 		t.Errorf("expected unregister_token 'config-file-token', got %q", loaded.UnregisterToken)
@@ -42,12 +50,12 @@ func TestRunSelfUnregister_ReadsTokenFromConfigOnly(t *testing.T) {
 // env var is set (proving the env var is not used as fallback).
 func TestRunSelfUnregister_MissingTokenFailsEvenWithEnvVar(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "agent.conf")
+	configPath := filepath.Join(dir, testAgentConf)
 
 	// Write config WITHOUT unregister token
 	cfg := agentConfig{
 		ServerID: "test-server-id",
-		HubURL:   "localhost:9090",
+		HubURL:   testHubAddr,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -63,7 +71,7 @@ func TestRunSelfUnregister_MissingTokenFailsEvenWithEnvVar(t *testing.T) {
 	// Load config and verify token is empty (env var not consulted)
 	loaded, err := loadConfig(configPath)
 	if err != nil {
-		t.Fatalf("loadConfig: %v", err)
+		t.Fatalf(testLoadConfigFmt, err)
 	}
 	if loaded.UnregisterToken != "" {
 		t.Errorf("expected empty unregister_token from config, got %q", loaded.UnregisterToken)
@@ -74,9 +82,9 @@ func TestRunSelfUnregister_MissingTokenFailsEvenWithEnvVar(t *testing.T) {
 // the unregister token to the config file.
 func TestSaveNewConfig_PersistsUnregisterToken(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "agent.conf")
+	configPath := filepath.Join(dir, testAgentConf)
 
-	saveNewConfig(configPath, "localhost:9090", "srv-123", "my-unreg-token")
+	saveNewConfig(configPath, testHubAddr, "srv-123", "my-unreg-token")
 
 	loaded, err := loadConfig(configPath)
 	if err != nil {
@@ -88,8 +96,8 @@ func TestSaveNewConfig_PersistsUnregisterToken(t *testing.T) {
 	if loaded.ServerID != "srv-123" {
 		t.Errorf("expected server_id 'srv-123', got %q", loaded.ServerID)
 	}
-	if loaded.HubURL != "localhost:9090" {
-		t.Errorf("expected hub_url 'localhost:9090', got %q", loaded.HubURL)
+	if loaded.HubURL != testHubAddr {
+		t.Errorf("expected hub_url '%s', got %q", testHubAddr, loaded.HubURL)
 	}
 }
 
@@ -99,9 +107,9 @@ func TestParseAllowedPaths(t *testing.T) {
 		want  []string
 	}{
 		{"", nil},
-		{"/var/log", []string{"/var/log"}},
-		{"/var/log,/home/app", []string{"/var/log", "/home/app"}},
-		{"/var/log, /home/app , /tmp", []string{"/var/log", "/home/app", "/tmp"}},
+		{testVarLogPath, []string{testVarLogPath}},
+		{testVarLogPath + "," + testHomeAppPath, []string{testVarLogPath, testHomeAppPath}},
+		{testVarLogPath + ", " + testHomeAppPath + " , /tmp", []string{testVarLogPath, testHomeAppPath, "/tmp"}},
 		{",,,", nil},
 	}
 	for _, tt := range tests {
@@ -120,12 +128,12 @@ func TestParseAllowedPaths(t *testing.T) {
 
 func TestLoadConfig_WithAllowedPaths(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "agent.conf")
+	configPath := filepath.Join(dir, testAgentConf)
 
 	cfg := agentConfig{
 		ServerID:     "srv-1",
-		HubURL:       "localhost:9090",
-		AllowedPaths: []string{"/var/log", "/home/app"},
+		HubURL:       testHubAddr,
+		AllowedPaths: []string{testVarLogPath, testHomeAppPath},
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -137,12 +145,12 @@ func TestLoadConfig_WithAllowedPaths(t *testing.T) {
 
 	loaded, err := loadConfig(configPath)
 	if err != nil {
-		t.Fatalf("loadConfig: %v", err)
+		t.Fatalf(testLoadConfigFmt, err)
 	}
 	if len(loaded.AllowedPaths) != 2 {
 		t.Fatalf("expected 2 allowed paths, got %d", len(loaded.AllowedPaths))
 	}
-	if loaded.AllowedPaths[0] != "/var/log" {
-		t.Fatalf("expected '/var/log', got '%s'", loaded.AllowedPaths[0])
+	if loaded.AllowedPaths[0] != testVarLogPath {
+		t.Fatalf("expected '%s', got '%s'", testVarLogPath, loaded.AllowedPaths[0])
 	}
 }

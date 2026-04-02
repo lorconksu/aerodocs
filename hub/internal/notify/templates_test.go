@@ -7,6 +7,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const testProdServer01 = "prod-server-01"
+
 func TestRenderEmail_AllEventTypes(t *testing.T) {
 	tests := []struct {
 		eventType string
@@ -64,13 +66,13 @@ func TestRenderEmail_AllEventTypes(t *testing.T) {
 
 func TestRenderEmail_PlaceholderSubstitution(t *testing.T) {
 	subject, body := RenderEmail(model.NotifyAgentOffline, map[string]string{
-		"server_name": "prod-server-01",
+		"server_name": testProdServer01,
 	})
 
-	if !strings.Contains(subject, "prod-server-01") {
+	if !strings.Contains(subject, testProdServer01) {
 		t.Errorf("expected subject to contain 'prod-server-01', got: %q", subject)
 	}
-	if !strings.Contains(body, "prod-server-01") {
+	if !strings.Contains(body, testProdServer01) {
 		t.Errorf("expected body to contain 'prod-server-01', got: %q", body)
 	}
 	if strings.Contains(body, "{{server_name}}") {

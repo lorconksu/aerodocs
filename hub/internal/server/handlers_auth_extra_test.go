@@ -15,12 +15,12 @@ import (
 func TestHandleMe_Unauthenticated(t *testing.T) {
 	s := testServer(t)
 
-	req := httptest.NewRequest("GET", "/api/auth/me", nil)
+	req := httptest.NewRequest("GET", testMePath, nil)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+		t.Fatalf(testExpected401, rec.Code)
 	}
 }
 
@@ -30,9 +30,9 @@ func TestHandleAuthStatus_AfterFirstUserBeforeTOTP(t *testing.T) {
 
 	// Register a user but don't complete TOTP setup
 	regBody, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
+		Username: "admin", Email: testAdminEmail, Password: testPassword,
 	})
-	regReq := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(regBody))
+	regReq := httptest.NewRequest("POST", testRegisterPath, bytes.NewReader(regBody))
 	regRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(regRec, regReq)
 
@@ -42,7 +42,7 @@ func TestHandleAuthStatus_AfterFirstUserBeforeTOTP(t *testing.T) {
 	s.routes().ServeHTTP(statusRec, statusReq)
 
 	if statusRec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", statusRec.Code)
+		t.Fatalf(testExpected200, statusRec.Code)
 	}
 
 	var resp model.AuthStatusResponse
@@ -59,9 +59,9 @@ func TestRegisterAllowed_AfterIncompleteSetup(t *testing.T) {
 
 	// Register a user but don't complete TOTP setup
 	regBody, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin", Email: "admin@test.com", Password: "MyP@ssw0rd!234",
+		Username: "admin", Email: testAdminEmail, Password: testPassword,
 	})
-	regReq := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(regBody))
+	regReq := httptest.NewRequest("POST", testRegisterPath, bytes.NewReader(regBody))
 	regRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(regRec, regReq)
 	if regRec.Code != http.StatusOK {
@@ -70,9 +70,9 @@ func TestRegisterAllowed_AfterIncompleteSetup(t *testing.T) {
 
 	// Re-register — incomplete user should be cleaned up and new registration allowed
 	regBody2, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin2", Email: "admin2@test.com", Password: "MyP@ssw0rd!234",
+		Username: "admin2", Email: "admin2@test.com", Password: testPassword,
 	})
-	regReq2 := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(regBody2))
+	regReq2 := httptest.NewRequest("POST", testRegisterPath, bytes.NewReader(regBody2))
 	regRec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(regRec2, regReq2)
 	if regRec2.Code != http.StatusOK {
@@ -93,8 +93,8 @@ func TestTOTPDisable_NonExistentUser(t *testing.T) {
 		UserID:        "nonexistent-user-id",
 		AdminTOTPCode: adminCode,
 	})
-	disableReq := httptest.NewRequest("POST", "/api/auth/totp/disable", bytes.NewReader(disableBody))
-	disableReq.Header.Set("Authorization", "Bearer "+adminToken)
+	disableReq := httptest.NewRequest("POST", testTOTPDisablePath, bytes.NewReader(disableBody))
+	disableReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	disableRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(disableRec, disableReq)
 
@@ -109,12 +109,12 @@ func TestTOTPDisable_NonExistentUser(t *testing.T) {
 func TestTOTPSetup_Unauthenticated(t *testing.T) {
 	s := testServer(t)
 
-	req := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
+	req := httptest.NewRequest("POST", testTOTPSetupPath, nil)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+		t.Fatalf(testExpected401, rec.Code)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestTOTPSetup_Unauthenticated(t *testing.T) {
 func TestHandleRefresh_EmptyBody(t *testing.T) {
 	s := testServer(t)
 
-	req := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader([]byte("{}")))
+	req := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader([]byte("{}")))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -143,13 +143,13 @@ func TestLogin_TOTPFlowComplete(t *testing.T) {
 	}
 
 	// Verify we can call /api/auth/me with the token
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+adminToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
 	if meRec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", meRec.Code, meRec.Body.String())
+		t.Fatalf(testExpected200Body, meRec.Code, meRec.Body.String())
 	}
 
 	var user model.User
@@ -166,8 +166,8 @@ func TestUpdateAvatar_ClearAvatar(t *testing.T) {
 
 	// First set an avatar
 	setBody, _ := json.Marshal(model.UpdateAvatarRequest{Avatar: "data:image/png;base64,abc"})
-	setReq := httptest.NewRequest("PUT", "/api/auth/avatar", bytes.NewReader(setBody))
-	setReq.Header.Set("Authorization", "Bearer "+token)
+	setReq := httptest.NewRequest("PUT", testAvatarPath, bytes.NewReader(setBody))
+	setReq.Header.Set("Authorization", testBearerPrefix+token)
 	setRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(setRec, setReq)
 
@@ -177,8 +177,8 @@ func TestUpdateAvatar_ClearAvatar(t *testing.T) {
 
 	// Now clear it
 	clearBody, _ := json.Marshal(model.UpdateAvatarRequest{Avatar: ""})
-	clearReq := httptest.NewRequest("PUT", "/api/auth/avatar", bytes.NewReader(clearBody))
-	clearReq.Header.Set("Authorization", "Bearer "+token)
+	clearReq := httptest.NewRequest("PUT", testAvatarPath, bytes.NewReader(clearBody))
+	clearReq.Header.Set("Authorization", testBearerPrefix+token)
 	clearRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(clearRec, clearReq)
 
@@ -192,13 +192,13 @@ func TestHandleChangePassword_InvalidJSON(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/auth/password", bytes.NewReader([]byte("not-json")))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testPasswordPath, bytes.NewReader([]byte(testNotJSON)))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -206,13 +206,13 @@ func TestHandleChangePassword_InvalidJSON(t *testing.T) {
 func TestHandleMe_InvalidToken(t *testing.T) {
 	s := testServer(t)
 
-	req := httptest.NewRequest("GET", "/api/auth/me", nil)
+	req := httptest.NewRequest("GET", testMePath, nil)
 	req.Header.Set("Authorization", "Bearer invalid-token")
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+		t.Fatalf(testExpected401, rec.Code)
 	}
 }
 
@@ -224,9 +224,9 @@ func TestRegister_BlockedAfterSetup(t *testing.T) {
 
 	// Try to register a second first user
 	body, _ := json.Marshal(model.RegisterRequest{
-		Username: "admin2", Email: "admin2@test.com", Password: "MyP@ssw0rd!234",
+		Username: "admin2", Email: "admin2@test.com", Password: testPassword,
 	})
-	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testRegisterPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

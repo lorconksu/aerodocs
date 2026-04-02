@@ -15,8 +15,8 @@ func TestHandleListFiles_ViewerWithPermissionNoAgent(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 
-	srvReq := httptest.NewRequest("POST", "/api/servers", mustJSON(t, model.CreateServerRequest{Name: "files-perm-srv"}))
-	srvReq.Header.Set("Authorization", "Bearer "+adminToken)
+	srvReq := httptest.NewRequest("POST", testServersPath, mustJSON(t, model.CreateServerRequest{Name: "files-perm-srv"}))
+	srvReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	srvRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(srvRec, srvReq)
 	var srvResp model.CreateServerResponse
@@ -24,8 +24,8 @@ func TestHandleListFiles_ViewerWithPermissionNoAgent(t *testing.T) {
 	serverID := srvResp.Server.ID
 
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
@@ -34,10 +34,10 @@ func TestHandleListFiles_ViewerWithPermissionNoAgent(t *testing.T) {
 	viewerID := viewerUser.(map[string]interface{})["id"].(string)
 
 	// Grant permission for /var/log
-	s.store.CreatePermission(viewerID, serverID, "/var/log")
+	s.store.CreatePermission(viewerID, serverID, testVarLog)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=/var/log", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testFilesQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -46,7 +46,7 @@ func TestHandleListFiles_ViewerWithPermissionNoAgent(t *testing.T) {
 		t.Fatalf("viewer with permission should not get 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -56,8 +56,8 @@ func TestHandleReadFile_ViewerWithPermissionNoAgent(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
 
-	srvReq := httptest.NewRequest("POST", "/api/servers", mustJSON(t, model.CreateServerRequest{Name: "read-perm-srv"}))
-	srvReq.Header.Set("Authorization", "Bearer "+adminToken)
+	srvReq := httptest.NewRequest("POST", testServersPath, mustJSON(t, model.CreateServerRequest{Name: "read-perm-srv"}))
+	srvReq.Header.Set("Authorization", testBearerPrefix+adminToken)
 	srvRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(srvRec, srvReq)
 	var srvResp model.CreateServerResponse
@@ -65,8 +65,8 @@ func TestHandleReadFile_ViewerWithPermissionNoAgent(t *testing.T) {
 	serverID := srvResp.Server.ID
 
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
@@ -75,10 +75,10 @@ func TestHandleReadFile_ViewerWithPermissionNoAgent(t *testing.T) {
 	viewerID := viewerUser.(map[string]interface{})["id"].(string)
 
 	// Grant permission for /var/log
-	s.store.CreatePermission(viewerID, serverID, "/var/log")
+	s.store.CreatePermission(viewerID, serverID, testVarLog)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/var/log/syslog", nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -87,7 +87,7 @@ func TestHandleReadFile_ViewerWithPermissionNoAgent(t *testing.T) {
 		t.Fatalf("viewer with permission should not get 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -98,8 +98,8 @@ func TestHandleListFiles_AdminDefaultPath(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "list-default")
 
 	// Admin with default path "/" — should reach agent check, not 400
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

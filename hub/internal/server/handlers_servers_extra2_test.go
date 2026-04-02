@@ -35,12 +35,12 @@ func TestHandleListServers_SearchFilter(t *testing.T) {
 	createTestServer(t, s, adminToken, "other-server")
 
 	req := httptest.NewRequest("GET", "/api/servers?search=my-search", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -52,8 +52,8 @@ func TestHandleGetServer_ViewerNotPermitted(t *testing.T) {
 	serverID := createTestServer(t, s, adminToken, "forbidden-server")
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID, nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -79,21 +79,21 @@ func TestGetServer_ViewerMultipleServersAccessSecond(t *testing.T) {
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
 	// Get viewer user ID
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 	var viewerUser model.User
 	json.NewDecoder(meRec.Body).Decode(&viewerUser)
 
 	// Grant permissions on all 3 servers
-	s.store.CreatePermission(viewerUser.ID, s1ID, "/var/log")
-	s.store.CreatePermission(viewerUser.ID, s2ID, "/var/log")
-	s.store.CreatePermission(viewerUser.ID, s3ID, "/var/log")
+	s.store.CreatePermission(viewerUser.ID, s1ID, testVarLog)
+	s.store.CreatePermission(viewerUser.ID, s2ID, testVarLog)
+	s.store.CreatePermission(viewerUser.ID, s3ID, testVarLog)
 
 	// Access the SECOND server — this failed with the Limit:1 bug
-	req2 := httptest.NewRequest("GET", "/api/servers/"+s2ID, nil)
-	req2.Header.Set("Authorization", "Bearer "+viewerToken)
+	req2 := httptest.NewRequest("GET", testServersPrefix+s2ID, nil)
+	req2.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
@@ -102,8 +102,8 @@ func TestGetServer_ViewerMultipleServersAccessSecond(t *testing.T) {
 	}
 
 	// Access the THIRD server — also should work
-	req3 := httptest.NewRequest("GET", "/api/servers/"+s3ID, nil)
-	req3.Header.Set("Authorization", "Bearer "+viewerToken)
+	req3 := httptest.NewRequest("GET", testServersPrefix+s3ID, nil)
+	req3.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec3 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec3, req3)
 
@@ -113,8 +113,8 @@ func TestGetServer_ViewerMultipleServersAccessSecond(t *testing.T) {
 
 	// Verify access is still denied for a server WITHOUT permission
 	unpermittedID := createTestServer(t, s, adminToken, "no-perm-srv")
-	reqDenied := httptest.NewRequest("GET", "/api/servers/"+unpermittedID, nil)
-	reqDenied.Header.Set("Authorization", "Bearer "+viewerToken)
+	reqDenied := httptest.NewRequest("GET", testServersPrefix+unpermittedID, nil)
+	reqDenied.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	recDenied := httptest.NewRecorder()
 	s.routes().ServeHTTP(recDenied, reqDenied)
 
@@ -131,10 +131,10 @@ func TestHandleCreateServer_ProductionMode(t *testing.T) {
 
 	adminToken := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/servers", mustJSON(t, map[string]string{
+	req := httptest.NewRequest("POST", testServersPath, mustJSON(t, map[string]string{
 		"name": "prod-server",
 	}))
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	req.Host = "aerodocs.example.com"
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
@@ -151,10 +151,10 @@ func TestHandleCreateServer_ProductionModeWithPort(t *testing.T) {
 
 	adminToken := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("POST", "/api/servers", mustJSON(t, map[string]string{
+	req := httptest.NewRequest("POST", testServersPath, mustJSON(t, map[string]string{
 		"name": "prod-server-port",
 	}))
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	req.Host = "aerodocs.example.com:8443"
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)

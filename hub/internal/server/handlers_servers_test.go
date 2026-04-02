@@ -18,13 +18,13 @@ func TestListServers_Admin(t *testing.T) {
 	s.store.CreateServer(&model.Server{ID: "s1", Name: "alpha", Status: "online", Labels: "{}"})
 	s.store.CreateServer(&model.Server{ID: "s2", Name: "beta", Status: "pending", Labels: "{}"})
 
-	req := httptest.NewRequest("GET", "/api/servers", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testServersPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -43,12 +43,12 @@ func TestListServers_FilterByStatus(t *testing.T) {
 	s.store.CreateServer(&model.Server{ID: "s2", Name: "beta", Status: "pending", Labels: "{}"})
 
 	req := httptest.NewRequest("GET", "/api/servers?status=online", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf(testExpected200, rec.Code)
 	}
 
 	var resp map[string]interface{}
@@ -67,8 +67,8 @@ func TestCreateServer(t *testing.T) {
 		Name: "web-prod-1",
 	})
 
-	req := httptest.NewRequest("POST", "/api/servers", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testServersPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -99,13 +99,13 @@ func TestCreateServer_EmptyName(t *testing.T) {
 
 	body, _ := json.Marshal(model.CreateServerRequest{Name: ""})
 
-	req := httptest.NewRequest("POST", "/api/servers", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("POST", testServersPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 
@@ -115,13 +115,13 @@ func TestGetServer(t *testing.T) {
 
 	s.store.CreateServer(&model.Server{ID: "s1", Name: "test-srv", Status: "online", Labels: "{}"})
 
-	req := httptest.NewRequest("GET", "/api/servers/s1", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testServerS1Path, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var srv model.Server
@@ -136,7 +136,7 @@ func TestGetServer_NotFound(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/nonexistent", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -153,13 +153,13 @@ func TestUpdateServer(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"name": "new-name", "labels": `{"env":"staging"}`})
 
-	req := httptest.NewRequest("PUT", "/api/servers/s1", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testServerS1Path, bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -169,13 +169,13 @@ func TestDeleteServer(t *testing.T) {
 
 	s.store.CreateServer(&model.Server{ID: "s1", Name: "doomed", Status: "online", Labels: "{}"})
 
-	req := httptest.NewRequest("DELETE", "/api/servers/s1", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("DELETE", testServerS1Path, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	// Verify it's gone
@@ -196,12 +196,12 @@ func TestBatchDeleteServers(t *testing.T) {
 	body, _ := json.Marshal(model.BatchDeleteRequest{IDs: []string{"s1", "s3"}})
 
 	req := httptest.NewRequest("POST", "/api/servers/batch-delete", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	// Verify only s2 remains
@@ -221,12 +221,12 @@ func TestBatchDeleteServers_EmptyList(t *testing.T) {
 	body, _ := json.Marshal(model.BatchDeleteRequest{IDs: []string{}})
 
 	req := httptest.NewRequest("POST", "/api/servers/batch-delete", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+		t.Fatalf(testExpected400, rec.Code)
 	}
 }
 

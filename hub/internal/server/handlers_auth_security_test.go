@@ -22,7 +22,7 @@ func TestRefreshToken_RotatesGeneration(t *testing.T) {
 
 	// First refresh should succeed
 	body, _ := json.Marshal(model.RefreshRequest{RefreshToken: refreshToken})
-	req := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -32,7 +32,7 @@ func TestRefreshToken_RotatesGeneration(t *testing.T) {
 
 	// Using the SAME refresh token a second time should fail (generation was incremented)
 	body2, _ := json.Marshal(model.RefreshRequest{RefreshToken: refreshToken})
-	req2 := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(body2))
+	req2 := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(body2))
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
@@ -50,7 +50,7 @@ func TestRefreshToken_NewTokenWorks(t *testing.T) {
 
 	// First refresh
 	body, _ := json.Marshal(model.RefreshRequest{RefreshToken: refreshToken})
-	req := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -63,7 +63,7 @@ func TestRefreshToken_NewTokenWorks(t *testing.T) {
 
 	// The new refresh token from the response should work
 	body2, _ := json.Marshal(model.RefreshRequest{RefreshToken: pair.RefreshToken})
-	req2 := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(body2))
+	req2 := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(body2))
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 
@@ -86,7 +86,7 @@ func TestRefreshToken_StaleGeneration_Rejected(t *testing.T) {
 
 	// The old refresh token should now be rejected
 	body, _ := json.Marshal(model.RefreshRequest{RefreshToken: refreshToken})
-	req := httptest.NewRequest("POST", "/api/auth/refresh", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -102,8 +102,8 @@ func TestLogout_BlacklistsAccessToken(t *testing.T) {
 	accessToken := registerAndGetAdminToken(t, s)
 
 	// Verify the access token works before logout
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+accessToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+accessToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
@@ -112,8 +112,8 @@ func TestLogout_BlacklistsAccessToken(t *testing.T) {
 	}
 
 	// Logout with the access token
-	logoutReq := httptest.NewRequest("POST", "/api/auth/logout", nil)
-	logoutReq.Header.Set("Authorization", "Bearer "+accessToken)
+	logoutReq := httptest.NewRequest("POST", testLogoutPath, nil)
+	logoutReq.Header.Set("Authorization", testBearerPrefix+accessToken)
 	logoutRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(logoutRec, logoutReq)
 
@@ -122,8 +122,8 @@ func TestLogout_BlacklistsAccessToken(t *testing.T) {
 	}
 
 	// The access token should now be rejected
-	meReq2 := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq2.Header.Set("Authorization", "Bearer "+accessToken)
+	meReq2 := httptest.NewRequest("GET", testMePath, nil)
+	meReq2.Header.Set("Authorization", testBearerPrefix+accessToken)
 	meRec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec2, meReq2)
 
@@ -136,7 +136,7 @@ func TestLogout_WithoutToken_StillClears(t *testing.T) {
 	s := testServer(t)
 
 	// Logout without any token should still succeed (just clears cookies)
-	logoutReq := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	logoutReq := httptest.NewRequest("POST", testLogoutPath, nil)
 	logoutRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(logoutRec, logoutReq)
 
@@ -154,8 +154,8 @@ func TestLogout_DifferentToken_StillValid(t *testing.T) {
 	accessToken2, _, _ := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration)
 
 	// Logout with the first token
-	logoutReq := httptest.NewRequest("POST", "/api/auth/logout", nil)
-	logoutReq.Header.Set("Authorization", "Bearer "+accessToken)
+	logoutReq := httptest.NewRequest("POST", testLogoutPath, nil)
+	logoutReq.Header.Set("Authorization", testBearerPrefix+accessToken)
 	logoutRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(logoutRec, logoutReq)
 
@@ -164,8 +164,8 @@ func TestLogout_DifferentToken_StillValid(t *testing.T) {
 	}
 
 	// The second access token should still work (different JTI)
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+accessToken2)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+accessToken2)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 
@@ -176,8 +176,8 @@ func TestLogout_DifferentToken_StillValid(t *testing.T) {
 
 // Test that JTI is included in generated tokens
 func TestTokens_HaveJTI(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
-	access, refresh, err := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+	secret := testJWTSecret
+	access, refresh, err := auth.GenerateTokenPair(secret, testUserID1, "admin", 0)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -199,8 +199,8 @@ func TestTokens_HaveJTI(t *testing.T) {
 
 // Test that token generation is included in claims
 func TestTokens_HaveGeneration(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
-	access, _, err := auth.GenerateTokenPair(secret, "user-1", "admin", 5)
+	secret := testJWTSecret
+	access, _, err := auth.GenerateTokenPair(secret, testUserID1, "admin", 5)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

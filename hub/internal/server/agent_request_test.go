@@ -72,16 +72,18 @@ func (m *mockGRPCStream) SendMsg(msg interface{}) error  { return nil }
 func (m *mockGRPCStream) RecvMsg(msg interface{}) error  { return nil }
 func (m *mockGRPCStream) SetHeader(metadata.MD) error    { return nil }
 func (m *mockGRPCStream) SendHeader(metadata.MD) error   { return nil }
-func (m *mockGRPCStream) SetTrailer(metadata.MD)         {}
+func (m *mockGRPCStream) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 
 // testServerWithAgent creates a test server with a connMgr and a mock agent stream.
 // Returns the server, the admin token, and the serverID of a registered server.
 // The mock stream auto-delivers responses for FileList and FileRead requests.
 func testServerWithAgent(t *testing.T) (s *Server, adminToken, serverID string) {
 	t.Helper()
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	t.Cleanup(func() { st.Close() })
 
@@ -124,8 +126,8 @@ func testServerWithAgent(t *testing.T) (s *Server, adminToken, serverID string) 
 func TestRequireAgent_AgentConnected(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=/var/log", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testFilesQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -139,8 +141,8 @@ func TestRequireAgent_AgentConnected(t *testing.T) {
 func TestSendAgentRequest_Success(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=/var/log", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testFilesQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -156,7 +158,7 @@ func TestRequireAgent_NilConnMgr(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/some-server/files?path=/var/log", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -169,8 +171,8 @@ func TestRequireAgent_NilConnMgr(t *testing.T) {
 func TestHandleReadFile_WithAgent(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files/read?path=/etc/hosts", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+"/files/read?path=/etc/hosts", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -187,8 +189,8 @@ func TestHandleReadFile_WithAgent(t *testing.T) {
 func TestHandleListFiles_WithConnectedAgent(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 
-	req := httptest.NewRequest("GET", "/api/servers/"+serverID+"/files?path=/var/log", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testFilesQuery, nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

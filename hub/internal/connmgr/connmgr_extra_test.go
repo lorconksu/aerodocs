@@ -36,7 +36,9 @@ func (m *mockStream) SendMsg(v interface{}) error         { return nil }
 func (m *mockStream) RecvMsg(v interface{}) error         { return nil }
 func (m *mockStream) SetHeader(metadata.MD) error         { return nil }
 func (m *mockStream) SendHeader(metadata.MD) error        { return nil }
-func (m *mockStream) SetTrailer(metadata.MD)              {}
+func (m *mockStream) SetTrailer(metadata.MD) {
+	// no-op: mock stub for testing
+}
 func (m *mockStream) SendAndClose(*pb.HubMessage) error   { return nil }
 
 // TestSendToAgent_Connected verifies that SendToAgent sends to a connected stream.

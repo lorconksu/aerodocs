@@ -6,6 +6,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const testGetRecipientsFmt = "get recipients: %v"
+
 func createTestUser(t *testing.T, st interface {
 	CreateUser(*model.User) error
 }, id string) {
@@ -116,7 +118,7 @@ func TestGetEnabledRecipients_DefaultOn(t *testing.T) {
 
 	recipients, err := s.GetEnabledRecipients(model.NotifyAgentOffline)
 	if err != nil {
-		t.Fatalf("get recipients: %v", err)
+		t.Fatalf(testGetRecipientsFmt, err)
 	}
 
 	// Should return u1 and u3 (not u2)
@@ -141,7 +143,7 @@ func TestGetEnabledRecipients_DefaultOff(t *testing.T) {
 
 	recipients, err := s.GetEnabledRecipients(model.NotifyAgentOnline)
 	if err != nil {
-		t.Fatalf("get recipients: %v", err)
+		t.Fatalf(testGetRecipientsFmt, err)
 	}
 
 	// Should return only u2
@@ -161,7 +163,7 @@ func TestGetEnabledRecipients_DefaultOff_NoOverrides(t *testing.T) {
 	// agent.online is default-off, no one has enabled it
 	recipients, err := s.GetEnabledRecipients(model.NotifyAgentOnline)
 	if err != nil {
-		t.Fatalf("get recipients: %v", err)
+		t.Fatalf(testGetRecipientsFmt, err)
 	}
 	if len(recipients) != 0 {
 		t.Fatalf("expected 0 recipients, got %d", len(recipients))

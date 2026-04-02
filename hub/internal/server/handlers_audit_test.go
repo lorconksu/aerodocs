@@ -15,13 +15,13 @@ func TestHandleListAuditLogs_Empty(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("GET", "/api/audit-logs", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testAuditLogsPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -51,7 +51,7 @@ func TestHandleListAuditLogs_WithEntries(t *testing.T) {
 	// Inject known audit entries directly
 	serverID := "test-server"
 	detail := "test detail"
-	ip := "127.0.0.1"
+	ip := testLocalhost
 	for i := 0; i < 3; i++ {
 		s.store.LogAudit(model.AuditEntry{
 			ID:        uuid.NewString(),
@@ -62,13 +62,13 @@ func TestHandleListAuditLogs_WithEntries(t *testing.T) {
 		})
 	}
 
-	req := httptest.NewRequest("GET", "/api/audit-logs", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("GET", testAuditLogsPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -91,7 +91,7 @@ func TestHandleListAuditLogs_Pagination(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	// Inject 5 entries
-	ip := "127.0.0.1"
+	ip := testLocalhost
 	for i := 0; i < 5; i++ {
 		s.store.LogAudit(model.AuditEntry{
 			ID:        uuid.NewString(),
@@ -102,12 +102,12 @@ func TestHandleListAuditLogs_Pagination(t *testing.T) {
 
 	// Request with limit=2
 	req := httptest.NewRequest("GET", "/api/audit-logs?limit=2&offset=0", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -130,7 +130,7 @@ func TestHandleListAuditLogs_FilterByAction(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	ip := "127.0.0.1"
+	ip := testLocalhost
 	// Add entries of two different action types
 	for i := 0; i < 2; i++ {
 		s.store.LogAudit(model.AuditEntry{
@@ -148,12 +148,12 @@ func TestHandleListAuditLogs_FilterByAction(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("GET", "/api/audit-logs?action="+model.AuditServerCreated, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 
 	var resp map[string]interface{}
@@ -174,8 +174,8 @@ func TestHandleListAuditLogs_RequiresAdmin(t *testing.T) {
 	adminToken := registerAndGetAdminToken(t, s)
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
-	req := httptest.NewRequest("GET", "/api/audit-logs", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req := httptest.NewRequest("GET", testAuditLogsPath, nil)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

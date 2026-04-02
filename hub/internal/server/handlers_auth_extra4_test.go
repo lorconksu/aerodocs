@@ -12,11 +12,11 @@ func TestHandleChangePassword_Success(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/auth/password", mustJSON(t, map[string]string{
-		"current_password": "MyP@ssw0rd!234",
+	req := httptest.NewRequest("PUT", testPasswordPath, mustJSON(t, map[string]string{
+		"current_password": testPassword,
 		"new_password":     "NewStr0ngP@ss!567",
 	}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -30,11 +30,11 @@ func TestHandleChangePassword_WeakNewPassword(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/auth/password", mustJSON(t, map[string]string{
-		"current_password": "MyP@ssw0rd!234",
+	req := httptest.NewRequest("PUT", testPasswordPath, mustJSON(t, map[string]string{
+		"current_password": testPassword,
 		"new_password":     "weak",
 	}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -49,9 +49,9 @@ func TestHandleLogin_WithTOTPEnabled(t *testing.T) {
 	_ = registerAndGetAdminToken(t, s)
 
 	// User now has TOTP enabled. Login should return a totp_token.
-	req := httptest.NewRequest("POST", "/api/auth/login", mustJSON(t, map[string]string{
+	req := httptest.NewRequest("POST", testLoginPath, mustJSON(t, map[string]string{
 		"username": "admin",
-		"password": "MyP@ssw0rd!234",
+		"password": testPassword,
 	}))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
@@ -72,8 +72,8 @@ func TestHandleTOTPSetup_DeletedUser(t *testing.T) {
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
 	// Delete the viewer user
-	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	meRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(meRec, meReq)
 	// Viewer is already fully set up, so we can't get a setup token.
@@ -90,10 +90,10 @@ func TestHandleUpdateAvatar_Success(t *testing.T) {
 	s := testServer(t)
 	token := registerAndGetAdminToken(t, s)
 
-	req := httptest.NewRequest("PUT", "/api/auth/avatar", mustJSON(t, map[string]string{
+	req := httptest.NewRequest("PUT", testAvatarPath, mustJSON(t, map[string]string{
 		"avatar": "data:image/png;base64,iVBORw0KGgo=",
 	}))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -107,10 +107,10 @@ func TestHandleTOTPEnable_FullFlow(t *testing.T) {
 	s := testServer(t)
 
 	// Register - get setup token
-	req := httptest.NewRequest("POST", "/api/auth/register", mustJSON(t, map[string]string{
+	req := httptest.NewRequest("POST", testRegisterPath, mustJSON(t, map[string]string{
 		"username": "totptest",
 		"email":    "totp@test.com",
-		"password": "MyP@ssw0rd!234",
+		"password": testPassword,
 	}))
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
@@ -125,8 +125,8 @@ func TestHandleTOTPEnable_FullFlow(t *testing.T) {
 	setupToken := regResp["setup_token"].(string)
 
 	// Setup TOTP
-	setupReq := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
-	setupReq.Header.Set("Authorization", "Bearer "+setupToken)
+	setupReq := httptest.NewRequest("POST", testTOTPSetupPath, nil)
+	setupReq.Header.Set("Authorization", testBearerPrefix+setupToken)
 	setupRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(setupRec, setupReq)
 	if setupRec.Code != http.StatusOK {
@@ -134,8 +134,8 @@ func TestHandleTOTPEnable_FullFlow(t *testing.T) {
 	}
 
 	// Re-setup TOTP (should update the stored secret)
-	setupReq2 := httptest.NewRequest("POST", "/api/auth/totp/setup", nil)
-	setupReq2.Header.Set("Authorization", "Bearer "+setupToken)
+	setupReq2 := httptest.NewRequest("POST", testTOTPSetupPath, nil)
+	setupReq2.Header.Set("Authorization", testBearerPrefix+setupToken)
 	setupRec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(setupRec2, setupReq2)
 	if setupRec2.Code != http.StatusOK {

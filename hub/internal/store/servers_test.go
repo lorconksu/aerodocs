@@ -6,6 +6,13 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const (
+	testWebProd1         = "web-prod-1"
+	testListServersFmt   = "list servers: %v"
+	testErrMissingServer = "expected error for missing server"
+	testViewer1          = "viewer-1"
+)
+
 func TestCreateAndGetServer(t *testing.T) {
 	s := testStore(t)
 
@@ -13,7 +20,7 @@ func TestCreateAndGetServer(t *testing.T) {
 	expiresAt := "2026-03-23 13:00:00"
 	srv := &model.Server{
 		ID:                "srv-1",
-		Name:              "web-prod-1",
+		Name:              testWebProd1,
 		Status:            "pending",
 		RegistrationToken: &tokenHash,
 		TokenExpiresAt:    &expiresAt,
@@ -28,7 +35,7 @@ func TestCreateAndGetServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get server: %v", err)
 	}
-	if got.Name != "web-prod-1" {
+	if got.Name != testWebProd1 {
 		t.Fatalf("expected name 'web-prod-1', got '%s'", got.Name)
 	}
 	if got.Status != "pending" {
@@ -59,7 +66,7 @@ func TestGetServerByID_NotFound(t *testing.T) {
 
 	_, err := s.GetServerByID("nonexistent")
 	if err == nil {
-		t.Fatal("expected error for missing server")
+		t.Fatal(testErrMissingServer)
 	}
 }
 
@@ -73,7 +80,7 @@ func TestListServers(t *testing.T) {
 	// List all
 	servers, total, err := s.ListServers(model.ServerFilter{Limit: 50})
 	if err != nil {
-		t.Fatalf("list servers: %v", err)
+		t.Fatalf(testListServersFmt, err)
 	}
 	if total != 3 {
 		t.Fatalf("expected total 3, got %d", total)
@@ -92,10 +99,10 @@ func TestListServers_FilterByStatus(t *testing.T) {
 	status := "online"
 	servers, total, err := s.ListServers(model.ServerFilter{Status: &status, Limit: 50})
 	if err != nil {
-		t.Fatalf("list servers: %v", err)
+		t.Fatalf(testListServersFmt, err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
 	if servers[0].Name != "alpha" {
 		t.Fatalf("expected 'alpha', got '%s'", servers[0].Name)
@@ -105,18 +112,18 @@ func TestListServers_FilterByStatus(t *testing.T) {
 func TestListServers_Search(t *testing.T) {
 	s := testStore(t)
 
-	s.CreateServer(&model.Server{ID: "s1", Name: "web-prod-1", Status: "online", Labels: "{}"})
+	s.CreateServer(&model.Server{ID: "s1", Name: testWebProd1, Status: "online", Labels: "{}"})
 	s.CreateServer(&model.Server{ID: "s2", Name: "db-staging", Status: "online", Labels: "{}"})
 
 	search := "web"
 	servers, total, err := s.ListServers(model.ServerFilter{Search: &search, Limit: 50})
 	if err != nil {
-		t.Fatalf("list servers: %v", err)
+		t.Fatalf(testListServersFmt, err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
-	if servers[0].Name != "web-prod-1" {
+	if servers[0].Name != testWebProd1 {
 		t.Fatalf("expected 'web-prod-1', got '%s'", servers[0].Name)
 	}
 }
@@ -130,7 +137,7 @@ func TestListServers_Pagination(t *testing.T) {
 
 	servers, total, err := s.ListServers(model.ServerFilter{Limit: 2, Offset: 0})
 	if err != nil {
-		t.Fatalf("list servers: %v", err)
+		t.Fatalf(testListServersFmt, err)
 	}
 	if total != 3 {
 		t.Fatalf("expected total 3, got %d", total)
@@ -145,7 +152,7 @@ func TestListServersForUser(t *testing.T) {
 
 	// Create a user
 	s.CreateUser(&model.User{
-		ID: "viewer-1", Username: "viewer", Email: "v@v.com",
+		ID: testViewer1, Username: "viewer", Email: "v@v.com",
 		PasswordHash: "h", Role: model.RoleViewer,
 	})
 
@@ -156,18 +163,18 @@ func TestListServersForUser(t *testing.T) {
 	// Grant permission to s1 only
 	_, err := s.DB().Exec(
 		"INSERT INTO permissions (id, user_id, server_id, path) VALUES (?, ?, ?, ?)",
-		"p1", "viewer-1", "s1", "/",
+		"p1", testViewer1, "s1", "/",
 	)
 	if err != nil {
 		t.Fatalf("insert permission: %v", err)
 	}
 
-	servers, total, err := s.ListServersForUser("viewer-1", model.ServerFilter{Limit: 50})
+	servers, total, err := s.ListServersForUser(testViewer1, model.ServerFilter{Limit: 50})
 	if err != nil {
 		t.Fatalf("list servers for user: %v", err)
 	}
 	if total != 1 {
-		t.Fatalf("expected total 1, got %d", total)
+		t.Fatalf(testExpectedTotal1, total)
 	}
 	if len(servers) != 1 {
 		t.Fatalf("expected 1 server, got %d", len(servers))
@@ -215,7 +222,7 @@ func TestDeleteServer_NotFound(t *testing.T) {
 
 	err := s.DeleteServer("nonexistent")
 	if err == nil {
-		t.Fatal("expected error for missing server")
+		t.Fatal(testErrMissingServer)
 	}
 }
 
@@ -283,7 +290,7 @@ func TestUpdateServerStatus_NotFound(t *testing.T) {
 	s := testStore(t)
 	err := s.UpdateServerStatus("nonexistent", "online")
 	if err == nil {
-		t.Fatal("expected error for missing server")
+		t.Fatal(testErrMissingServer)
 	}
 }
 
@@ -339,7 +346,7 @@ func TestActivateServer(t *testing.T) {
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
 	})
 
-	err := s.ActivateServer("s1", "web-prod-1", "10.10.1.50", "Ubuntu 24.04", "0.1.0")
+	err := s.ActivateServer("s1", testWebProd1, "10.10.1.50", "Ubuntu 24.04", "0.1.0")
 	if err != nil {
 		t.Fatalf("activate server: %v", err)
 	}
@@ -348,7 +355,7 @@ func TestActivateServer(t *testing.T) {
 	if got.Status != "online" {
 		t.Fatalf("expected status 'online', got '%s'", got.Status)
 	}
-	if got.Hostname == nil || *got.Hostname != "web-prod-1" {
+	if got.Hostname == nil || *got.Hostname != testWebProd1 {
 		t.Fatal("expected hostname 'web-prod-1'")
 	}
 	if got.RegistrationToken != nil {

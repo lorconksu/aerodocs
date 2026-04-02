@@ -10,9 +10,9 @@ import (
 )
 
 func TestNew_CreatesServer(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	defer st.Close()
 
@@ -40,9 +40,9 @@ func TestNew_CreatesServer(t *testing.T) {
 }
 
 func TestInitJWTSecret_CreatesNew(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	defer st.Close()
 
@@ -56,9 +56,9 @@ func TestInitJWTSecret_CreatesNew(t *testing.T) {
 }
 
 func TestInitJWTSecret_ReusesExisting(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	defer st.Close()
 
@@ -84,9 +84,9 @@ func TestSPAHandler_DevMode(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	st, err := store.New(":memory:")
+	st, err := store.New(testMemoryDB)
 	if err != nil {
-		t.Fatalf("create store: %v", err)
+		t.Fatalf(testCreateStoreErr, err)
 	}
 	defer st.Close()
 

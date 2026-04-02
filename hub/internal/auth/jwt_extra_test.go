@@ -11,7 +11,7 @@ import (
 // TestValidateToken_InvalidSigningMethod verifies that a token with wrong signing method is rejected.
 // We can't easily create an RSA-signed token, so we test with a malformed token instead.
 func TestValidateToken_MalformedToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
 	_, err := auth.ValidateToken(secret, "not.a.jwt.token.here")
 	if err == nil {
@@ -21,7 +21,7 @@ func TestValidateToken_MalformedToken(t *testing.T) {
 
 // TestValidateToken_EmptyToken verifies empty token returns error.
 func TestValidateToken_EmptyToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
 	_, err := auth.ValidateToken(secret, "")
 	if err == nil {
@@ -31,7 +31,7 @@ func TestValidateToken_EmptyToken(t *testing.T) {
 
 // TestGenerateTokenPair_ReturnsNonEmptyTokens verifies both tokens are non-empty.
 func TestGenerateTokenPair_ReturnsNonEmptyTokens(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
 	access, refresh, err := auth.GenerateTokenPair(secret, "user-123", "viewer", 0)
 	if err != nil {
@@ -50,9 +50,9 @@ func TestGenerateTokenPair_ReturnsNonEmptyTokens(t *testing.T) {
 
 // TestGenerateTokenWithExpiry_CustomExpiry verifies custom expiry is respected.
 func TestGenerateTokenWithExpiry_CustomExpiry(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	token, err := auth.GenerateTokenWithExpiry(secret, "user-1", "admin", "custom", 5*time.Minute)
+	token, err := auth.GenerateTokenWithExpiry(secret, testUserID, "admin", "custom", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -64,16 +64,16 @@ func TestGenerateTokenWithExpiry_CustomExpiry(t *testing.T) {
 	if claims.TokenType != "custom" {
 		t.Fatalf("expected type 'custom', got '%s'", claims.TokenType)
 	}
-	if claims.Subject != "user-1" {
+	if claims.Subject != testUserID {
 		t.Fatalf("expected subject 'user-1', got '%s'", claims.Subject)
 	}
 }
 
 // TestValidateToken_WrongTokenType verifies we can check token type from claims.
 func TestValidateToken_TOTPTokenHasCorrectType(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	token, err := auth.GenerateTOTPToken(secret, "user-1", "admin")
+	token, err := auth.GenerateTOTPToken(secret, testUserID, "admin")
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -89,9 +89,9 @@ func TestValidateToken_TOTPTokenHasCorrectType(t *testing.T) {
 
 // TestValidateToken_TruncatedToken verifies truncated token is rejected.
 func TestValidateToken_TruncatedToken(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+	access, _, _ := auth.GenerateTokenPair(secret, testUserID, "admin", 0)
 	truncated := access[:len(access)/2]
 
 	_, err := auth.ValidateToken(secret, truncated)
@@ -102,11 +102,11 @@ func TestValidateToken_TruncatedToken(t *testing.T) {
 
 // TestGenerateTokenWithExpiry_EmptySecret verifies signing with empty secret still works (but is insecure).
 func TestGenerateTokenWithExpiry_MultipleRoles(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
 	roles := []string{"admin", "viewer", "editor"}
 	for _, role := range roles {
-		token, err := auth.GenerateTokenWithExpiry(secret, "user-1", role, auth.TokenTypeAccess, 5*time.Minute)
+		token, err := auth.GenerateTokenWithExpiry(secret, testUserID, role, auth.TokenTypeAccess, 5*time.Minute)
 		if err != nil {
 			t.Fatalf("generate for role %s: %v", role, err)
 		}
@@ -123,9 +123,9 @@ func TestGenerateTokenWithExpiry_MultipleRoles(t *testing.T) {
 
 // TestValidateToken_ModifiedPayload verifies a tampered token is rejected.
 func TestValidateToken_ModifiedPayload(t *testing.T) {
-	secret := "test-secret-key-256-bits-long!!!"
+	secret := testSecretKey
 
-	access, _, _ := auth.GenerateTokenPair(secret, "user-1", "admin", 0)
+	access, _, _ := auth.GenerateTokenPair(secret, testUserID, "admin", 0)
 
 	// Modify the middle section (payload)
 	parts := strings.Split(access, ".")

@@ -12,13 +12,13 @@ func TestUpdateHubConfig_ValidAddress(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body := bytes.NewBufferString(`{"grpc_external_addr":"myhost.example.com:9443"}`)
-	req := httptest.NewRequest("PUT", "/api/settings/hub", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testHubSettingsPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -27,8 +27,8 @@ func TestUpdateHubConfig_EmptyAddress(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body := bytes.NewBufferString(`{"grpc_external_addr":""}`)
-	req := httptest.NewRequest("PUT", "/api/settings/hub", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testHubSettingsPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -55,8 +55,8 @@ func TestUpdateHubConfig_ShellInjection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := bytes.NewBufferString(`{"grpc_external_addr":"` + tt.addr + `"}`)
-			req := httptest.NewRequest("PUT", "/api/settings/hub", body)
-			req.Header.Set("Authorization", "Bearer "+token)
+			req := httptest.NewRequest("PUT", testHubSettingsPath, body)
+			req.Header.Set("Authorization", testBearerPrefix+token)
 			rec := httptest.NewRecorder()
 			s.routes().ServeHTTP(rec, req)
 
@@ -72,8 +72,8 @@ func TestUpdateHubConfig_IPv6Address(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	body := bytes.NewBufferString(`{"grpc_external_addr":"[::1]:9443"}`)
-	req := httptest.NewRequest("PUT", "/api/settings/hub", body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req := httptest.NewRequest("PUT", testHubSettingsPath, body)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 

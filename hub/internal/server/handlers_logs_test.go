@@ -12,7 +12,7 @@ func TestHandleTailLog_NoPath(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/logs/tail", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -27,7 +27,7 @@ func TestHandleTailLog_PathTraversal(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/logs/tail?path=/../etc/passwd", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
@@ -42,12 +42,12 @@ func TestHandleTailLog_NoAgent(t *testing.T) {
 	token := registerAndGetAdminToken(t, s)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", testBearerPrefix+token)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for no agent, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf(testExpected502Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -59,7 +59,7 @@ func TestHandleTailLog_ViewerPermissionDenied(t *testing.T) {
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
 
 	req := httptest.NewRequest("GET", "/api/servers/s1/logs/tail?path=/var/log/syslog", nil)
-	req.Header.Set("Authorization", "Bearer "+viewerToken)
+	req.Header.Set("Authorization", testBearerPrefix+viewerToken)
 	rec := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec, req)
 
