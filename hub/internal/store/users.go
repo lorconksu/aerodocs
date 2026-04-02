@@ -133,15 +133,23 @@ func (s *Store) UpdateUserAvatar(userID string, avatar *string) error {
 	return nil
 }
 
-func (s *Store) IncrementTokenGeneration(userID string) error {
+// IncrementTokenGeneration atomically increments the user's token_generation
+// and returns the new value. This prevents race conditions where a stale
+// in-memory value is used after the increment.
+func (s *Store) IncrementTokenGeneration(userID string) (int, error) {
 	_, err := s.db.Exec(
 		"UPDATE users SET token_generation = token_generation + 1, updated_at = datetime('now') WHERE id = ?",
 		userID,
 	)
 	if err != nil {
-		return fmt.Errorf("increment token generation: %w", err)
+		return 0, fmt.Errorf("increment token generation: %w", err)
 	}
-	return nil
+	var newGen int
+	err = s.db.QueryRow("SELECT token_generation FROM users WHERE id = ?", userID).Scan(&newGen)
+	if err != nil {
+		return 0, fmt.Errorf("read token generation: %w", err)
+	}
+	return newGen, nil
 }
 
 func (s *Store) UpdateUserPassword(userID, passwordHash string) error {

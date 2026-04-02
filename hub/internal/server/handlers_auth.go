@@ -18,7 +18,16 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to check user count")
 		return
 	}
-	respondJSON(w, http.StatusOK, model.AuthStatusResponse{Initialized: count > 0, Version: Version})
+	resp := model.AuthStatusResponse{Initialized: count > 0}
+
+	// Only include version for authenticated users
+	if tokenStr := readAccessToken(r); tokenStr != "" {
+		if claims, err := auth.ValidateToken(s.jwtSecret, tokenStr); err == nil && claims.TokenType == auth.TokenTypeAccess {
+			resp.Version = Version
+		}
+	}
+
+	respondJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -263,10 +272,14 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Increment token generation to prevent reuse of this refresh token
-	_ = s.store.IncrementTokenGeneration(user.ID)
+	newGen, err := s.store.IncrementTokenGeneration(user.ID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to rotate token generation")
+		return
+	}
 
 	// Use user.Role from DB, not claims.Role from the old token
-	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration+1)
+	accessToken, refreshToken, err := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), newGen)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, errFailedToGenerateTokens)
 		return
@@ -360,9 +373,19 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store secret (not yet enabled)
-	secret := key.Secret()
-	if err := s.store.UpdateUserTOTP(userID, &secret, false); err != nil {
+	// Capture plaintext secret and QR URL before encrypting
+	plaintextSecret := key.Secret()
+	qrURL := key.URL()
+
+	// Encrypt the secret before storing
+	encryptedSecret, err := s.encryptTOTPSecret(plaintextSecret)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to encrypt TOTP secret")
+		return
+	}
+
+	// Store encrypted secret (not yet enabled)
+	if err := s.store.UpdateUserTOTP(userID, &encryptedSecret, false); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to store TOTP secret")
 		return
 	}
@@ -373,9 +396,10 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 		Action: model.AuditUserTOTPSetup, IPAddress: &ip,
 	})
 
+	// Respond with plaintext secret and QR URL for the user's authenticator app
 	respondJSON(w, http.StatusOK, model.TOTPSetupResponse{
-		Secret: key.Secret(),
-		QRURL:  key.URL(),
+		Secret: plaintextSecret,
+		QRURL:  qrURL,
 	})
 }
 
@@ -488,6 +512,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.UpdateUserPassword(userID, hash); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update password")
+		return
+	}
+
+	// Invalidate all existing sessions by incrementing token generation
+	if _, err := s.store.IncrementTokenGeneration(userID); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to invalidate sessions")
 		return
 	}
 

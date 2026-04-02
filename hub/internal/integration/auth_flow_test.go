@@ -195,6 +195,8 @@ func TestFullAuthFlow(t *testing.T) {
 		defer pwResp.Body.Close()
 		requireStatusOK(t, pwResp, "change password")
 
+		// Password change invalidates existing sessions (increments token_generation),
+		// so the old refresh token should no longer work.
 		loginNewResp := h.HTTPPost(t, "/api/auth/login", model.LoginRequest{
 			Username: username, Password: newPassword,
 		}, "")
@@ -203,6 +205,11 @@ func TestFullAuthFlow(t *testing.T) {
 			body, _ := io.ReadAll(loginNewResp.Body)
 			t.Fatalf("login with new password: status=%d body=%s (expected 202)", loginNewResp.StatusCode, body)
 		}
+
+		// Complete TOTP login to get fresh tokens for the refresh test
+		var loginResult model.LoginResponse
+		decodeJSON(t, loginNewResp, &loginResult, "login-new-password")
+		_, refreshToken = completeTOTPLogin(t, h, loginResult.TOTPToken, totpSecret)
 	})
 
 	t.Run("refresh_token", func(t *testing.T) {

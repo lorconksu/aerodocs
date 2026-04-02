@@ -301,8 +301,12 @@ func TestIncrementTokenGeneration(t *testing.T) {
 		t.Fatalf("expected initial token_generation=0, got %d", user.TokenGeneration)
 	}
 
-	if err := s.IncrementTokenGeneration("u1"); err != nil {
+	newGen, err := s.IncrementTokenGeneration("u1")
+	if err != nil {
 		t.Fatalf("increment token generation: %v", err)
+	}
+	if newGen != 1 {
+		t.Fatalf("expected returned generation=1, got %d", newGen)
 	}
 
 	user, _ = s.GetUserByID("u1")
@@ -311,7 +315,10 @@ func TestIncrementTokenGeneration(t *testing.T) {
 	}
 
 	// Increment again
-	s.IncrementTokenGeneration("u1")
+	newGen2, _ := s.IncrementTokenGeneration("u1")
+	if newGen2 != 2 {
+		t.Fatalf("expected returned generation=2, got %d", newGen2)
+	}
 	user, _ = s.GetUserByID("u1")
 	if user.TokenGeneration != 2 {
 		t.Fatalf("expected token_generation=2, got %d", user.TokenGeneration)

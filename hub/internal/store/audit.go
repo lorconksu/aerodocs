@@ -9,6 +9,14 @@ import (
 )
 
 func (s *Store) LogAudit(entry model.AuditEntry) error {
+	// Use BEGIN IMMEDIATE to acquire a write lock upfront, preventing two
+	// concurrent goroutines from reading the same prev_hash before inserting.
+	tx, err := s.db.Exec("BEGIN IMMEDIATE")
+	_ = tx // driver returns a result but we only care about errors
+	if err != nil {
+		return fmt.Errorf("begin immediate: %w", err)
+	}
+
 	// Compute integrity hash chain: SHA-256(prev_hash + current entry fields)
 	var prevHash string
 	_ = s.db.QueryRow("SELECT prev_hash FROM audit_logs ORDER BY rowid DESC LIMIT 1").Scan(&prevHash)
@@ -18,13 +26,19 @@ func (s *Store) LogAudit(entry model.AuditEntry) error {
 	hash := sha256.Sum256([]byte(hashInput))
 	entry.PrevHash = fmt.Sprintf("%x", hash[:])
 
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		`INSERT INTO audit_logs (id, user_id, action, target, detail, ip_address, prev_hash)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		entry.ID, entry.UserID, entry.Action, entry.Target, entry.Detail, entry.IPAddress, entry.PrevHash,
 	)
 	if err != nil {
+		s.db.Exec("ROLLBACK")
 		return fmt.Errorf("log audit: %w", err)
+	}
+
+	if _, err := s.db.Exec("COMMIT"); err != nil {
+		s.db.Exec("ROLLBACK")
+		return fmt.Errorf("commit audit: %w", err)
 	}
 	return nil
 }

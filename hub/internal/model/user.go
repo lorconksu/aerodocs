@@ -78,7 +78,7 @@ type TokenPair struct {
 
 type AuthStatusResponse struct {
 	Initialized bool   `json:"initialized"`
-	Version     string `json:"version"`
+	Version     string `json:"version,omitempty"`
 }
 
 type LoginResponse struct {

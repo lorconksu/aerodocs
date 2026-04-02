@@ -61,6 +61,10 @@ func New(cfg Config) *Server {
 
 	var opts []grpc.ServerOption
 
+	// Limit inbound message size to 256KB (default is 4MB) to prevent
+	// oversized payloads from consuming excessive memory.
+	opts = append(opts, grpc.MaxRecvMsgSize(256*1024))
+
 	// Keepalive: ping clients every 30s to keep long-lived streams alive through
 	// reverse proxies (e.g., Traefik's default 60s idle timeout).
 	opts = append(opts,

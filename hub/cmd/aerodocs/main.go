@@ -50,13 +50,13 @@ func runServer() error {
 	}
 	defer st.Close()
 
-	notifier := notify.New(st)
-	defer notifier.Close()
-
 	jwtSecret, err := server.InitJWTSecret(st)
 	if err != nil {
 		return fmt.Errorf("init JWT secret: %w", err)
 	}
+
+	notifier := notify.New(st, jwtSecret)
+	defer notifier.Close()
 
 	caCert, caKey, err := ca.InitCA(st, jwtSecret)
 	if err != nil {
