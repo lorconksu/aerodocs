@@ -127,13 +127,14 @@ func TestHandleFileUploadRequest_MultipleChunks(t *testing.T) {
 
 // TestHandleFileDeleteRequest_PathTraversal verifies path traversal is blocked.
 func TestHandleFileDeleteRequest_PathTraversal(t *testing.T) {
-	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: newTestDropzone("/tmp/aerodocs-dropzone")}
+	dropzoneDir := t.TempDir()
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: newTestDropzone(dropzoneDir)}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{
 		FileDeleteRequest: &pb.FileDeleteRequest{
 			RequestId: "req-traversal",
-			Path:      "/tmp/aerodocs-dropzone/../../../etc/passwd",
+			Path:      filepath.Join(dropzoneDir, "..", "..", "etc", "passwd"),
 		},
 	}
 	c.handleFileDeleteRequest(msg, sendCh)
@@ -353,11 +354,7 @@ func TestHandleFileListRequest_RootDir(t *testing.T) {
 
 // TestHandleFileDeleteRequest_InDropzone_WithActualFile creates a real dropzone file and deletes it.
 func TestHandleFileDeleteRequest_InDropzone_WithActualFile(t *testing.T) {
-	dropzoneDir := "/tmp/aerodocs-dropzone"
-	if err := os.MkdirAll(dropzoneDir, 0755); err != nil {
-		t.Skipf("cannot create dropzone dir: %v", err)
-	}
-
+	dropzoneDir := t.TempDir()
 	testFile := filepath.Join(dropzoneDir, "client-test-delete.txt")
 	if err := os.WriteFile(testFile, []byte("delete me"), 0644); err != nil {
 		t.Fatalf("create test file: %v", err)

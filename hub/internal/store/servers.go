@@ -204,7 +204,7 @@ func (s *Store) ActivateServer(id, hostname, ip, os, agentVersion string) error 
 	result, err := s.db.Exec(
 		`UPDATE servers
 		 SET hostname = ?, ip_address = ?, os = ?, agent_version = ?,
-		     status = 'online', registration_token = NULL, token_expires_at = NULL,
+		     status = 'pending', registration_token = NULL, token_expires_at = NULL,
 		     last_seen_at = ?, updated_at = datetime('now')
 		 WHERE id = ?`,
 		hostname, ip, os, agentVersion, now, id,

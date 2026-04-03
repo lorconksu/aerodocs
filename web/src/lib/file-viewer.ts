@@ -133,9 +133,9 @@ function sanitizeHljsHtml(html: string): string {
 
 export function escapeHtml(text: string): string {
   return text
-    .replaceAll(/&/g, '&amp;')
-    .replaceAll(/</g, '&lt;')
-    .replaceAll(/>/g, '&gt;')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 }
 
 export function highlightFileContent(content: string, filename: string): string {

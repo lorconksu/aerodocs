@@ -3,14 +3,21 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/migrate"
+	"github.com/wyiu/aerodocs/hub/internal/model"
 	_ "modernc.org/sqlite" // registers the SQLite driver
 )
 
 type Store struct {
 	db *sql.DB
+
+	auditStateMu    sync.Mutex
+	auditDegraded   bool
+	onAuditFailure  func(model.AuditHealth)
+	onAuditRecovery func(model.AuditHealth)
 }
 
 func New(dbPath string) (*Store, error) {
@@ -45,7 +52,11 @@ func New(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	return &Store{db: db}, nil
+	st := &Store{db: db}
+	if health, err := st.GetAuditHealth(); err == nil {
+		st.auditDegraded = health.Degraded
+	}
+	return st, nil
 }
 
 func (s *Store) Close() error {
@@ -54,4 +65,11 @@ func (s *Store) Close() error {
 
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+func (s *Store) SetAuditObservers(onFailure func(model.AuditHealth), onRecovery func(model.AuditHealth)) {
+	s.auditStateMu.Lock()
+	defer s.auditStateMu.Unlock()
+	s.onAuditFailure = onFailure
+	s.onAuditRecovery = onRecovery
 }

@@ -41,7 +41,7 @@ export function LoginPage() {
       const resp = await res.json() as LoginResponse
 
       if (resp.requires_totp_setup && resp.setup_token) {
-        navigate('/setup/totp', { state: { setupToken: resp.setup_token } })
+        navigate('/setup/totp', { state: { setupToken: resp.setup_token, mustChangePassword: resp.must_change_password === true } })
       } else if (resp.totp_token) {
         navigate('/login/totp', { state: { totpToken: resp.totp_token } })
       }

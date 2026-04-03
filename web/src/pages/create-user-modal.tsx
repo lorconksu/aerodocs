@@ -110,6 +110,7 @@ export function CreateUserModal({ onClose }: Readonly<CreateUserModalProps>) {
                 className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
               >
                 <option value="viewer">Viewer</option>
+                <option value="auditor">Auditor</option>
                 <option value="admin">Admin</option>
               </select>
             </div>

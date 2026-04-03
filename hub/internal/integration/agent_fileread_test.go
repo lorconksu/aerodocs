@@ -25,6 +25,7 @@ func TestFileReadThroughGRPC(t *testing.T) {
 		HubAddr:      h.GRPCAddr,
 		ServerID:     "",
 		Token:        regToken,
+		CertDir:      t.TempDir(),
 		Hostname:     "test-host",
 		IPAddress:    "10.0.0.1",
 		OS:           "linux",

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -45,9 +46,15 @@ type Config struct {
 	Insecure        bool
 	AllowedPaths    []string
 	HubCAPin        string
+	DropzoneDir     string
 }
 
-const maxTailSessions = 50
+const (
+	maxTailSessions   = 50
+	dropzonePathAlias = "aerodocs://dropzone"
+)
+
+var errReconnectWithMTLS = errors.New("reconnect required to authenticate with issued client certificate")
 
 type Client struct {
 	hubAddr         string
@@ -74,6 +81,10 @@ func New(cfg Config) *Client {
 	if certDir == "" {
 		certDir = "/etc/aerodocs/tls/"
 	}
+	dropzoneDir := cfg.DropzoneDir
+	if dropzoneDir == "" {
+		dropzoneDir = dropzone.DefaultDir
+	}
 	return &Client{
 		hubAddr:         cfg.HubAddr,
 		serverID:        cfg.ServerID,
@@ -85,7 +96,7 @@ func New(cfg Config) *Client {
 		backoff:         1 * time.Second,
 		maxBackoff:      60 * time.Second,
 		tailSessions:    make(map[string]chan struct{}),
-		dropzone:        dropzone.New(dropzone.DefaultDir),
+		dropzone:        dropzone.New(dropzoneDir),
 		certStore:       certs.NewStore(certDir),
 		unregisterToken: cfg.UnregisterToken,
 		insecure:        cfg.Insecure,
@@ -146,6 +157,11 @@ func (c *Client) Run(ctx context.Context) error {
 		err := c.connectAndStream(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if errors.Is(err, errReconnectWithMTLS) {
+			regFailures = 0
+			c.resetBackoff()
+			continue
 		}
 
 		// Track consecutive registration failures — exit if the server
@@ -222,8 +238,21 @@ func pathWithinRoot(path, root string) bool {
 	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }
 
+func (c *Client) resolveAgentPath(path string) string {
+	if path == dropzonePathAlias {
+		return c.dropzone.Dir()
+	}
+	prefix := dropzonePathAlias + "/"
+	if strings.HasPrefix(path, prefix) {
+		rel := strings.TrimPrefix(path, prefix)
+		return filepath.Join(c.dropzone.Dir(), filepath.Clean(rel))
+	}
+	return path
+}
+
 func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh chan<- *pb.AgentMessage) {
-	if !isPathAllowed(p.FileListRequest.Path, c.allowedPaths) {
+	resolvedPath := c.resolveAgentPath(p.FileListRequest.Path)
+	if !isPathAllowed(resolvedPath, c.allowedPaths) {
 		sendCh <- &pb.AgentMessage{
 			Payload: &pb.AgentMessage_FileListResponse{
 				FileListResponse: &pb.FileListResponse{
@@ -234,7 +263,7 @@ func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh 
 		}
 		return
 	}
-	resp, _ := filebrowser.ListDir(p.FileListRequest.Path)
+	resp, _ := filebrowser.ListDir(resolvedPath)
 	if resp != nil {
 		resp.RequestId = p.FileListRequest.RequestId
 		sendCh <- &pb.AgentMessage{
@@ -246,7 +275,8 @@ func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh 
 }
 
 func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh chan<- *pb.AgentMessage) {
-	if !isPathAllowed(p.FileReadRequest.Path, c.allowedPaths) {
+	resolvedPath := c.resolveAgentPath(p.FileReadRequest.Path)
+	if !isPathAllowed(resolvedPath, c.allowedPaths) {
 		sendCh <- &pb.AgentMessage{
 			Payload: &pb.AgentMessage_FileReadResponse{
 				FileReadResponse: &pb.FileReadResponse{
@@ -258,7 +288,7 @@ func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh 
 		return
 	}
 	resp, _ := filebrowser.ReadFile(
-		p.FileReadRequest.Path,
+		resolvedPath,
 		p.FileReadRequest.Offset,
 		p.FileReadRequest.Limit,
 	)
@@ -274,7 +304,8 @@ func (c *Client) handleFileReadRequest(p *pb.HubMessage_FileReadRequest, sendCh 
 
 func (c *Client) handleLogStreamRequest(p *pb.HubMessage_LogStreamRequest, sendCh chan<- *pb.AgentMessage) {
 	req := p.LogStreamRequest
-	if !isPathAllowed(req.Path, c.allowedPaths) {
+	resolvedPath := c.resolveAgentPath(req.Path)
+	if !isPathAllowed(resolvedPath, c.allowedPaths) {
 		sendCh <- &pb.AgentMessage{
 			Payload: &pb.AgentMessage_LogStreamChunk{
 				LogStreamChunk: &pb.LogStreamChunk{
@@ -301,8 +332,8 @@ func (c *Client) handleLogStreamRequest(p *pb.HubMessage_LogStreamRequest, sendC
 	stop := make(chan struct{})
 	c.tailSessions[req.RequestId] = stop
 	c.tailSessionsMu.Unlock()
-	go logtailer.StartTail(req.Path, req.Grep, req.Offset, sendCh, req.RequestId, stop)
-	log.Printf("started log tail: %s path=%s grep=%s", req.RequestId, req.Path, req.Grep)
+	go logtailer.StartTail(resolvedPath, req.Grep, req.Offset, sendCh, req.RequestId, stop)
+	log.Printf("started log tail: %s path=%s grep=%s", req.RequestId, resolvedPath, req.Grep)
 }
 
 func (c *Client) handleLogStreamStop(p *pb.HubMessage_LogStreamStop) {
@@ -334,7 +365,7 @@ func (c *Client) handleFileDeleteRequest(p *pb.HubMessage_FileDeleteRequest, sen
 	req := p.FileDeleteRequest
 	resp := &pb.FileDeleteResponse{RequestId: req.RequestId}
 	// Only allow deletion from dropzone directory
-	cleanPath := filepath.Clean(req.Path)
+	cleanPath := filepath.Clean(c.resolveAgentPath(req.Path))
 	dropzonePrefix := filepath.Clean(c.dropzone.Dir()) + "/"
 	if !strings.HasPrefix(cleanPath, dropzonePrefix) {
 		resp.Success = false
@@ -499,7 +530,7 @@ func (c *Client) bootstrapTLSConfig() (*tls.Config, error) {
 	}
 	return &tls.Config{
 		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true, // Verified against the pinned CA below.
+		InsecureSkipVerify: true, // NOSONAR: bootstrap trust is enforced by verifyPinnedHubCertificate against the pinned CA.
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return verifyPinnedHubCertificate(rawCerts, expectedPin, host)
 		},
@@ -550,16 +581,16 @@ func verifyPinnedHubCertificate(rawCerts [][]byte, expectedPin []byte, host stri
 
 // registerOrHandshake sends the initial register (first connect) or heartbeat
 // (reconnect) message and waits for the corresponding ack.
-func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) error {
+func (c *Client) registerOrHandshake(stream pb.AgentService_ConnectClient) (bool, error) {
 	if c.serverID == "" {
 		return c.sendRegister(stream)
 	}
-	return c.sendHeartbeatHandshake(stream)
+	return false, c.sendHeartbeatHandshake(stream)
 }
 
 // sendRegister performs the initial agent registration, assigns the server ID,
 // and stores any mTLS certificates provided in the ack.
-func (c *Client) sendRegister(stream pb.AgentService_ConnectClient) error {
+func (c *Client) sendRegister(stream pb.AgentService_ConnectClient) (bool, error) {
 	csrDER := c.generateCSRForRegistration()
 
 	if err := stream.Send(&pb.AgentMessage{
@@ -574,24 +605,24 @@ func (c *Client) sendRegister(stream pb.AgentService_ConnectClient) error {
 			},
 		},
 	}); err != nil {
-		return fmt.Errorf("send register: %w", err)
+		return false, fmt.Errorf("send register: %w", err)
 	}
 
 	msg, err := stream.Recv()
 	if err != nil {
-		return fmt.Errorf("recv register ack: %w", err)
+		return false, fmt.Errorf("recv register ack: %w", err)
 	}
 	ack := msg.GetRegisterAck()
 	if ack == nil {
-		return fmt.Errorf("expected RegisterAck, got %T", msg.Payload)
+		return false, fmt.Errorf("expected RegisterAck, got %T", msg.Payload)
 	}
 	if !ack.Success {
-		return fmt.Errorf("registration rejected: %s", ack.Error)
+		return false, fmt.Errorf("registration rejected: %s", ack.Error)
 	}
 	c.serverID = ack.ServerId
 	log.Printf("registered successfully: server_id=%s", c.serverID)
 	c.storeMTLSCerts(ack)
-	return nil
+	return true, nil
 }
 
 // generateCSRForRegistration generates a CSR with a placeholder CN.
@@ -616,7 +647,7 @@ func (c *Client) storeMTLSCerts(ack interface {
 	if err := c.certStore.StoreCert(ack.GetClientCert(), ack.GetCaCert()); err != nil {
 		log.Printf("warning: failed to store mTLS certs: %v", err)
 	} else {
-		log.Printf("mTLS certificate stored (will use on next reconnect)")
+		log.Printf("mTLS certificate stored")
 	}
 }
 
@@ -677,8 +708,12 @@ func (c *Client) connectAndStream(ctx context.Context) error {
 		return fmt.Errorf("open stream: %w", err)
 	}
 
-	if err := c.registerOrHandshake(stream); err != nil {
+	bootstrapRegistered, err := c.registerOrHandshake(stream)
+	if err != nil {
 		return err
+	}
+	if bootstrapRegistered {
+		return errReconnectWithMTLS
 	}
 
 	c.resetBackoff()
@@ -734,7 +769,7 @@ func (c *Client) selfCleanup() {
 	// Remove agent binary and config
 	os.Remove("/usr/local/bin/aerodocs-agent")
 	os.RemoveAll("/etc/aerodocs/")
-	os.RemoveAll("/tmp/aerodocs-dropzone")
+	os.RemoveAll(c.dropzone.Dir())
 
 	// Disable and remove the systemd service using a sanitized environment
 	cleanEnv := []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}

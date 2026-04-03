@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
@@ -123,12 +124,12 @@ func GenerateCA() (*x509.Certificate, *ecdsa.PrivateKey, error) {
 
 	now := time.Now()
 	template := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "AeroDocs CA"},
-		NotBefore:    now,
-		NotAfter:     now.Add(10 * 365 * 24 * time.Hour),
-		IsCA:         true,
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "AeroDocs CA"},
+		NotBefore:             now,
+		NotAfter:              now.Add(10 * 365 * 24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 	}
 
@@ -189,7 +190,7 @@ func SignCSR(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, csrDER []byte, s
 // GenerateServerCert creates a server TLS certificate signed by the CA.
 // The certificate has the given CN, a 1-year validity, and is suitable for
 // gRPC server authentication (ExtKeyUsageServerAuth).
-func GenerateServerCert(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, cn string, dnsNames ...string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+func GenerateServerCert(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, cn string, sanHosts ...string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate server key: %w", err)
@@ -200,11 +201,25 @@ func GenerateServerCert(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, cn st
 		return nil, nil, err
 	}
 
+	var dnsNames []string
+	var ipAddresses []net.IP
+	for _, host := range sanHosts {
+		if host == "" {
+			continue
+		}
+		if ip := net.ParseIP(host); ip != nil {
+			ipAddresses = append(ipAddresses, ip)
+			continue
+		}
+		dnsNames = append(dnsNames, host)
+	}
+
 	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: cn},
 		DNSNames:     dnsNames,
+		IPAddresses:  ipAddresses,
 		NotBefore:    now,
 		NotAfter:     now.Add(365 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 	"github.com/wyiu/aerodocs/hub/internal/model"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
 // selfUnregisterToken computes the HMAC-SHA256 token for a server's self-unregister endpoint.
@@ -59,7 +59,7 @@ func (s *Server) handleUnregisterServer(w http.ResponseWriter, r *http.Request) 
 	// Audit log
 	userID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
+	s.auditLogRequest(r, model.AuditEntry{
 		ID:        uuid.NewString(),
 		UserID:    &userID,
 		Action:    model.AuditServerUnregistered,
@@ -105,11 +105,12 @@ func (s *Server) handleSelfUnregister(w http.ResponseWriter, r *http.Request) {
 
 	// Audit log (no user — this is agent-initiated)
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
+	s.auditLogRequest(r, model.AuditEntry{
 		ID:        uuid.NewString(),
 		Action:    model.AuditServerUnregistered,
 		Target:    &serverID,
 		IPAddress: &ip,
+		ActorType: model.AuditActorTypeDevice,
 	})
 
 	w.WriteHeader(http.StatusNoContent)

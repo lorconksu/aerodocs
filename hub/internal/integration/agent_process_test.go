@@ -26,6 +26,8 @@ func (h *TestHarness) StartAgentProcess(t *testing.T, token string) (cancel func
 
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "agent.conf")
+	certDir := filepath.Join(configDir, "tls")
+	dropzoneDir := filepath.Join(configDir, "dropzone")
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, agentBinaryPath,
@@ -33,6 +35,8 @@ func (h *TestHarness) StartAgentProcess(t *testing.T, token string) (cancel func
 		"--token", token,
 		"--ca-pin", h.HubCAPin,
 		"--config", configPath,
+		"--cert-dir", certDir,
+		"--dropzone-dir", dropzoneDir,
 	)
 	cmd.Env = append(os.Environ(), "GOCOVERDIR="+agentCovDir)
 	cmd.Stdout = os.Stdout

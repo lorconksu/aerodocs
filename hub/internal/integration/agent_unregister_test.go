@@ -12,11 +12,12 @@ import (
 )
 
 // startTestAgent creates and starts an agent client, returning the cancel func and error channel.
-func startTestAgent(h *TestHarness, regToken string) (context.CancelFunc, <-chan error) {
+func startTestAgent(t *testing.T, h *TestHarness, regToken string) (context.CancelFunc, <-chan error) {
 	agentClient := agentclient.New(agentclient.Config{
 		HubAddr:      h.GRPCAddr,
 		ServerID:     "",
 		Token:        regToken,
+		CertDir:      t.TempDir(),
 		Hostname:     "test-host",
 		IPAddress:    "10.0.0.1",
 		OS:           "linux",
@@ -49,7 +50,7 @@ func TestServerUnregister(t *testing.T) {
 	token := h.SetupAdmin(t)
 	serverID, regToken := h.CreateServer(t, token, "unregister-server")
 
-	cancel, agentErrCh := startTestAgent(h, regToken)
+	cancel, agentErrCh := startTestAgent(t, h, regToken)
 	defer cancel()
 
 	if !waitForAgentConnect(h, serverID, 5*time.Second) {

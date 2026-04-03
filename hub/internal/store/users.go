@@ -10,9 +10,13 @@ import (
 
 func (s *Store) CreateUser(u *model.User) error {
 	_, err := s.db.Exec(
-		`INSERT INTO users (id, username, email, password_hash, role, totp_secret, totp_enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (
+			id, username, email, password_hash, role, totp_secret, totp_enabled,
+			avatar, token_generation, must_change_password, temp_password_expires_at
+		)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.ID, u.Username, u.Email, u.PasswordHash, u.Role, u.TOTPSecret, u.TOTPEnabled,
+		u.Avatar, u.TokenGeneration, u.MustChangePassword, sqliteTimePtr(u.TempPasswordExpiresAt),
 	)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -22,14 +26,16 @@ func (s *Store) CreateUser(u *model.User) error {
 
 func (s *Store) GetUserByID(id string) (*model.User, error) {
 	return s.scanUser(s.db.QueryRow(
-		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, token_generation, avatar, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, token_generation, avatar,
+		        must_change_password, temp_password_expires_at, created_at, updated_at
 		 FROM users WHERE id = ?`, id,
 	))
 }
 
 func (s *Store) GetUserByUsername(username string) (*model.User, error) {
 	return s.scanUser(s.db.QueryRow(
-		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, token_generation, avatar, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, token_generation, avatar,
+		        must_change_password, temp_password_expires_at, created_at, updated_at
 		 FROM users WHERE username = ?`, username,
 	))
 }
@@ -154,7 +160,9 @@ func (s *Store) IncrementTokenGeneration(userID string) (int, error) {
 
 func (s *Store) UpdateUserPassword(userID, passwordHash string) error {
 	_, err := s.db.Exec(
-		"UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
+		`UPDATE users
+		 SET password_hash = ?, must_change_password = 0, temp_password_expires_at = NULL, updated_at = datetime('now')
+		 WHERE id = ?`,
 		passwordHash, userID,
 	)
 	if err != nil {
@@ -163,9 +171,23 @@ func (s *Store) UpdateUserPassword(userID, passwordHash string) error {
 	return nil
 }
 
+func (s *Store) SetTemporaryPasswordState(userID string, mustChange bool, expiresAt *time.Time) error {
+	_, err := s.db.Exec(
+		`UPDATE users
+		 SET must_change_password = ?, temp_password_expires_at = ?, updated_at = datetime('now')
+		 WHERE id = ?`,
+		mustChange, sqliteTimePtr(expiresAt), userID,
+	)
+	if err != nil {
+		return fmt.Errorf("set temporary password state: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) ListUsers() ([]model.User, error) {
 	rows, err := s.db.Query(
-		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, token_generation, avatar, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, totp_secret, totp_enabled, token_generation, avatar,
+		        must_change_password, temp_password_expires_at, created_at, updated_at
 		 FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -187,8 +209,10 @@ func (s *Store) ListUsers() ([]model.User, error) {
 func (s *Store) scanUser(row *sql.Row) (*model.User, error) {
 	var u model.User
 	var createdAt, updatedAt string
+	var tempPasswordExpiresAt sql.NullString
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role,
-		&u.TOTPSecret, &u.TOTPEnabled, &u.TokenGeneration, &u.Avatar, &createdAt, &updatedAt)
+		&u.TOTPSecret, &u.TOTPEnabled, &u.TokenGeneration, &u.Avatar,
+		&u.MustChangePassword, &tempPasswordExpiresAt, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf(errUserNotFound)
 	}
@@ -197,18 +221,30 @@ func (s *Store) scanUser(row *sql.Row) (*model.User, error) {
 	}
 	u.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
 	u.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
+	if tempPasswordExpiresAt.Valid {
+		if parsed, err := time.Parse(sqliteTimeFormat, tempPasswordExpiresAt.String); err == nil {
+			u.TempPasswordExpiresAt = &parsed
+		}
+	}
 	return &u, nil
 }
 
 func (s *Store) scanUserRow(rows *sql.Rows) (*model.User, error) {
 	var u model.User
 	var createdAt, updatedAt string
+	var tempPasswordExpiresAt sql.NullString
 	err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role,
-		&u.TOTPSecret, &u.TOTPEnabled, &u.TokenGeneration, &u.Avatar, &createdAt, &updatedAt)
+		&u.TOTPSecret, &u.TOTPEnabled, &u.TokenGeneration, &u.Avatar,
+		&u.MustChangePassword, &tempPasswordExpiresAt, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("scan user row: %w", err)
 	}
 	u.CreatedAt, _ = time.Parse(sqliteTimeFormat, createdAt)
 	u.UpdatedAt, _ = time.Parse(sqliteTimeFormat, updatedAt)
+	if tempPasswordExpiresAt.Valid {
+		if parsed, err := time.Parse(sqliteTimeFormat, tempPasswordExpiresAt.String); err == nil {
+			u.TempPasswordExpiresAt = &parsed
+		}
+	}
 	return &u, nil
 }

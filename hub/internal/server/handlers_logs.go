@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,7 @@ import (
 const (
 	maxViewerLogStreamsPerUser = 5
 	maxAdminLogStreamsPerUser  = 10
+	maxAgentLogStreams         = 50
 )
 
 func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +86,7 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 	if grep != "" {
 		detail += " grep=" + grep
 	}
-	s.store.LogAudit(model.AuditEntry{
+	s.auditLogRequest(r, model.AuditEntry{
 		ID:        uuid.NewString(),
 		UserID:    &userID,
 		Action:    model.AuditLogTailStarted,
@@ -146,6 +148,20 @@ func (s *Server) tryAcquireLogTailSlot(serverID, userID, role string) bool {
 	s.logTailMu.Lock()
 	defer s.logTailMu.Unlock()
 
+	totalForServer := 0
+	prefix := serverID + ":"
+	for existingKey, count := range s.logTailSessions {
+		if existingKey == key || strings.HasPrefix(existingKey, prefix) {
+			totalForServer += count
+		}
+	}
+	if role == "admin" {
+		if totalForServer >= maxAgentLogStreams {
+			return false
+		}
+	} else if totalForServer >= maxAgentLogStreams-maxAdminLogStreamsPerUser {
+		return false
+	}
 	if s.logTailSessions[key] >= limit {
 		return false
 	}
@@ -158,7 +174,7 @@ func (s *Server) releaseLogTailSlot(serverID, userID string) {
 	s.logTailMu.Lock()
 	defer s.logTailMu.Unlock()
 
-	if current := s.logTailSessions[key]; current <= 1 {
+	if s.logTailSessions[key] <= 1 {
 		delete(s.logTailSessions, key)
 		return
 	}

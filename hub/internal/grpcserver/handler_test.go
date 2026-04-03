@@ -2,12 +2,16 @@ package grpcserver
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"net"
 	"testing"
 
+	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -70,12 +74,33 @@ func testHandler(t *testing.T) (*Handler, *store.Store) {
 	cm := connmgr.New()
 	notifier := notify.New(st)
 	t.Cleanup(func() { notifier.Close() })
+	caCert, caKey, err := ca.GenerateCA()
+	if err != nil {
+		t.Fatalf("generate test CA: %v", err)
+	}
 	h := &Handler{
 		store:    st,
 		connMgr:  cm,
 		notifier: notifier,
+		caCert:   caCert,
+		caKey:    caKey,
 	}
 	return h, st
+}
+
+func testRegistrationCSR(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate test key: %v", err)
+	}
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		Subject: pkix.Name{CommonName: "pending"},
+	}, key)
+	if err != nil {
+		t.Fatalf("create test CSR: %v", err)
+	}
+	return csrDER
 }
 
 func streamWithPeer(serverID, ip string) *mockStream {
@@ -104,22 +129,25 @@ func TestHandleRegister_ValidToken(t *testing.T) {
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
 	})
-	serverID, err := h.handleRegister("", "host1", testIPAddr, "Linux", "0.1.0")
+	serverID, clientCert, caCert, err := h.handleRegister("", "host1", testIPAddr, "Linux", "0.1.0", testRegistrationCSR(t))
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if serverID != "s1" {
 		t.Fatalf("expected 's1', got '%s'", serverID)
 	}
+	if len(clientCert) == 0 || len(caCert) == 0 {
+		t.Fatal("expected issued client certificate and CA certificate")
+	}
 	srv, _ := st.GetServerByID("s1")
-	if srv.Status != "online" {
-		t.Fatalf("expected 'online', got '%s'", srv.Status)
+	if srv.Status != "pending" {
+		t.Fatalf("expected 'pending', got '%s'", srv.Status)
 	}
 }
 
 func TestHandleRegister_InvalidToken(t *testing.T) {
 	h, _ := testHandler(t)
-	_, err := h.handleRegister("totally-fake", "host1", testIPAddr, "Linux", "0.1.0")
+	_, _, _, err := h.handleRegister("totally-fake", "host1", testIPAddr, "Linux", "0.1.0", testRegistrationCSR(t))
 	if err == nil {
 		t.Fatal("expected error for invalid token")
 	}
@@ -163,7 +191,7 @@ func TestHandleRegister_ExpiredToken(t *testing.T) {
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
 	})
-	_, err := h.handleRegister("", "host1", testIPAddr, "Linux", "0.1.0")
+	_, _, _, err := h.handleRegister("", "host1", testIPAddr, "Linux", "0.1.0", testRegistrationCSR(t))
 	if err == nil {
 		t.Fatal("expected error for expired token")
 	}

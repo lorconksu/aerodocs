@@ -16,6 +16,7 @@ func (s *Server) routes() http.Handler {
 	fileOpsLimiter := newRateLimiter(60, 60*time.Second)
 
 	// Public auth endpoints (rate-limited)
+	mux.Handle("GET /api/health", loggingMiddleware(http.HandlerFunc(s.handleHealth)))
 	mux.Handle("GET /api/auth/status", loggingMiddleware(http.HandlerFunc(s.handleAuthStatus)))
 	mux.Handle("POST /api/auth/register", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleRegister))))
 	mux.Handle("POST /api/auth/login", loggingMiddleware(loginLimiter.middleware(http.HandlerFunc(s.handleLogin))))
@@ -42,7 +43,23 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("POST /api/users", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleCreateUser)))))
 	mux.Handle("PUT /api/users/{id}/role", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateUserRole)))))
 	mux.Handle("DELETE /api/users/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleDeleteUser)))))
-	mux.Handle("GET /api/audit-logs", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleListAuditLogs)))))
+	mux.Handle("GET /api/audit-logs", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleListAuditLogs)))))
+	mux.Handle("GET /api/audit-logs/catalog", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleAuditCatalog)))))
+	mux.Handle("GET /api/audit-logs/health", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleAuditHealth)))))
+	mux.Handle("GET /api/audit-logs/settings", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleGetAuditSettings)))))
+	mux.Handle("PUT /api/audit-logs/settings", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleUpdateAuditSettings)))))
+	mux.Handle("GET /api/audit-logs/export", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleExportAuditLogs)))))
+	mux.Handle("GET /api/audit-logs/exports", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleListAuditExports)))))
+	mux.Handle("POST /api/audit-logs/retention/run", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleRunAuditRetention)))))
+	mux.Handle("GET /api/audit-logs/reviews", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleListAuditReviews)))))
+	mux.Handle("POST /api/audit-logs/reviews", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleCreateAuditReview)))))
+	mux.Handle("GET /api/audit-logs/filters", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleListAuditSavedFilters)))))
+	mux.Handle("POST /api/audit-logs/filters", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleCreateAuditSavedFilter)))))
+	mux.Handle("DELETE /api/audit-logs/filters/{id}", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleDeleteAuditSavedFilter)))))
+	mux.Handle("GET /api/audit-logs/flags", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleListAuditFlags)))))
+	mux.Handle("POST /api/audit-logs/flags", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleCreateAuditFlag)))))
+	mux.Handle("GET /api/audit-logs/detections", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleAuditDetections)))))
+	mux.Handle("GET /api/audit-users", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.auditAccessOnly(http.HandlerFunc(s.handleListAuditUsers)))))
 
 	// Hub configuration endpoints
 	mux.Handle("GET /api/settings/hub", loggingMiddleware(s.authMiddleware(auth.TokenTypeAccess, s.adminOnly(http.HandlerFunc(s.handleGetHubConfig)))))
@@ -97,5 +114,5 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/", s.spaHandler())
 
 	// Apply CSRF, then CORS, then cache control for API, then security headers as outermost wrapper
-	return securityHeaders(apiCacheControl(s.corsMiddleware(s.csrfMiddleware(mux))))
+	return securityHeaders(apiCacheControl(s.corsMiddleware(s.csrfMiddleware(requestIDMiddleware(mux)))))
 }

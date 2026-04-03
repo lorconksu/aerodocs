@@ -9,11 +9,12 @@ import (
 )
 
 // newTestAgentClient creates an agent client configured for testing.
-func newTestAgentClient(h *TestHarness, regToken string) *agentclient.Client {
+func newTestAgentClient(h *TestHarness, regToken, certDir string) *agentclient.Client {
 	return agentclient.New(agentclient.Config{
 		HubAddr:      h.GRPCAddr,
 		ServerID:     "",
 		Token:        regToken,
+		CertDir:      certDir,
 		Hostname:     "test-host",
 		IPAddress:    "10.0.0.1",
 		OS:           "linux",
@@ -57,7 +58,7 @@ func TestAgentConnectAndHeartbeat(t *testing.T) {
 	serverID, regToken := h.CreateServer(t, token, "test-server")
 	t.Logf("created server: id=%s", serverID)
 
-	agentClient := newTestAgentClient(h, regToken)
+	agentClient := newTestAgentClient(h, regToken, t.TempDir())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -13,6 +13,8 @@ const (
 	NotifyTOTPChanged     = "security.totp_changed"
 	NotifyPasswordChanged = "security.password_changed"
 	NotifyFileUploaded    = "system.file_uploaded"
+	NotifyAuditDegraded   = "security.audit_degraded"
+	NotifyAuditRecovered  = "security.audit_recovered"
 )
 
 // AllNotifyEvents lists every event type with its default enabled state and display label.
@@ -24,6 +26,8 @@ var AllNotifyEvents = []NotifyEventDef{
 	{Type: NotifyUserCreated, Label: "New user created", Category: "Security", DefaultOn: true},
 	{Type: NotifyTOTPChanged, Label: "2FA configuration changed", Category: "Security", DefaultOn: true},
 	{Type: NotifyPasswordChanged, Label: "Password changed", Category: "Security", DefaultOn: false},
+	{Type: NotifyAuditDegraded, Label: "Audit pipeline degraded", Category: "Security", DefaultOn: true},
+	{Type: NotifyAuditRecovered, Label: "Audit pipeline recovered", Category: "Security", DefaultOn: true},
 	{Type: NotifyFileUploaded, Label: "File uploaded", Category: "System", DefaultOn: false},
 }
 

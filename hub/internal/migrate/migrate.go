@@ -63,6 +63,16 @@ func applyMigration(db *sql.DB, filename string) error {
 		return fmt.Errorf("read %s: %w", filename, err)
 	}
 
+	if strings.HasPrefix(string(content), "-- codex: no-transaction") {
+		if _, err := db.Exec(string(content)); err != nil {
+			return fmt.Errorf("execute %s: %w", filename, err)
+		}
+		if _, err := db.Exec("INSERT INTO _migrations (filename) VALUES (?)", filename); err != nil {
+			return fmt.Errorf("record %s: %w", filename, err)
+		}
+		return nil
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx for %s: %w", filename, err)

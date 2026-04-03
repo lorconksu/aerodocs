@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wyiu/aerodocs/hub/internal/auth"
+	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
 type contextKey string
@@ -18,6 +20,7 @@ const (
 	ctxUserID    contextKey = "user_id"
 	ctxUserRole  contextKey = "user_role"
 	ctxTokenType contextKey = "token_type"
+	ctxRequestID contextKey = "request_id"
 )
 
 func UserIDFromContext(ctx context.Context) string {
@@ -32,6 +35,11 @@ func UserRoleFromContext(ctx context.Context) string {
 
 func TokenTypeFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(ctxTokenType).(string)
+	return v
+}
+
+func RequestIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxRequestID).(string)
 	return v
 }
 
@@ -79,8 +87,19 @@ func (s *Server) authMiddleware(requiredType string, next http.Handler) http.Han
 // adminOnly wraps a handler to require admin role.
 func (s *Server) adminOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if UserRoleFromContext(r.Context()) != "admin" {
+		if UserRoleFromContext(r.Context()) != string(model.RoleAdmin) {
 			respondError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) auditAccessOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		role := UserRoleFromContext(r.Context())
+		if role != string(model.RoleAdmin) && role != string(model.RoleAuditor) {
+			respondError(w, http.StatusForbidden, "audit access required")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -92,7 +111,19 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+		log.Printf("%s %s %s request_id=%s", r.Method, r.URL.Path, time.Since(start), RequestIDFromContext(r.Context()))
+	})
+}
+
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.NewString()
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		ctx := context.WithValue(r.Context(), ctxRequestID, requestID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

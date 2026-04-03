@@ -1,12 +1,14 @@
 package client
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"github.com/wyiu/aerodocs/agent/internal/certs"
 	"github.com/wyiu/aerodocs/agent/internal/dropzone"
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -26,6 +29,7 @@ const (
 	testExpectedAckOnSendCh    = "expected ack on sendCh"
 	testReqList                = "req-list"
 	testReqLog                 = "req-log"
+	testHubHostName            = "hub.example.com"
 )
 
 // newTestDropzone creates a Dropzone using a test directory.
@@ -99,6 +103,36 @@ func TestServerID(t *testing.T) {
 	}
 }
 
+type mockConnectClientStream struct {
+	ctx  context.Context
+	sent []*pb.AgentMessage
+	recv []*pb.HubMessage
+}
+
+func (m *mockConnectClientStream) Header() (metadata.MD, error) { return nil, nil }
+func (m *mockConnectClientStream) Trailer() metadata.MD         { return nil }
+func (m *mockConnectClientStream) CloseSend() error             { return nil }
+func (m *mockConnectClientStream) Context() context.Context {
+	if m.ctx != nil {
+		return m.ctx
+	}
+	return context.Background()
+}
+func (m *mockConnectClientStream) SendMsg(interface{}) error { return nil }
+func (m *mockConnectClientStream) RecvMsg(interface{}) error { return nil }
+func (m *mockConnectClientStream) Send(msg *pb.AgentMessage) error {
+	m.sent = append(m.sent, msg)
+	return nil
+}
+func (m *mockConnectClientStream) Recv() (*pb.HubMessage, error) {
+	if len(m.recv) == 0 {
+		return nil, io.EOF
+	}
+	msg := m.recv[0]
+	m.recv = m.recv[1:]
+	return msg, nil
+}
+
 func TestUseTLS(t *testing.T) {
 	// useTLS now defaults to true, false only when insecure flag is set
 	t.Run("default_true", func(t *testing.T) {
@@ -151,8 +185,8 @@ func TestVerifyPinnedHubCertificate(t *testing.T) {
 	}
 	serverTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "hub.example.com"},
-		DNSNames:     []string{"hub.example.com"},
+		Subject:      pkix.Name{CommonName: testHubHostName},
+		DNSNames:     []string{testHubHostName},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
@@ -164,11 +198,46 @@ func TestVerifyPinnedHubCertificate(t *testing.T) {
 	}
 
 	pin := sha256.Sum256(caCert.Raw)
-	if err := verifyPinnedHubCertificate([][]byte{serverDER, caCert.Raw}, pin[:], "hub.example.com"); err != nil {
+	if err := verifyPinnedHubCertificate([][]byte{serverDER, caCert.Raw}, pin[:], testHubHostName); err != nil {
 		t.Fatalf("verify pinned hub certificate: %v", err)
 	}
 	if err := verifyPinnedHubCertificate([][]byte{serverDER, caCert.Raw}, pin[:], "other.example.com"); err == nil {
 		t.Fatal("expected hostname mismatch to fail")
+	}
+}
+
+func TestSendRegister_RequiresReconnectForMTLS(t *testing.T) {
+	c := New(Config{
+		HubAddr:  testHubAddr,
+		Token:    "reg-token",
+		Hostname: "host1",
+		CertDir:  t.TempDir(),
+	})
+	stream := &mockConnectClientStream{
+		recv: []*pb.HubMessage{
+			{
+				Payload: &pb.HubMessage_RegisterAck{
+					RegisterAck: &pb.RegisterAck{
+						Success:  true,
+						ServerId: "srv-1",
+					},
+				},
+			},
+		},
+	}
+
+	bootstrapRegistered, err := c.sendRegister(stream)
+	if err != nil {
+		t.Fatalf("sendRegister: %v", err)
+	}
+	if !bootstrapRegistered {
+		t.Fatal("expected successful registration to require an mTLS reconnect")
+	}
+	if c.serverID != "srv-1" {
+		t.Fatalf("expected server ID to be recorded, got %q", c.serverID)
+	}
+	if len(stream.sent) != 1 || stream.sent[0].GetRegister() == nil {
+		t.Fatal("expected a RegisterAgent message to be sent")
 	}
 }
 
@@ -202,13 +271,14 @@ func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {
 }
 
 func TestHandleFileDeleteRequest_NonexistentFile(t *testing.T) {
-	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: dropzone.New("/tmp/aerodocs-dropzone")}
+	dropzoneDir := t.TempDir()
+	c := &Client{tailSessions: make(map[string]chan struct{}), dropzone: dropzone.New(dropzoneDir)}
 	sendCh := make(chan *pb.AgentMessage, 1)
 
 	msg := &pb.HubMessage_FileDeleteRequest{
 		FileDeleteRequest: &pb.FileDeleteRequest{
 			RequestId: "req-1",
-			Path:      "/tmp/aerodocs-dropzone/nonexistent-file.txt",
+			Path:      filepath.Join(dropzoneDir, "nonexistent-file.txt"),
 		},
 	}
 	c.handleFileDeleteRequest(msg, sendCh)
@@ -228,12 +298,7 @@ func TestHandleFileDeleteRequest_NonexistentFile(t *testing.T) {
 }
 
 func TestHandleFileDeleteRequest_Success(t *testing.T) {
-	// Create the file using the actual dropzone path pattern
-	dropzoneDir := "/tmp/aerodocs-dropzone"
-	if err := os.MkdirAll(dropzoneDir, 0755); err != nil {
-		t.Skipf("cannot create dropzone dir: %v", err)
-	}
-
+	dropzoneDir := t.TempDir()
 	testFile := filepath.Join(dropzoneDir, "test-delete-file.txt")
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		t.Fatalf("create test file: %v", err)

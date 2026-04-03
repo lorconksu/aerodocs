@@ -3,6 +3,7 @@ package grpcserver
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,11 +12,16 @@ import (
 )
 
 const (
-	testFutureExpiry = "2099-12-31 23:59:59"
-	testConnectFmt   = "Connect: %v"
-	testServerHBIP   = "s-hb-ip"
-	testStaleSrv     = "stale-srv"
-	testTimeoutSrv   = "timeout-srv"
+	testFutureExpiry        = "2099-12-31 23:59:59"
+	testConnectFmt          = "Connect: %v"
+	testServerHBIP          = "s-hb-ip"
+	testStaleSrv            = "stale-srv"
+	testTimeoutSrv          = "timeout-srv"
+	testCoalescerHBServerID = "s-coal2"
+	testRegistrationPeerIP  = "10.10.1.95"
+	testHeartbeatProxyIP    = "10.10.1.27"
+	testHBInvalidServerID   = "s-hb-invalid-ip"
+	testHBFallbackServerID  = "s-hb-fb"
 )
 
 // sequenceStream returns messages from a slice and then io.EOF.
@@ -80,6 +86,7 @@ func TestConnect_RegisterWithCoalescer(t *testing.T) {
 					IpAddress:    "10.0.0.1",
 					Os:           "Linux",
 					AgentVersion: "0.1.0",
+					Csr:          testRegistrationCSR(t),
 				},
 			},
 		},
@@ -87,7 +94,17 @@ func TestConnect_RegisterWithCoalescer(t *testing.T) {
 
 	err := h.Connect(stream)
 	if err != nil {
-		t.Fatalf("Connect should return nil on EOF, got: %v", err)
+		t.Fatalf("Connect after bootstrap registration should return nil, got: %v", err)
+	}
+	if len(stream.sent) != 1 {
+		t.Fatalf("expected 1 bootstrap ack, got %d", len(stream.sent))
+	}
+	ack := stream.sent[0].GetRegisterAck()
+	if ack == nil || len(ack.ClientCert) == 0 || len(ack.CaCert) == 0 {
+		t.Fatal("expected bootstrap register ack to include issued mTLS material")
+	}
+	if h.connMgr.GetConn("s-coal") != nil {
+		t.Fatal("expected bootstrap registration stream to close without becoming the live agent connection")
 	}
 }
 
@@ -99,16 +116,16 @@ func TestConnect_HeartbeatWithCoalescer(t *testing.T) {
 	h.logSessions = NewLogSessions()
 	h.hbCoalescer = NewHeartbeatCoalescer(st, 5*time.Minute)
 
-	st.CreateServer(&model.Server{ID: "s-coal2", Name: "coalescer-hb", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testCoalescerHBServerID, Name: "coalescer-hb", Status: "online", Labels: "{}"})
 
 	stream := newSequenceStream([]*pb.AgentMessage{
 		{
 			Payload: &pb.AgentMessage_Heartbeat{
-				Heartbeat: &pb.Heartbeat{ServerId: "s-coal2"},
+				Heartbeat: &pb.Heartbeat{ServerId: testCoalescerHBServerID},
 			},
 		},
 	})
-	stream.mockStream = *streamWithPeerCert("s-coal2")
+	stream.mockStream = *streamWithPeerCert(testCoalescerHBServerID)
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -163,15 +180,32 @@ func TestConnect_Register(t *testing.T) {
 					IpAddress:    "10.0.0.1",
 					Os:           "Linux",
 					AgentVersion: "0.1.0",
+					Csr:          testRegistrationCSR(t),
 				},
 			},
 		},
 	})
 
 	err := h.Connect(stream)
-	// Should get io.EOF from the Recv loop
 	if err != nil {
-		t.Fatalf("Connect should return nil on EOF, got: %v", err)
+		t.Fatalf("Connect after bootstrap registration should return nil, got: %v", err)
+	}
+	if len(stream.sent) != 1 {
+		t.Fatalf("expected 1 bootstrap ack, got %d", len(stream.sent))
+	}
+	ack := stream.sent[0].GetRegisterAck()
+	if ack == nil || len(ack.ClientCert) == 0 || len(ack.CaCert) == 0 {
+		t.Fatal("expected bootstrap register ack to include issued mTLS material")
+	}
+	if h.connMgr.GetConn("s1") != nil {
+		t.Fatal("expected bootstrap registration stream to close without registering in connMgr")
+	}
+	srv, err := st.GetServerByID("s1")
+	if err != nil {
+		t.Fatalf("GetServerByID: %v", err)
+	}
+	if srv.Status != "pending" {
+		t.Fatalf("expected bootstrap-only registration to leave server pending, got %s", srv.Status)
 	}
 }
 
@@ -272,6 +306,100 @@ func TestConnect_RegisterInvalidToken(t *testing.T) {
 	}
 }
 
+func TestConnect_Register_AuditsBootstrapSuccess(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
+	expiresAt := testFutureExpiry
+	st.CreateServer(&model.Server{
+		ID: "s-audit-ok", Name: "audit-ok", Status: "pending", Labels: "{}",
+		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,
+	})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Register{
+				Register: &pb.RegisterAgent{
+					Token:        "",
+					Hostname:     "host-audit-ok",
+					Os:           "Linux",
+					AgentVersion: "1.2.3",
+					Csr:          testRegistrationCSR(t),
+				},
+			},
+		},
+	})
+	stream.mockStream = *streamWithPeer("", "10.20.30.40")
+
+	if err := h.Connect(stream); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	action := model.AuditServerRegistered
+	entries, total, err := st.ListAuditLogs(model.AuditFilter{Action: &action, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAuditLogs: %v", err)
+	}
+	if total != 1 || len(entries) != 1 {
+		t.Fatalf("expected 1 server.registered audit entry, got total=%d len=%d", total, len(entries))
+	}
+	entry := entries[0]
+	if entry.Target == nil || *entry.Target != "s-audit-ok" {
+		t.Fatalf("expected audit target s-audit-ok, got %+v", entry.Target)
+	}
+	if entry.IPAddress == nil || *entry.IPAddress != "10.20.30.40" {
+		t.Fatalf("expected audit IP 10.20.30.40, got %+v", entry.IPAddress)
+	}
+	if entry.Detail == nil || !strings.Contains(*entry.Detail, "phase=bootstrap") || !strings.Contains(*entry.Detail, "result=accepted") {
+		t.Fatalf("expected bootstrap success detail, got %+v", entry.Detail)
+	}
+}
+
+func TestConnect_Register_AuditsBootstrapFailure(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Register{
+				Register: &pb.RegisterAgent{
+					Token:        "bad-token",
+					Hostname:     "host-audit-fail",
+					Os:           "Linux",
+					AgentVersion: "1.2.3",
+				},
+			},
+		},
+	})
+	stream.mockStream = *streamWithPeer("", "10.20.30.41")
+
+	if err := h.Connect(stream); err == nil {
+		t.Fatal("expected invalid bootstrap registration to fail")
+	}
+
+	action := model.AuditServerRegistrationFailed
+	entries, total, err := st.ListAuditLogs(model.AuditFilter{Action: &action, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAuditLogs: %v", err)
+	}
+	if total != 1 || len(entries) != 1 {
+		t.Fatalf("expected 1 server.registration_failed audit entry, got total=%d len=%d", total, len(entries))
+	}
+	entry := entries[0]
+	if entry.Target != nil {
+		t.Fatalf("expected no target for failed registration, got %+v", entry.Target)
+	}
+	if entry.IPAddress == nil || *entry.IPAddress != "10.20.30.41" {
+		t.Fatalf("expected audit IP 10.20.30.41, got %+v", entry.IPAddress)
+	}
+	if entry.Detail == nil || !strings.Contains(*entry.Detail, "result=failed") || !strings.Contains(*entry.Detail, "reason=") {
+		t.Fatalf("expected bootstrap failure detail, got %+v", entry.Detail)
+	}
+}
+
 // TestConnect_HeartbeatUnknownServer verifies Connect handles heartbeat from unknown server.
 func TestConnect_HeartbeatUnknownServer(t *testing.T) {
 	h, _ := testHandler(t)
@@ -365,11 +493,12 @@ func TestRegisterHandshake_UsesPeerIP(t *testing.T) {
 					IpAddress:    "192.168.1.100", // agent's real IP
 					Os:           "Linux",
 					AgentVersion: "0.1.0",
+					Csr:          testRegistrationCSR(t),
 				},
 			},
 		},
 	})
-	stream.mockStream = *streamWithPeer("", "10.10.1.95")
+	stream.mockStream = *streamWithPeer("", testRegistrationPeerIP)
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -377,12 +506,12 @@ func TestRegisterHandshake_UsesPeerIP(t *testing.T) {
 	}
 
 	srv, _ := st.GetServerByID("s-ip-test")
-	if srv.IPAddress == nil || *srv.IPAddress != "10.10.1.95" {
+	if srv.IPAddress == nil || *srv.IPAddress != testRegistrationPeerIP {
 		got := "<nil>"
 		if srv.IPAddress != nil {
 			got = *srv.IPAddress
 		}
-		t.Fatalf("expected peer IP 10.10.1.95, got %s", got)
+		t.Fatalf("expected peer IP %s, got %s", testRegistrationPeerIP, got)
 	}
 }
 
@@ -409,6 +538,7 @@ func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
 					IpAddress:    "", // no agent-reported IP
 					Os:           "Linux",
 					AgentVersion: "0.1.0",
+					Csr:          testRegistrationCSR(t),
 				},
 			},
 		},
@@ -434,7 +564,7 @@ func TestHeartbeatHandshake_UsesPeerIP(t *testing.T) {
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
 
-	proxyIP := "10.10.1.27" // Traefik proxy IP
+	proxyIP := testHeartbeatProxyIP // Traefik proxy IP
 	st.CreateServer(&model.Server{ID: testServerHBIP, Name: "hb-ip", Status: "online", Labels: "{}"})
 	_ = st.UpdateServerIP(testServerHBIP, proxyIP)
 
@@ -443,12 +573,12 @@ func TestHeartbeatHandshake_UsesPeerIP(t *testing.T) {
 			Payload: &pb.AgentMessage_Heartbeat{
 				Heartbeat: &pb.Heartbeat{
 					ServerId:  testServerHBIP,
-					IpAddress: "10.10.1.95", // real agent IP
+					IpAddress: testRegistrationPeerIP, // real agent IP
 				},
 			},
 		},
 	})
-	stream.mockStream = *streamWithPeer(testServerHBIP, "10.10.1.27")
+	stream.mockStream = *streamWithPeer(testServerHBIP, testHeartbeatProxyIP)
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -456,12 +586,12 @@ func TestHeartbeatHandshake_UsesPeerIP(t *testing.T) {
 	}
 
 	srv, _ := st.GetServerByID(testServerHBIP)
-	if srv.IPAddress == nil || *srv.IPAddress != "10.10.1.27" {
+	if srv.IPAddress == nil || *srv.IPAddress != testHeartbeatProxyIP {
 		got := "<nil>"
 		if srv.IPAddress != nil {
 			got = *srv.IPAddress
 		}
-		t.Fatalf("expected peer IP 10.10.1.27, got %s", got)
+		t.Fatalf("expected peer IP %s, got %s", testHeartbeatProxyIP, got)
 	}
 }
 
@@ -488,6 +618,7 @@ func TestRegisterHandshake_InvalidAgentIP(t *testing.T) {
 					IpAddress:    "not-an-ip-address", // invalid IP
 					Os:           "Linux",
 					AgentVersion: "0.1.0",
+					Csr:          testRegistrationCSR(t),
 				},
 			},
 		},
@@ -514,20 +645,20 @@ func TestHeartbeatHandshake_InvalidAgentIP(t *testing.T) {
 	h.logSessions = NewLogSessions()
 
 	originalIP := "10.0.0.5"
-	st.CreateServer(&model.Server{ID: "s-hb-invalid-ip", Name: "hb-invalid", Status: "online", Labels: "{}"})
-	_ = st.UpdateServerIP("s-hb-invalid-ip", originalIP)
+	st.CreateServer(&model.Server{ID: testHBInvalidServerID, Name: "hb-invalid", Status: "online", Labels: "{}"})
+	_ = st.UpdateServerIP(testHBInvalidServerID, originalIP)
 
 	stream := newSequenceStream([]*pb.AgentMessage{
 		{
 			Payload: &pb.AgentMessage_Heartbeat{
 				Heartbeat: &pb.Heartbeat{
-					ServerId:  "s-hb-invalid-ip",
+					ServerId:  testHBInvalidServerID,
 					IpAddress: "'; DROP TABLE servers; --", // SQL injection attempt as IP
 				},
 			},
 		},
 	})
-	stream.mockStream = *streamWithPeer("s-hb-invalid-ip", "10.10.1.98")
+	stream.mockStream = *streamWithPeer(testHBInvalidServerID, "10.10.1.98")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -535,7 +666,7 @@ func TestHeartbeatHandshake_InvalidAgentIP(t *testing.T) {
 	}
 
 	// The invalid IP should have been rejected
-	srv, _ := st.GetServerByID("s-hb-invalid-ip")
+	srv, _ := st.GetServerByID(testHBInvalidServerID)
 	if srv.IPAddress != nil && *srv.IPAddress == "'; DROP TABLE servers; --" {
 		t.Fatal("expected SQL injection string to be rejected as IP")
 	}
@@ -548,19 +679,19 @@ func TestHeartbeatHandshake_FallsBackToPeerIP(t *testing.T) {
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
 
-	st.CreateServer(&model.Server{ID: "s-hb-fb", Name: "hb-fb", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: testHBFallbackServerID, Name: "hb-fb", Status: "online", Labels: "{}"})
 
 	stream := newSequenceStream([]*pb.AgentMessage{
 		{
 			Payload: &pb.AgentMessage_Heartbeat{
 				Heartbeat: &pb.Heartbeat{
-					ServerId:  "s-hb-fb",
+					ServerId:  testHBFallbackServerID,
 					IpAddress: "", // no agent-reported IP
 				},
 			},
 		},
 	})
-	stream.mockStream = *streamWithPeer("s-hb-fb", "10.10.1.99")
+	stream.mockStream = *streamWithPeer(testHBFallbackServerID, "10.10.1.99")
 
 	err := h.Connect(stream)
 	if err != nil {

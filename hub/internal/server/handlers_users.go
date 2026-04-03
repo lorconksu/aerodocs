@@ -31,8 +31,8 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Role != model.RoleAdmin && req.Role != model.RoleViewer {
-		respondError(w, http.StatusBadRequest, "role must be 'admin' or 'viewer'")
+	if !model.IsValidRole(req.Role) {
+		respondError(w, http.StatusBadRequest, "role must be 'admin', 'auditor', or 'viewer'")
 		return
 	}
 
@@ -54,9 +54,12 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditUserRoleUpdated, Target: &targetID, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditUserRoleUpdated,
+		Target:    &targetID,
+		IPAddress: &ip,
 	})
 
 	respondJSON(w, http.StatusOK, model.UserResponse{User: user})
@@ -94,9 +97,12 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditUserDeleted, Target: &targetID, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditUserDeleted,
+		Target:    &targetID,
+		IPAddress: &ip,
 	})
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "user deleted"})
@@ -114,8 +120,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Role != model.RoleAdmin && req.Role != model.RoleViewer {
-		respondError(w, http.StatusBadRequest, "role must be 'admin' or 'viewer'")
+	if !model.IsValidRole(req.Role) {
+		respondError(w, http.StatusBadRequest, "role must be 'admin', 'auditor', or 'viewer'")
 		return
 	}
 
@@ -127,23 +133,32 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := &model.User{
-		ID:           uuid.NewString(),
-		Username:     req.Username,
-		Email:        req.Email,
-		PasswordHash: hash,
-		Role:         req.Role,
+		ID:                 uuid.NewString(),
+		Username:           req.Username,
+		Email:              req.Email,
+		PasswordHash:       hash,
+		Role:               req.Role,
+		MustChangePassword: true,
 	}
+	settings := s.store.GetAuditSettings()
+	tempExpiresAt := time.Now().UTC().Add(time.Duration(settings.TemporaryPasswordTTLHours) * time.Hour)
+	user.TempPasswordExpiresAt = &tempExpiresAt
 
 	if err := s.store.CreateUser(user); err != nil {
 		respondError(w, http.StatusConflict, "user already exists")
 		return
 	}
+	_ = s.store.AddPasswordHistory(user.ID, hash)
+	_ = s.store.TrimPasswordHistory(user.ID, settings.PasswordHistoryCount)
 
 	adminID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditUserCreated, Target: &user.ID, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditUserCreated,
+		Target:    &user.ID,
+		IPAddress: &ip,
 	})
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyUserCreated, map[string]string{

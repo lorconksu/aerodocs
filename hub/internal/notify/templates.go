@@ -54,6 +54,19 @@ var templates = map[string]emailTemplate{
 		body: "The password for user {{username}} has been changed.\n\n" +
 			"If you did not make this change, contact your administrator immediately.",
 	},
+	model.NotifyAuditDegraded: {
+		subject: "Audit Pipeline Degraded",
+		body: "AeroDocs detected an audit logging failure.\n\n" +
+			"Failure Count: {{failure_count}}\n" +
+			"Last Failure: {{last_failure_at}}\n" +
+			"Reason: {{last_failure_reason}}\n",
+	},
+	model.NotifyAuditRecovered: {
+		subject: "Audit Pipeline Recovered",
+		body: "AeroDocs audit logging has recovered.\n\n" +
+			"Last Recovery: {{last_recovered_at}}\n" +
+			"Failure Count: {{failure_count}}\n",
+	},
 	model.NotifyFileUploaded: {
 		subject: "File Uploaded: {{filename}}",
 		body: "A file has been uploaded.\n\n" +

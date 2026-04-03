@@ -377,10 +377,14 @@ function UsersTab() {
                 <td className="px-4 py-2">
                   {u.id === currentUser?.id ? (
                     <span className={`text-xs px-2 py-0.5 rounded ${
-                      u.role === 'admin' ? 'bg-accent/20 text-accent' : 'bg-elevated text-text-muted'
+                      u.role === 'admin'
+                        ? 'bg-accent/20 text-accent'
+                        : u.role === 'auditor'
+                          ? 'bg-status-warning/20 text-status-warning'
+                          : 'bg-elevated text-text-muted'
                     }`}>
                       {/* c8 ignore next */}
-                      {u.role === 'admin' ? 'Admin' : 'Viewer'}
+                      {u.role === 'admin' ? 'Admin' : u.role === 'auditor' ? 'Auditor' : 'Viewer'}
                     </span>
                   ) : (
                     <select
@@ -390,6 +394,7 @@ function UsersTab() {
                       className="bg-elevated border border-border rounded px-2 py-0.5 text-xs text-text-primary focus:outline-none focus:border-accent"
                     >
                       <option value="admin">Admin</option>
+                      <option value="auditor">Auditor</option>
                       <option value="viewer">Viewer</option>
                     </select>
                   )}

@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'viewer'
+export type Role = 'admin' | 'auditor' | 'viewer'
 
 export interface User {
   id: string
@@ -7,6 +7,8 @@ export interface User {
   role: Role
   totp_enabled: boolean
   avatar: string | null
+  must_change_password?: boolean
+  temp_password_expires_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -14,6 +16,11 @@ export interface User {
 export interface AuthStatusResponse {
   initialized: boolean
   version: string
+}
+
+export interface HealthResponse {
+  status: string
+  audit: AuditHealth
 }
 
 export interface RegisterRequest {
@@ -31,6 +38,7 @@ export interface LoginResponse {
   totp_token?: string
   setup_token?: string
   requires_totp_setup?: boolean
+  must_change_password?: boolean
 }
 
 export interface LoginTOTPRequest {
@@ -56,6 +64,7 @@ export interface TOTPSetupResponse {
 
 export interface TOTPEnableRequest {
   code: string
+  new_password?: string
 }
 
 export interface CreateUserRequest {
@@ -76,6 +85,10 @@ export interface AuditEntry {
   target: string | null
   detail: string | null
   ip_address: string | null
+  outcome: string
+  actor_type: string
+  correlation_id: string | null
+  resource_type: string | null
   created_at: string
 }
 
@@ -84,6 +97,120 @@ export interface AuditLogResponse {
   total: number
   limit: number
   offset: number
+}
+
+export interface AuditHealth {
+  failure_count: number
+  last_failure_at: string | null
+  last_failure_reason: string | null
+  degraded: boolean
+  last_recovered_at: string | null
+}
+
+export interface AuditThresholds {
+  login_failures_per_hour: number
+  registration_failures_per_hour: number
+  privileged_actions_per_hour: number
+}
+
+export interface AuditSettings {
+  retention_days: number
+  review_reminder_days: number
+  password_history_count: number
+  temporary_password_ttl_hours: number
+  thresholds: AuditThresholds
+}
+
+export interface AuditCatalogEntry {
+  action: string
+  label: string
+  category: string
+  outcome: string
+  actor_type: string
+  resource_type: string
+}
+
+export interface AuditCatalogResponse {
+  entries: AuditCatalogEntry[]
+  last_updated_at: string
+}
+
+export interface AuditSavedFilter {
+  id: string
+  name: string
+  created_by: string
+  filters_json: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AuditSavedFiltersResponse {
+  filters: AuditSavedFilter[]
+}
+
+export interface AuditReview {
+  id: string
+  reviewer_id: string
+  reviewer: string
+  filters_json: string
+  notes: string
+  from: string | null
+  to: string | null
+  completed_at: string
+  created_at: string
+}
+
+export interface AuditReviewsResponse {
+  reviews: AuditReview[]
+}
+
+export interface AuditDetection {
+  id: string
+  type: string
+  severity: string
+  title: string
+  description: string
+}
+
+export interface AuditDetectionsResponse {
+  detections: AuditDetection[]
+}
+
+export interface AuditManifest {
+  generated_at: string
+  generated_by: string
+  record_count: number
+  applied_filters: string
+  first_created_at?: string
+  last_created_at?: string
+}
+
+export interface AuditExportResponse {
+  manifest: AuditManifest
+  entries: AuditEntry[]
+}
+
+export interface AuditExportHistoryResponse {
+  entries: AuditEntry[]
+}
+
+export interface AuditFlag {
+  id: string
+  entry_id: string | null
+  created_by: string
+  created_by_id: string
+  filters_json: string
+  note: string
+  created_at: string
+}
+
+export interface AuditFlagsResponse {
+  flags: AuditFlag[]
+}
+
+export interface AuditRetentionRunResponse {
+  deleted_count: number
+  cutoff: string
 }
 
 export interface ChangePasswordRequest {

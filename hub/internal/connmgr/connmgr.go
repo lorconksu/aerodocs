@@ -42,6 +42,17 @@ func (cm *ConnManager) Unregister(serverID string) {
 	delete(cm.streams, serverID)
 }
 
+func (cm *ConnManager) UnregisterIfCurrent(serverID string, stream pb.AgentService_ConnectServer) bool {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	conn, ok := cm.streams[serverID]
+	if !ok || conn.Stream != stream {
+		return false
+	}
+	delete(cm.streams, serverID)
+	return true
+}
+
 func (cm *ConnManager) GetConn(serverID string) *AgentConn {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()

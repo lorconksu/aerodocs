@@ -119,8 +119,9 @@ func TestCSRFMiddleware_NoCookies_SkipsValidation(t *testing.T) {
 }
 
 func TestRequestScheme(t *testing.T) {
+	const secureExampleAPI = "https://example.com/api/test"
 	s := testServer(t)
-	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/test", nil)
+	req := httptest.NewRequest(http.MethodPost, secureExampleAPI, nil)
 	if got := s.requestScheme(req); got != "https" {
 		t.Fatalf("requestScheme() = %q, want https", got)
 	}
@@ -139,6 +140,17 @@ func TestRequestScheme(t *testing.T) {
 }
 
 func TestIsValidOrigin(t *testing.T) {
+	const (
+		secureExampleAPI    = "https://example.com/api/test"
+		secureExampleHost   = "example.com"
+		secureExampleOrigin = "https://example.com"
+		examplePortHost     = "example.com:8080"
+		examplePortAPI      = "https://example.com:8080/api/test"
+		localhost5173Origin = "http://localhost:5173"
+		localhost5173API    = "http://localhost:5173/api/test"
+		localhost3000API    = "http://localhost:3000/api/test"
+		loopback3000API     = "http://127.0.0.1:3000/api/test"
+	)
 	tests := []struct {
 		name     string
 		url      string
@@ -146,14 +158,14 @@ func TestIsValidOrigin(t *testing.T) {
 		origin   string
 		expected bool
 	}{
-		{"same host no port", "https://example.com/api/test", "example.com", "https://example.com", true},
-		{"same host different port", "https://example.com:8080/api/test", "example.com:8080", "https://example.com", false},
-		{"same host both ports", "https://example.com:8080/api/test", "example.com:8080", "https://example.com:8080", true},
-		{"different host", "https://example.com/api/test", "example.com", "https://evil.com", false},
-		{"invalid origin URL", "https://example.com/api/test", "example.com", "://bad-url", false},
-		{"localhost exact match", "http://localhost:5173/api/test", "localhost:5173", "http://localhost:5173", true},
-		{"localhost different port", "http://localhost:3000/api/test", "localhost:3000", "http://localhost:5173", false},
-		{"localhost vs 127.0.0.1", "http://127.0.0.1:3000/api/test", "127.0.0.1:3000", "http://localhost:5173", false},
+		{"same host no port", secureExampleAPI, secureExampleHost, secureExampleOrigin, true},
+		{"same host different port", examplePortAPI, examplePortHost, secureExampleOrigin, false},
+		{"same host both ports", examplePortAPI, examplePortHost, "https://example.com:8080", true},
+		{"different host", secureExampleAPI, secureExampleHost, "https://evil.com", false},
+		{"invalid origin URL", secureExampleAPI, secureExampleHost, "://bad-url", false},
+		{"localhost exact match", localhost5173API, "localhost:5173", localhost5173Origin, true},
+		{"localhost different port", localhost3000API, "localhost:3000", localhost5173Origin, false},
+		{"localhost vs 127.0.0.1", loopback3000API, "127.0.0.1:3000", localhost5173Origin, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -192,14 +204,15 @@ func TestCSRFMiddleware_RejectsInvalidOrigin(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsMatchingOrigin(t *testing.T) {
+	const secureExampleOrigin = "https://example.com"
 	s := testServer(t)
 	s.isDev = false
 	handler := s.csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, secureExampleOrigin+"/api/something", nil)
 	req.Host = "example.com"
 	req.TLS = &tls.ConnectionState{}
-	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Origin", secureExampleOrigin)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
 	req.Header.Set(testCSRFTokenHdr, "tok123")
 
@@ -212,13 +225,14 @@ func TestCSRFMiddleware_AllowsMatchingOrigin(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsLoopbackHTTPOriginInProduction(t *testing.T) {
+	const localhostOrigin = "http://localhost:8081"
 	s := testServer(t)
 	s.isDev = false
 	handler := s.csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, "http://localhost:8081/api/something", nil)
+	req := httptest.NewRequest(http.MethodPost, localhostOrigin+"/api/something", nil)
 	req.Host = "localhost:8081"
-	req.Header.Set("Origin", "http://localhost:8081")
+	req.Header.Set("Origin", localhostOrigin)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
 	req.Header.Set(testCSRFTokenHdr, "tok123")
 
