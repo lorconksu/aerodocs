@@ -14,6 +14,7 @@
 - [[Settings]]
 
 **Setup & Deployment**
+- [[Architecture]]
 - [[Deployment]]
 - [[Deployment On-Prem]]
 - [[Deployment AWS]]
