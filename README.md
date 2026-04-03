@@ -35,27 +35,13 @@ AeroDocs is built for home lab operators and small teams who want real visibilit
 
 AeroDocs uses a **Hub-and-Spoke** model. The Hub is the central server that hosts the web UI, REST API, and SQLite database. Agents are lightweight binaries deployed on each remote server, maintaining persistent gRPC streams back to the Hub.
 
-```mermaid
-graph LR
-    Browser["Browser<br/>(React SPA)"]
-    Hub["Hub<br/>(Go Server)"]
-    DB["SQLite<br/>(WAL mode)"]
-    A1["Agent 1"]
-    A2["Agent 2"]
-    A3["Agent N"]
-
-    Browser -->|"REST + SSE<br/>(HTTPS)"| Hub
-    Hub --> DB
-    Hub <-->|"gRPC<br/>(mTLS)"| A1
-    Hub <-->|"gRPC<br/>(mTLS)"| A2
-    Hub <-->|"gRPC<br/>(mTLS)"| A3
-```
+![AeroDocs Architecture](docs/screenshots/aerodocs-architecture.png)
 
 - **Hub** — Central Go server. Serves the web UI, exposes REST APIs, manages SQLite, and enforces all authentication and permissions. Runs HTTP on `:8081` and gRPC on `:9090`.
 - **Agent** — Lightweight Go binary on each remote server. Maintains a persistent bidirectional gRPC stream to the Hub, executing file, log, and upload commands on demand.
 - **Frontend** — React SPA embedded into the Hub binary via `go:embed`. Single-binary deployment with zero external dependencies.
 
-For the full architecture breakdown, see [Architecture](docs/engineering/architecture.md).
+For the full architecture breakdown, see [Architecture](docs/wiki/Architecture.md).
 
 ## Quick Start
 
