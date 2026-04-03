@@ -9,6 +9,9 @@ permissions:
   contents: write
   actions: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -114,7 +117,7 @@ jobs:
           upload-release-assets: false
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v8
         with:
           name: sbom
           path: sbom.spdx.json
