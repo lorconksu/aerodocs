@@ -177,13 +177,49 @@ func isPathAllowed(path string, allowedPaths []string) bool {
 		return true
 	}
 	cleaned := filepath.Clean(path)
+	if !pathWithinAllowedRoots(cleaned, allowedPaths) {
+		return false
+	}
+
+	// Paths that do not resolve yet should still reach the underlying handler so it can
+	// return the appropriate "not found" style error.
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return true
+	}
+
+	return pathWithinAllowedRoots(filepath.Clean(resolved), allowedPaths)
+}
+
+func pathWithinAllowedRoots(path string, allowedPaths []string) bool {
 	for _, allowed := range allowedPaths {
-		prefix := filepath.Clean(allowed)
-		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
-			return true
+		for _, root := range candidateAllowedRoots(allowed) {
+			if pathWithinRoot(path, root) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func candidateAllowedRoots(root string) []string {
+	cleaned := filepath.Clean(root)
+	roots := []string{cleaned}
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
+		resolved = filepath.Clean(resolved)
+		if resolved != cleaned {
+			roots = append(roots, resolved)
+		}
+	}
+	return roots
+}
+
+func pathWithinRoot(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }
 
 func (c *Client) handleFileListRequest(p *pb.HubMessage_FileListRequest, sendCh chan<- *pb.AgentMessage) {

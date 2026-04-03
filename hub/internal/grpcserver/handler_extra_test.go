@@ -203,7 +203,7 @@ func TestConnect_HeartbeatWithoutClientCertRejected(t *testing.T) {
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
 
-	st.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "online", Labels: "{}"})
+	st.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "offline", Labels: "{}"})
 
 	stream := newSequenceStream([]*pb.AgentMessage{
 		{
@@ -216,6 +216,16 @@ func TestConnect_HeartbeatWithoutClientCertRejected(t *testing.T) {
 	err := h.Connect(stream)
 	if err == nil {
 		t.Fatal("expected heartbeat reconnect without client cert to be rejected")
+	}
+	if len(stream.sent) != 0 {
+		t.Fatalf("expected no heartbeat ack to be sent, got %d messages", len(stream.sent))
+	}
+	srv, err := st.GetServerByID("s1")
+	if err != nil {
+		t.Fatalf("GetServerByID: %v", err)
+	}
+	if srv.Status != "offline" {
+		t.Fatalf("expected server to remain offline, got %s", srv.Status)
 	}
 }
 

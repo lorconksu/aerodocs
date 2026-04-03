@@ -71,6 +71,9 @@ func validateLogPath(path string) (string, error) {
 	if isBlockedPath(resolved) {
 		return "", fmt.Errorf(errPathRestricted)
 	}
+	if resolved != cleaned && !strings.HasPrefix(resolved, cleaned+"/") {
+		return "", fmt.Errorf("path resolves outside requested directory")
+	}
 	return resolved, nil
 }
 

@@ -11,6 +11,11 @@ import (
 	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
+const (
+	maxViewerLogStreamsPerUser = 5
+	maxAdminLogStreamsPerUser  = 10
+)
+
 func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 	path := r.URL.Query().Get("path")
@@ -45,6 +50,13 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	rc.SetWriteDeadline(time.Time{}) // No deadline
 
+	userID := UserIDFromContext(r.Context())
+	role := UserRoleFromContext(r.Context())
+	if !s.tryAcquireLogTailSlot(serverID, userID, role) {
+		respondError(w, http.StatusTooManyRequests, "too many active log streams")
+		return
+	}
+
 	// Register log session
 	requestID := uuid.NewString()
 	ch := s.logSessions.Register(serverID, requestID)
@@ -60,13 +72,13 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	if err != nil {
+		s.releaseLogTailSlot(serverID, userID)
 		s.logSessions.Remove(serverID, requestID)
 		respondError(w, http.StatusBadGateway, "failed to send request to agent")
 		return
 	}
 
 	// Audit log
-	userID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
 	detail := path
 	if grep != "" {
@@ -91,6 +103,7 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 
 	// Cleanup on exit
 	defer func() {
+		s.releaseLogTailSlot(serverID, userID)
 		s.logSessions.Remove(serverID, requestID)
 		// Send stop to agent
 		_ = s.connMgr.SendToAgent(serverID, &pb.HubMessage{
@@ -121,4 +134,33 @@ func (s *Server) handleTailLog(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func (s *Server) tryAcquireLogTailSlot(serverID, userID, role string) bool {
+	limit := maxViewerLogStreamsPerUser
+	if role == "admin" {
+		limit = maxAdminLogStreamsPerUser
+	}
+
+	key := serverID + ":" + userID
+	s.logTailMu.Lock()
+	defer s.logTailMu.Unlock()
+
+	if s.logTailSessions[key] >= limit {
+		return false
+	}
+	s.logTailSessions[key]++
+	return true
+}
+
+func (s *Server) releaseLogTailSlot(serverID, userID string) {
+	key := serverID + ":" + userID
+	s.logTailMu.Lock()
+	defer s.logTailMu.Unlock()
+
+	if current := s.logTailSessions[key]; current <= 1 {
+		delete(s.logTailSessions, key)
+		return
+	}
+	s.logTailSessions[key]--
 }
