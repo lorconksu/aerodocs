@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,7 +25,9 @@ const (
 	// httpURLFormat is the format string used to build HTTP URLs for the test harness.
 	httpURLFormat = "http://%s%s"
 	// bearerPrefix is the Authorization header prefix for bearer tokens.
-	bearerPrefix = "Bearer "
+	bearerPrefix  = "Bearer "
+	cookieAccess  = "aerodocs_access"
+	cookieRefresh = "aerodocs_refresh"
 )
 
 // TestHarness holds all components for an in-process hub integration test.
@@ -37,6 +40,7 @@ type TestHarness struct {
 	GRPCAddr    string
 	HTTPAddr    string
 	JWTSecret   string
+	HubCAPin    string
 }
 
 // StartHarness starts an in-process hub (gRPC + HTTP) and returns a TestHarness.
@@ -67,6 +71,7 @@ func StartHarness(t *testing.T) *TestHarness {
 	cm := connmgr.New()
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
+	grpcCAPin := fmt.Sprintf("%x", sha256.Sum256(caCert.Raw))
 
 	// Find two free TCP ports
 	grpcPort := freePort(t)
@@ -93,16 +98,17 @@ func StartHarness(t *testing.T) *TestHarness {
 
 	// Start HTTP server
 	hs := server.New(server.Config{
-		Addr:        httpAddr,
-		Store:       st,
-		JWTSecret:   jwtSecret,
-		IsDev:       true,
-		FrontendFS:  nil,
-		AgentBinDir: "",
-		GRPCAddr:    grpcAddr,
-		ConnMgr:     cm,
-		Pending:     pending,
-		LogSessions: logSessions,
+		Addr:             httpAddr,
+		Store:            st,
+		JWTSecret:        jwtSecret,
+		IsDev:            true,
+		FrontendFS:       nil,
+		AgentBinDir:      "",
+		GRPCAddr:         grpcAddr,
+		GRPCCACertSHA256: grpcCAPin,
+		ConnMgr:          cm,
+		Pending:          pending,
+		LogSessions:      logSessions,
 	})
 
 	httpErrCh := make(chan error, 1)
@@ -144,6 +150,7 @@ func StartHarness(t *testing.T) *TestHarness {
 		GRPCAddr:    grpcAddr,
 		HTTPAddr:    httpAddr,
 		JWTSecret:   jwtSecret,
+		HubCAPin:    grpcCAPin,
 	}
 }
 
@@ -199,11 +206,14 @@ func (h *TestHarness) SetupAdmin(t *testing.T) string {
 	var authResp model.AuthResponse
 	json.NewDecoder(enableResp.Body).Decode(&authResp)
 
-	if authResp.AccessToken == "" {
-		t.Fatal("SetupAdmin: got empty access token")
+	for _, cookie := range enableResp.Cookies() {
+		if cookie.Name == cookieAccess && cookie.Value != "" {
+			return cookie.Value
+		}
 	}
 
-	return authResp.AccessToken
+	t.Fatal("SetupAdmin: got empty access token cookie")
+	return ""
 }
 
 // CreateServer calls POST /api/servers and returns the server ID and the plaintext
@@ -318,4 +328,3 @@ func waitForPort(t *testing.T, addr string, timeout time.Duration) {
 }
 
 // StartAgentProcess is in agent_process_test.go (needs access to test-only vars from main_test.go)
-

@@ -19,6 +19,7 @@ type Config struct {
 	OS           string
 	AgentVersion string
 	Insecure     bool
+	HubCAPin     string
 }
 
 // Client wraps the internal agent client.
@@ -38,6 +39,7 @@ func New(cfg Config) *Client {
 			OS:           cfg.OS,
 			AgentVersion: cfg.AgentVersion,
 			Insecure:     cfg.Insecure,
+			HubCAPin:     cfg.HubCAPin,
 		}),
 	}
 }

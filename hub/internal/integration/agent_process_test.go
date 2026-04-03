@@ -31,6 +31,7 @@ func (h *TestHarness) StartAgentProcess(t *testing.T, token string) (cancel func
 	cmd := exec.CommandContext(ctx, agentBinaryPath,
 		"--hub", h.GRPCAddr,
 		"--token", token,
+		"--ca-pin", h.HubCAPin,
 		"--config", configPath,
 	)
 	cmd.Env = append(os.Environ(), "GOCOVERDIR="+agentCovDir)
