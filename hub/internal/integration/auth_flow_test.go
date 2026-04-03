@@ -27,6 +27,15 @@ func decodeJSON(t *testing.T, resp *http.Response, dst interface{}, label string
 	}
 }
 
+func findCookie(resp *http.Response, name string) *http.Cookie {
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
+}
+
 // assertAuthStatus checks the /api/auth/status endpoint for the expected initialized value.
 func assertAuthStatus(t *testing.T, h *TestHarness, wantInitialized bool) {
 	t.Helper()
@@ -78,7 +87,7 @@ func setupTOTP(t *testing.T, h *TestHarness, setupToken string) string {
 	return result.Secret
 }
 
-// enableTOTP generates a code and enables TOTP, returning access and refresh tokens.
+// enableTOTP generates a code and enables TOTP, returning access and refresh cookies.
 func enableTOTP(t *testing.T, h *TestHarness, secret, setupToken string) (accessToken, refreshToken string) {
 	t.Helper()
 	code, err := auth.GenerateValidCode(secret)
@@ -91,10 +100,16 @@ func enableTOTP(t *testing.T, h *TestHarness, secret, setupToken string) (access
 
 	var result model.AuthResponse
 	decodeJSON(t, resp, &result, "totp enable")
-	if result.AccessToken == "" || result.RefreshToken == "" {
-		t.Fatal("expected access_token and refresh_token after totp enable")
+	if result.AccessToken != "" || result.RefreshToken != "" {
+		t.Fatal("expected token fields to be omitted from totp enable response body")
 	}
-	return result.AccessToken, result.RefreshToken
+
+	access := findCookie(resp, cookieAccess)
+	refresh := findCookie(resp, cookieRefresh)
+	if access == nil || access.Value == "" || refresh == nil || refresh.Value == "" {
+		t.Fatal("expected access and refresh cookies after totp enable")
+	}
+	return access.Value, refresh.Value
 }
 
 // loginAndGetTOTPToken logs in with credentials and returns the TOTP token.
@@ -117,7 +132,7 @@ func loginAndGetTOTPToken(t *testing.T, h *TestHarness, username, password strin
 	return result.TOTPToken
 }
 
-// completeTOTPLogin completes the TOTP login step and returns access and refresh tokens.
+// completeTOTPLogin completes the TOTP login step and returns access and refresh cookies.
 func completeTOTPLogin(t *testing.T, h *TestHarness, totpToken, secret string) (accessToken, refreshToken string) {
 	t.Helper()
 	h.HTTPServer.ClearTOTPCache()
@@ -133,10 +148,16 @@ func completeTOTPLogin(t *testing.T, h *TestHarness, totpToken, secret string) (
 
 	var result model.AuthResponse
 	decodeJSON(t, resp, &result, "login/totp")
-	if result.AccessToken == "" {
-		t.Fatal("expected access_token after login/totp")
+	if result.AccessToken != "" || result.RefreshToken != "" {
+		t.Fatal("expected token fields to be omitted from login/totp response body")
 	}
-	return result.AccessToken, result.RefreshToken
+
+	access := findCookie(resp, cookieAccess)
+	refresh := findCookie(resp, cookieRefresh)
+	if access == nil || access.Value == "" || refresh == nil || refresh.Value == "" {
+		t.Fatal("expected access and refresh cookies after login/totp")
+	}
+	return access.Value, refresh.Value
 }
 
 func TestFullAuthFlow(t *testing.T) {
@@ -221,8 +242,14 @@ func TestFullAuthFlow(t *testing.T) {
 
 		var result model.TokenPair
 		decodeJSON(t, resp, &result, "refresh")
-		if result.AccessToken == "" || result.RefreshToken == "" {
-			t.Fatal("expected new access_token and refresh_token after refresh")
+		if result.AccessToken != "" || result.RefreshToken != "" {
+			t.Fatal("expected token fields to be omitted from refresh response body")
+		}
+
+		access := findCookie(resp, cookieAccess)
+		refresh := findCookie(resp, cookieRefresh)
+		if access == nil || access.Value == "" || refresh == nil || refresh.Value == "" {
+			t.Fatal("expected new access and refresh cookies after refresh")
 		}
 	})
 

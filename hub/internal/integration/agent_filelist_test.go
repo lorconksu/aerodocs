@@ -28,6 +28,7 @@ func TestFileListThroughGRPC(t *testing.T) {
 		IPAddress:    "10.0.0.1",
 		OS:           "linux",
 		AgentVersion: "0.0.0-test",
+		HubCAPin:     h.HubCAPin,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
