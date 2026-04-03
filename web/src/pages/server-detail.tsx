@@ -25,30 +25,14 @@ import {
   CheckCircle,
   X,
 } from 'lucide-react'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
-import css from 'highlight.js/lib/languages/css'
-import dockerfile from 'highlight.js/lib/languages/dockerfile'
-import go from 'highlight.js/lib/languages/go'
-import ini from 'highlight.js/lib/languages/ini'
-import javascript from 'highlight.js/lib/languages/javascript'
-import json from 'highlight.js/lib/languages/json'
-import markdown from 'highlight.js/lib/languages/markdown'
-import nginx from 'highlight.js/lib/languages/nginx'
-import plaintext from 'highlight.js/lib/languages/plaintext'
-import python from 'highlight.js/lib/languages/python'
-import shell from 'highlight.js/lib/languages/shell'
-import sql from 'highlight.js/lib/languages/sql'
-import typescript from 'highlight.js/lib/languages/typescript'
-import xml from 'highlight.js/lib/languages/xml'
-import yaml from 'highlight.js/lib/languages/yaml'
 import 'highlight.js/styles/github-dark.css'
 // Lazy-load heavy markdown/mermaid viewer (code-split out of main bundle)
 const LazyMarkdownViewer = lazy(() => import('@/components/markdown-viewer'))
-import DOMPurify from 'dompurify'
 import { apiFetch } from '@/lib/api'
 import { getCSRFToken } from '@/lib/auth'
+import { useFileContentViewer } from '@/hooks/use-file-content-viewer'
 import { relativeTime } from '@/lib/time'
+import { formatFileSize, isMarkdownFile, parseSseChunk, sortFileNodes } from '@/lib/file-viewer'
 import { statusDot } from '@/lib/server-utils'
 import { useAuth } from '@/hooks/use-auth'
 import type {
@@ -61,99 +45,6 @@ import type {
   CreatePathRequest,
   User,
 } from '@/types/api'
-
-// Register highlight.js languages
-hljs.registerLanguage('bash', bash)
-hljs.registerLanguage('css', css)
-hljs.registerLanguage('dockerfile', dockerfile)
-hljs.registerLanguage('go', go)
-hljs.registerLanguage('ini', ini)
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('json', json)
-hljs.registerLanguage('markdown', markdown)
-hljs.registerLanguage('nginx', nginx)
-hljs.registerLanguage('plaintext', plaintext)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('shell', shell)
-hljs.registerLanguage('sql', sql)
-hljs.registerLanguage('typescript', typescript)
-hljs.registerLanguage('xml', xml)
-hljs.registerLanguage('yaml', yaml)
-
-// --- Utilities ---
-
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  const value = bytes / Math.pow(1024, i)
-  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
-
-
-function extensionToLanguage(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
-  const map: Record<string, string> = {
-    js: 'javascript',
-    jsx: 'javascript',
-    ts: 'typescript',
-    tsx: 'typescript',
-    py: 'python',
-    go: 'go',
-    sh: 'bash',
-    bash: 'bash',
-    zsh: 'bash',
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    xml: 'xml',
-    html: 'xml',
-    htm: 'xml',
-    svg: 'xml',
-    css: 'css',
-    scss: 'css',
-    sql: 'sql',
-    md: 'markdown',
-    markdown: 'markdown',
-    ini: 'ini',
-    toml: 'ini',
-    conf: 'ini',
-    cfg: 'ini',
-    properties: 'ini',
-    dockerfile: 'dockerfile',
-    nginx: 'nginx',
-    log: 'plaintext',
-    txt: 'plaintext',
-    env: 'bash',
-  }
-  // Handle Dockerfile specifically
-  if (filename.toLowerCase() === 'dockerfile' || filename.toLowerCase().startsWith('dockerfile.')) {
-    return 'dockerfile'
-  }
-  return map[ext] || 'plaintext'
-}
-
-function isMarkdownFile(path: string): boolean {
-  return /\.(md|markdown)$/i.test(path)
-}
-
-/**
- * Sanitize highlight.js output.
- *
- * highlight.js already escapes all user-supplied text (& < > " ')
- * and only emits <span class="hljs-..."> wrappers, so its output
- * is safe by design. This helper is a defense-in-depth measure that
- * strips any tag that is not an hljs <span>.
- */
-function sanitizeHljsHtml(html: string): string {
-  // DOMPurify strips everything except safe HTML; ALLOWED_TAGS restricted to
-  // only the <span> wrappers highlight.js produces.
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span'],
-    ALLOWED_ATTR: ['class'],
-  })
-}
 
 // --- Tree Node State ---
 
@@ -169,7 +60,6 @@ interface TreeNodeState {
 interface FileTreeNodeProps {
   node: FileNode
   depth: number
-  serverId: string
   selectedPath: string | null
   treeState: Record<string, TreeNodeState>
   onToggleDir: (path: string) => void
@@ -179,7 +69,6 @@ interface FileTreeNodeProps {
 function FileTreeNode({
   node,
   depth,
-  serverId,
   selectedPath,
   treeState,
   onToggleDir,
@@ -233,7 +122,6 @@ function FileTreeNode({
                   key={child.path}
                   node={child}
                   depth={depth + 1}
-                  serverId={serverId}
                   selectedPath={selectedPath}
                   treeState={treeState}
                   onToggleDir={onToggleDir}
@@ -487,26 +375,10 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
       const formData = new FormData()
       formData.append('file', file)
 
-      const headers: HeadersInit = {}
-      const csrfToken = getCSRFToken()
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken
-      }
-      // Do NOT set Content-Type — browser sets it with the multipart boundary
-
-      const res = await fetch(`/api/servers/${serverId}/upload`, {
+      const result = await apiFetch<{ filename: string; size: number }>(`/servers/${serverId}/upload`, {
         method: 'POST',
-        headers,
-        credentials: 'same-origin',
         body: formData,
       })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-        throw new Error((err as { error?: string }).error || `HTTP ${res.status}`)
-      }
-
-      const result = await res.json() as { filename: string; size: number }
       setUploadResult(result)
       queryClient.invalidateQueries({ queryKey: ['dropzone', serverId] })
     } catch (err) {
@@ -751,25 +623,6 @@ function DropzoneUpload({ serverId }: Readonly<{ serverId: string }>) {
 // --- LiveTail Component ---
 /* c8 ignore start */
 
-function parseSseChunk(sseLines: string[]): string[] {
-  const newLogLines: string[] = []
-  for (const sseLine of sseLines) {
-    if (!sseLine.startsWith('data: ')) continue
-    const base64Data = sseLine.slice(6)
-    if (!base64Data) continue
-    try {
-      const bytes = Uint8Array.from(atob(base64Data), (c) => c.codePointAt(0)!)
-      const text = new TextDecoder('utf-8').decode(bytes)
-      for (const dl of text.split('\n')) {
-        if (dl !== '') newLogLines.push(dl)
-      }
-    } catch {
-      // Skip malformed base64 chunks
-    }
-  }
-  return newLogLines
-}
-
 type LiveTailStatus = 'connecting' | 'streaming' | 'disconnected'
 
 const STATUS_COLORS: Record<LiveTailStatus, string> = {
@@ -805,17 +658,26 @@ function LiveTail({
   const [paused, setPaused] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const grepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingLinesRef = useRef<string[]>([])
   const rafIdRef = useRef<number | null>(null)
+  const shouldStickToBottomRef = useRef(true)
 
   // Auto-scroll effect
   useEffect(() => {
-    if (!paused && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    if (!paused && shouldStickToBottomRef.current && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ block: 'end' })
     }
   }, [lines, paused])
+
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    shouldStickToBottomRef.current = distanceFromBottom < 24
+  }, [])
 
   // Debounced grep filter
   const handleGrepChange = useCallback((value: string) => {
@@ -988,7 +850,11 @@ function LiveTail({
       )}
 
       {/* Log output */}
-      <div className="flex-1 overflow-auto bg-base">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-auto bg-base"
+        onScroll={handleScroll}
+      >
         {lines.length === 0 && status === 'connecting' && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
@@ -1290,7 +1156,6 @@ interface FileExplorerSidebarProps {
   rootNodes: FileNode[]
   selectedFile: FileNode | null
   treeState: Record<string, TreeNodeState>
-  serverId: string
   onToggleDir: (path: string) => void
   onSelectFile: (node: FileNode) => void
 }
@@ -1306,7 +1171,6 @@ function FileExplorerSidebar({
   rootNodes,
   selectedFile,
   treeState,
-  serverId,
   onToggleDir,
   onSelectFile,
 }: Readonly<FileExplorerSidebarProps>) {
@@ -1353,15 +1217,14 @@ function FileExplorerSidebar({
         )}
         {!pathsLoading && rootPaths.length > 0 && (
           <div className="py-1">
-            {rootNodes.map((node) => (
-              <FileTreeNode
-                key={node.path}
-                node={node}
-                depth={0}
-                serverId={serverId}
-                selectedPath={selectedFile?.path ?? null}
-                treeState={treeState}
-                onToggleDir={onToggleDir}
+	            {rootNodes.map((node) => (
+	              <FileTreeNode
+	                key={node.path}
+	                node={node}
+	                depth={0}
+	                selectedPath={selectedFile?.path ?? null}
+	                treeState={treeState}
+	                onToggleDir={onToggleDir}
                 onSelectFile={onSelectFile}
               />
             ))}
@@ -1428,19 +1291,14 @@ export function ServerDetailPage() {
   const [treeRefreshing, setTreeRefreshing] = useState(false)
   const [liveTailing, setLiveTailing] = useState(false)
 
-  // In-file search state (debounced — searchInput is what user types, searchTerm is applied after 300ms)
+  // In-file search state. Expensive matching/highlighting is deferred in useFileContentViewer.
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchInput, setSearchInput] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
   const [currentMatch, setCurrentMatch] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchTerm(searchInput)
-      setCurrentMatch(0)
-    }, 300)
-    return () => clearTimeout(timer)
+    setCurrentMatch(0)
   }, [searchInput])
 
   // Server info query
@@ -1495,40 +1353,13 @@ export function ServerDetailPage() {
     enabled: !!serverId && !!selectedFile && !selectedFile.is_dir,
   })
 
-  // Decode file content (UTF-8 safe)
-  const decodedContent = useMemo(() => {
-    if (!fileContent?.data) return null
-    try {
-      const bytes = Uint8Array.from(atob(fileContent.data), (c) => c.codePointAt(0)!)
-      return new TextDecoder('utf-8').decode(bytes)
-    } catch {
-      return '[Unable to decode file content]'
-    }
-  }, [fileContent])
-
-  // Syntax-highlighted HTML
-  // highlight.js escapes all HTML entities in source text and only produces
-  // <span class="hljs-..."> wrappers, so its output is safe by construction.
-  // We additionally strip any non-span tags via sanitizeHljsHtml as defense-in-depth.
-  const highlightedHtml = useMemo(() => {
-    if (!decodedContent || !selectedFile) return ''
-    const lang = extensionToLanguage(selectedFile.name)
-    try {
-      const result = hljs.highlight(decodedContent, { language: lang })
-      return sanitizeHljsHtml(result.value)
-    } catch {
-      // Fallback to plaintext
-      try {
-        const result = hljs.highlight(decodedContent, { language: 'plaintext' })
-        return sanitizeHljsHtml(result.value)
-      } catch {
-        return decodedContent
-          .replaceAll(/&/g, '&amp;') // NOSONAR: intentional HTML escaping for safe rendering
-          .replaceAll(/</g, '&lt;') // NOSONAR: intentional HTML escaping for safe rendering
-          .replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
-      }
-    }
-  }, [decodedContent, selectedFile])
+  const {
+    decodedContent,
+    effectiveSearchTerm,
+    highlightedHtml,
+    searchHighlightedHtml,
+    matchCount,
+  } = useFileContentViewer(fileContent, selectedFile, searchInput, currentMatch)
 
   // Toggle directory expansion — reads current state from ref to avoid treeState dependency
   const handleToggleDir = useCallback(
@@ -1562,11 +1393,7 @@ export function ServerDetailPage() {
         const data = await apiFetch<FileListResponse>(
           `/servers/${serverId}/files?path=${encodeURIComponent(dirPath)}`,
         )
-        // Sort: directories first, then alphabetically
-        const sorted = [...data.files].sort((a, b) => {
-          if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-          return a.name.localeCompare(b.name)
-        })
+        const sorted = sortFileNodes(data.files)
         setTreeState((prev) => ({
           ...prev,
           [dirPath]: { loading: false, expanded: true, children: sorted, error: null },
@@ -1588,7 +1415,6 @@ export function ServerDetailPage() {
     setLiveTailing(false)
     setSearchOpen(false)
     setSearchInput('')
-    setSearchTerm('')
     setCurrentMatch(0)
   }, [])
 
@@ -1605,10 +1431,7 @@ export function ServerDetailPage() {
           const data = await apiFetch<FileListResponse>(
             `/servers/${serverId}/files?path=${encodeURIComponent(dirPath)}`,
           )
-          const sorted = [...data.files].sort((a, b) => {
-            if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-            return a.name.localeCompare(b.name)
-          })
+          const sorted = sortFileNodes(data.files)
           return { dirPath, children: sorted }
         }),
       )
@@ -1688,66 +1511,16 @@ export function ServerDetailPage() {
     return () => globalThis.removeEventListener('keydown', handler)
   }, [])
 
-  // Compute match positions once when search term or content changes (not on navigation)
-  /* c8 ignore start */
-  const searchMatchPositions = useMemo(() => {
-    if (!searchTerm || !decodedContent) return []
-    const lowerContent = decodedContent.toLowerCase()
-    const lowerSearch = searchTerm.toLowerCase()
-    const positions: number[] = []
-    let pos = 0
-    while ((pos = lowerContent.indexOf(lowerSearch, pos)) !== -1) {
-      positions.push(pos)
-      pos += 1
-    }
-    return positions
-  }, [searchTerm, decodedContent])
-
-  const matchCount = searchMatchPositions.length
-
-  // Build base HTML with all matches marked using data-match-idx attributes.
-  // This is expensive but only recomputes when searchTerm or content changes, NOT on navigation.
-  const searchBaseHtml = useMemo(() => {
-    if (!searchTerm || !decodedContent || searchMatchPositions.length === 0) return null
-
-    let result = ''
-    let lastEnd = 0
-    searchMatchPositions.forEach((matchPos, idx) => {
-      const matchEnd = matchPos + searchTerm.length
-      const before = decodedContent.substring(lastEnd, matchPos)
-        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
-      const matchText = decodedContent.substring(matchPos, matchEnd)
-        .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
-      result += before + `<mark class="search-match" data-match-idx="${idx}">${matchText}</mark>`
-      lastEnd = matchEnd
-    })
-    result += decodedContent.substring(lastEnd)
-      .replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;') // NOSONAR: intentional HTML escaping for safe rendering
-
-    return result
-  }, [searchTerm, decodedContent, searchMatchPositions])
-  /* c8 ignore stop */
-
-  // Cheaply update CSS class + id for current match via DOM manipulation (no HTML rebuild)
-  /* c8 ignore start */
-  const searchHighlightedHtml = useMemo(() => {
-    if (!searchBaseHtml) return highlightedHtml
-    // Replace the current match's class — simple string replace on the data-match-idx attribute
-    return searchBaseHtml.replace(
-      `class="search-match" data-match-idx="${currentMatch}"`,
-      `class="search-match-current" id="current-search-match" data-match-idx="${currentMatch}"`,
-    )
-  }, [searchBaseHtml, highlightedHtml, currentMatch])
-  /* c8 ignore stop */
-
   // Scroll current match into view when it changes
   /* c8 ignore next 6 */
   useEffect(() => {
-    if (searchTerm && matchCount > 0) {
+    if (effectiveSearchTerm && matchCount > 0) {
       const el = document.getElementById('current-search-match')
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (el && 'scrollIntoView' in el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
     }
-  }, [currentMatch, searchTerm, matchCount])
+  }, [currentMatch, effectiveSearchTerm, matchCount])
 
   // --- Render ---
 
@@ -1792,21 +1565,20 @@ export function ServerDetailPage() {
 
       {!isOffline && (
         <div className={`flex flex-1${isDragging ? ' select-none' : ''}`} style={{ minHeight: 0 }}>
-          <FileExplorerSidebar
-            sidebarCollapsed={sidebarCollapsed}
-            sidebarWidth={sidebarWidth}
-            onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-            onRefreshTree={handleRefreshTree}
-            treeRefreshing={treeRefreshing}
-            pathsLoading={pathsLoading}
-            rootPaths={rootPaths}
-            rootNodes={rootNodes}
-            selectedFile={selectedFile}
-            treeState={treeState}
-            serverId={serverId ?? ''}
-            onToggleDir={handleToggleDir}
-            onSelectFile={handleSelectFile}
-          />
+	          <FileExplorerSidebar
+	            sidebarCollapsed={sidebarCollapsed}
+	            sidebarWidth={sidebarWidth}
+	            onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+	            onRefreshTree={handleRefreshTree}
+	            treeRefreshing={treeRefreshing}
+	            pathsLoading={pathsLoading}
+	            rootPaths={rootPaths}
+	            rootNodes={rootNodes}
+	            selectedFile={selectedFile}
+	            treeState={treeState}
+	            onToggleDir={handleToggleDir}
+	            onSelectFile={handleSelectFile}
+	          />
 
           {!sidebarCollapsed && (
             <button
@@ -1844,7 +1616,7 @@ export function ServerDetailPage() {
                     onSearchChange={setSearchInput}
                     onNavigatePrev={() => setCurrentMatch((i) => (matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0))}
                     onNavigateNext={() => setCurrentMatch((i) => (matchCount > 0 ? (i + 1) % matchCount : 0))}
-                    onClose={() => { setSearchOpen(false); setSearchInput(''); setSearchTerm('') }}
+                    onClose={() => { setSearchOpen(false); setSearchInput(''); setCurrentMatch(0) }}
                     inputRef={searchInputRef}
                   />
                 )}
@@ -1862,7 +1634,7 @@ export function ServerDetailPage() {
                     decodedContent={decodedContent}
                     selectedFile={selectedFile}
                     markdownView={markdownView}
-                    searchTerm={searchTerm}
+                    searchTerm={effectiveSearchTerm}
                     searchHighlightedHtml={searchHighlightedHtml}
                     highlightedHtml={highlightedHtml}
                     fileContent={fileContent}
