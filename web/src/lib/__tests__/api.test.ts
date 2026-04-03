@@ -48,6 +48,19 @@ describe('apiFetch', () => {
     expect(result).toEqual({ data: 'ok' })
   })
 
+  it('does not force JSON content-type for FormData bodies', async () => {
+    mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))
+    const formData = new FormData()
+    formData.append('file', new Blob(['hello']), 'test.txt')
+
+    await apiFetch('/upload', { method: 'POST', body: formData })
+
+    const [, init] = mockFetch.mock.calls[0]
+    const headers = init!.headers as Headers
+    expect(headers.get('Content-Type')).toBeNull()
+    expect(headers.get('Accept')).toBe('application/json')
+  })
+
   it('includes X-CSRF-Token header when CSRF cookie exists', async () => {
     document.cookie = 'aerodocs_csrf=csrf-token-abc'
     mockFetch.mockResolvedValueOnce(makeResponse({ ok: true }))

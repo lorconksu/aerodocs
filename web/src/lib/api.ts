@@ -6,6 +6,26 @@ const BASE_URL = '/api'
 // requests hit 401 simultaneously
 let refreshPromise: Promise<boolean> | null = null
 
+function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
+  return body != null && !(body instanceof FormData)
+}
+
+function buildHeaders(options: RequestInit): Headers {
+  const headers = new Headers(options.headers)
+  headers.set('Accept', 'application/json')
+
+  if (shouldSetJsonContentType(options.body)) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const csrfToken = getCSRFToken()
+  if (csrfToken) {
+    headers.set('X-CSRF-Token', csrfToken)
+  }
+
+  return headers
+}
+
 async function refreshToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
 
@@ -30,13 +50,7 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set('Content-Type', 'application/json')
-
-  const csrfToken = getCSRFToken()
-  if (csrfToken) {
-    headers.set('X-CSRF-Token', csrfToken)
-  }
+  const headers = buildHeaders(options)
 
   let res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -83,14 +97,8 @@ export async function apiFetchWithToken<T>(
   token: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set('Content-Type', 'application/json')
+  const headers = buildHeaders(options)
   headers.set('Authorization', `Bearer ${token}`)
-
-  const csrfToken = getCSRFToken()
-  if (csrfToken) {
-    headers.set('X-CSRF-Token', csrfToken)
-  }
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,

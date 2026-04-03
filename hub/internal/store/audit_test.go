@@ -1,14 +1,16 @@
 package store_test
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
 const (
-	testListFmt         = "list: %v"
-	testExpectedTotal1  = "expected total 1, got %d"
+	testListFmt        = "list: %v"
+	testExpectedTotal1 = "expected total 1, got %d"
 )
 
 func TestLogAndListAudit(t *testing.T) {
@@ -176,5 +178,48 @@ func TestListAuditWithFilter(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+}
+
+func TestLogAuditConcurrent(t *testing.T) {
+	s := testStore(t)
+
+	const total = 25
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, total)
+	for i := range total {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errCh <- s.LogAudit(model.AuditEntry{
+				ID:     fmt.Sprintf("audit-%02d", i),
+				Action: model.AuditUserLogin,
+			})
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent log audit failed: %v", err)
+		}
+	}
+
+	entries, totalRows, err := s.ListAuditLogs(model.AuditFilter{Limit: total})
+	if err != nil {
+		t.Fatalf("list audit after concurrent insert: %v", err)
+	}
+	if totalRows != total {
+		t.Fatalf("expected %d audit rows, got %d", total, totalRows)
+	}
+	if len(entries) != total {
+		t.Fatalf("expected %d returned rows, got %d", total, len(entries))
+	}
+	for _, entry := range entries {
+		if entry.PrevHash == "" {
+			t.Fatalf("expected prev_hash to be populated for entry %s", entry.ID)
+		}
 	}
 }

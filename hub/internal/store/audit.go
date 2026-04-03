@@ -1,7 +1,9 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -9,37 +11,51 @@ import (
 )
 
 func (s *Store) LogAudit(entry model.AuditEntry) error {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection: %w", err)
+	}
+	defer conn.Close()
+
 	// Use BEGIN IMMEDIATE to acquire a write lock upfront, preventing two
 	// concurrent goroutines from reading the same prev_hash before inserting.
-	tx, err := s.db.Exec("BEGIN IMMEDIATE")
-	_ = tx // driver returns a result but we only care about errors
-	if err != nil {
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return fmt.Errorf("begin immediate: %w", err)
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
 
 	// Compute integrity hash chain: SHA-256(prev_hash + current entry fields)
 	var prevHash string
-	_ = s.db.QueryRow("SELECT prev_hash FROM audit_logs ORDER BY rowid DESC LIMIT 1").Scan(&prevHash)
+	err = conn.QueryRowContext(ctx, "SELECT prev_hash FROM audit_logs ORDER BY rowid DESC LIMIT 1").Scan(&prevHash)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("query previous audit hash: %w", err)
+	}
 
 	hashInput := fmt.Sprintf("%s|%s|%v|%s|%v|%v|%v",
 		prevHash, entry.ID, entry.UserID, entry.Action, entry.Target, entry.Detail, entry.IPAddress)
 	hash := sha256.Sum256([]byte(hashInput))
 	entry.PrevHash = fmt.Sprintf("%x", hash[:])
 
-	_, err = s.db.Exec(
+	_, err = conn.ExecContext(
+		ctx,
 		`INSERT INTO audit_logs (id, user_id, action, target, detail, ip_address, prev_hash)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		entry.ID, entry.UserID, entry.Action, entry.Target, entry.Detail, entry.IPAddress, entry.PrevHash,
 	)
 	if err != nil {
-		s.db.Exec("ROLLBACK")
 		return fmt.Errorf("log audit: %w", err)
 	}
 
-	if _, err := s.db.Exec("COMMIT"); err != nil {
-		s.db.Exec("ROLLBACK")
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return fmt.Errorf("commit audit: %w", err)
 	}
+	committed = true
 	return nil
 }
 
@@ -90,7 +106,11 @@ func (s *Store) ListAuditLogs(filter model.AuditFilter) ([]model.AuditEntry, int
 }
 
 // scanAuditRows scans all audit log rows into a slice.
-func scanAuditRows(rows interface{ Next() bool; Scan(...interface{}) error; Err() error }) ([]model.AuditEntry, error) {
+func scanAuditRows(rows interface {
+	Next() bool
+	Scan(...interface{}) error
+	Err() error
+}) ([]model.AuditEntry, error) {
 	var entries []model.AuditEntry
 	for rows.Next() {
 		var e model.AuditEntry
