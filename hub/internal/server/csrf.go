@@ -79,10 +79,25 @@ func (s *Server) requestScheme(r *http.Request) string {
 	if r.TLS != nil {
 		return "https"
 	}
+	if isLoopbackHost(r.Host) {
+		return "http"
+	}
 	if !s.isDev {
 		return "https"
 	}
 	return "http"
+}
+
+func isLoopbackHost(hostport string) bool {
+	host := hostport
+	if parsedHost, _, err := net.SplitHostPort(hostport); err == nil {
+		host = parsedHost
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func normalizedOriginAuthority(hostport, scheme string) string {
