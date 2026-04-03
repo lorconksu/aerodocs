@@ -13,8 +13,6 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
-const testExpectedAccessToken = "expected access_token in response"
-
 func testServer(t *testing.T) *Server {
 	t.Helper()
 	st, err := store.New(testMemoryDB)
@@ -308,8 +306,8 @@ func TestLoginTOTP_Success(t *testing.T) {
 
 	var authResp model.AuthResponse
 	json.NewDecoder(totpRec.Body).Decode(&authResp)
-	if authResp.AccessToken == "" {
-		t.Fatal(testExpectedAccessToken)
+	if authResp.AccessToken != "" {
+		t.Fatal("expected access_token to be omitted from login/totp response body")
 	}
 }
 
@@ -402,14 +400,13 @@ func TestRefresh_ValidToken(t *testing.T) {
 	totpRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(totpRec, totpReq)
 
-	var authResp model.AuthResponse
-	json.NewDecoder(totpRec.Body).Decode(&authResp)
-
 	// Now refresh
-	refreshBody, _ := json.Marshal(model.RefreshRequest{
-		RefreshToken: authResp.RefreshToken,
-	})
-	refreshReq := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(refreshBody))
+	refreshCookie := findCookie(totpRec.Result().Cookies(), cookieRefresh)
+	if refreshCookie == nil {
+		t.Fatal("expected refresh cookie after login/totp")
+	}
+	refreshReq := httptest.NewRequest("POST", testRefreshPath, nil)
+	refreshReq.AddCookie(refreshCookie)
 	refreshRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(refreshRec, refreshReq)
 
@@ -419,8 +416,8 @@ func TestRefresh_ValidToken(t *testing.T) {
 
 	var tokenPair model.TokenPair
 	json.NewDecoder(refreshRec.Body).Decode(&tokenPair)
-	if tokenPair.AccessToken == "" {
-		t.Fatal(testExpectedAccessToken)
+	if tokenPair.AccessToken != "" {
+		t.Fatal("expected access_token to be omitted from refresh response body")
 	}
 }
 
@@ -540,8 +537,8 @@ func TestTOTPEnable_Success(t *testing.T) {
 
 	var authResp model.AuthResponse
 	json.NewDecoder(enableRec.Body).Decode(&authResp)
-	if authResp.AccessToken == "" {
-		t.Fatal(testExpectedAccessToken)
+	if authResp.AccessToken != "" {
+		t.Fatal("expected access_token to be omitted from TOTP enable response body")
 	}
 	if !authResp.User.TOTPEnabled {
 		t.Fatal("expected totp_enabled=true")

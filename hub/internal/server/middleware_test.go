@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -8,18 +10,24 @@ import (
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
+	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
 func TestAuthMiddleware_ValidToken(t *testing.T) {
-	secret := testJWTSecret
-	s := &Server{jwtSecret: secret}
+	s := testServer(t)
+	_ = registerAndGetAdminToken(t, s)
 
-	access, _, _ := auth.GenerateTokenPair(secret, testUserID1, "admin", 0)
+	user, err := s.store.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+
+	access, _, _ := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration)
 
 	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uid := UserIDFromContext(r.Context())
-		if uid != testUserID1 {
-			t.Fatalf("expected user-1, got %s", uid)
+		if uid != user.ID {
+			t.Fatalf("expected %s, got %s", user.ID, uid)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -31,6 +39,34 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(testExpected200, rec.Code)
+	}
+}
+
+func TestAuthMiddleware_RejectsRevokedAccessToken(t *testing.T) {
+	s := testServer(t)
+	_ = registerAndGetAdminToken(t, s)
+
+	user, err := s.store.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+
+	access, _, _ := auth.GenerateTokenPair(s.jwtSecret, user.ID, string(user.Role), user.TokenGeneration)
+	if _, err := s.store.IncrementTokenGeneration(user.ID); err != nil {
+		t.Fatalf("increment token generation: %v", err)
+	}
+
+	handler := s.authMiddleware(auth.TokenTypeAccess, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal(testHandlerNotCall)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", testBearerPrefix+access)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf(testExpected401Body, rec.Code, rec.Body.String())
 	}
 }
 
@@ -231,14 +267,9 @@ func TestCORSMiddleware_Production(t *testing.T) {
 }
 
 func TestAdminOnly_Viewer(t *testing.T) {
-	secret := testJWTSecret
-	s := &Server{jwtSecret: secret}
-
-	_, viewerRefresh, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer", 0)
-	_ = viewerRefresh
-
-	// Generate a viewer access token directly
-	viewerAccess, _, _ := auth.GenerateTokenPair(secret, "viewer-1", "viewer", 0)
+	s := testServer(t)
+	adminToken := registerAndGetAdminToken(t, s)
+	viewerAccess := createViewerAndGetToken(t, s, adminToken)
 
 	handler := s.authMiddleware(auth.TokenTypeAccess,
 		s.adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -256,10 +287,8 @@ func TestAdminOnly_Viewer(t *testing.T) {
 }
 
 func TestAdminOnly_Admin(t *testing.T) {
-	secret := testJWTSecret
-	s := &Server{jwtSecret: secret}
-
-	adminAccess, _, _ := auth.GenerateTokenPair(secret, "admin-1", "admin", 0)
+	s := testServer(t)
+	adminAccess := registerAndGetAdminToken(t, s)
 
 	called := false
 	handler := s.authMiddleware(auth.TokenTypeAccess,
@@ -317,14 +346,14 @@ func TestLoggingMiddleware(t *testing.T) {
 	}
 }
 
-func TestClientIP_UsesXForwardedFor(t *testing.T) {
+func TestClientIP_IgnoresXForwardedFor(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = testIP10054321
 	req.Header.Set(testXForwardedFor, "203.0.113.1, 10.0.0.1")
 
 	ip := clientIP(req)
-	if ip != "203.0.113.1" {
-		t.Fatalf("expected '203.0.113.1' (first X-Forwarded-For), got '%s'", ip)
+	if ip != testIP10001 {
+		t.Fatalf("expected '%s' (RemoteAddr), got '%s'", testIP10001, ip)
 	}
 }
 
@@ -362,7 +391,7 @@ func TestSecurityHeaders(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		checks := map[string]string{
-			"X-Frame-Options":       "DENY",
+			"X-Frame-Options":        "DENY",
 			"X-Content-Type-Options": "nosniff",
 			"Referrer-Policy":        "strict-origin-when-cross-origin",
 			"Permissions-Policy":     "camera=(), microphone=(), geolocation=()",
@@ -532,15 +561,30 @@ func TestRateLimiter_Middleware_NoPort(t *testing.T) {
 	}
 }
 
-// TestClientIP_SingleXFF verifies clientIP with a single X-Forwarded-For value (no comma).
-func TestClientIP_SingleXFF(t *testing.T) {
-	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = testIP10054321
-	req.Header.Set(testXForwardedFor, "203.0.113.5")
+func TestPasswordChange_RevokesExistingAccessToken(t *testing.T) {
+	s := testServer(t)
+	accessToken := registerAndGetAdminToken(t, s)
 
-	ip := clientIP(req)
-	if ip != "203.0.113.5" {
-		t.Fatalf("expected '203.0.113.5', got '%s'", ip)
+	changeBody, _ := json.Marshal(model.ChangePasswordRequest{
+		CurrentPassword: testPassword,
+		NewPassword:     "An0ther$ecurePass!",
+	})
+	changeReq := httptest.NewRequest("PUT", testPasswordPath, bytes.NewReader(changeBody))
+	changeReq.Header.Set("Authorization", testBearerPrefix+accessToken)
+	changeRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(changeRec, changeReq)
+
+	if changeRec.Code != http.StatusOK {
+		t.Fatalf("change password: expected 200, got %d: %s", changeRec.Code, changeRec.Body.String())
+	}
+
+	meReq := httptest.NewRequest("GET", testMePath, nil)
+	meReq.Header.Set("Authorization", testBearerPrefix+accessToken)
+	meRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(meRec, meReq)
+
+	if meRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old access token after password change: expected 401, got %d: %s", meRec.Code, meRec.Body.String())
 	}
 }
 

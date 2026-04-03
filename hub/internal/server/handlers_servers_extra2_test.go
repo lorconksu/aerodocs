@@ -26,7 +26,7 @@ func TestHandleInstallScript_NotFound(t *testing.T) {
 	}
 }
 
-//TestHandleListServers_SearchFilter verifies search filter works in list servers.
+// TestHandleListServers_SearchFilter verifies search filter works in list servers.
 func TestHandleListServers_SearchFilter(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)
@@ -128,6 +128,7 @@ func TestHandleCreateServer_ProductionMode(t *testing.T) {
 	s := testServer(t)
 	// Override isDev to false for this test
 	s.isDev = false
+	s.grpcExternalAddr = "aerodocs.example.com:9443"
 
 	adminToken := registerAndGetAdminToken(t, s)
 
@@ -148,6 +149,7 @@ func TestHandleCreateServer_ProductionMode(t *testing.T) {
 func TestHandleCreateServer_ProductionModeWithPort(t *testing.T) {
 	s := testServer(t)
 	s.isDev = false
+	s.grpcExternalAddr = "aerodocs.example.com:9443"
 
 	adminToken := registerAndGetAdminToken(t, s)
 

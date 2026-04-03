@@ -1,8 +1,10 @@
 package server
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -14,7 +16,7 @@ var ok200 = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 const testExpected403 = "expected 403, got %d"
 
 func TestCSRFMiddleware_BlocksMutationWithoutToken(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
@@ -29,7 +31,7 @@ func TestCSRFMiddleware_BlocksMutationWithoutToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsMatchingToken(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
@@ -44,7 +46,7 @@ func TestCSRFMiddleware_AllowsMatchingToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_MismatchToken(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
@@ -59,7 +61,7 @@ func TestCSRFMiddleware_MismatchToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsGET(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodGet, testAPISomething, nil)
 	// No CSRF tokens at all.
@@ -73,7 +75,7 @@ func TestCSRFMiddleware_AllowsGET(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsHEAD(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodHead, testAPISomething, nil)
 
@@ -86,7 +88,7 @@ func TestCSRFMiddleware_AllowsHEAD(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsBearerAuth(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.Header.Set("Authorization", "Bearer some-api-token")
@@ -101,7 +103,7 @@ func TestCSRFMiddleware_AllowsBearerAuth(t *testing.T) {
 }
 
 func TestCSRFMiddleware_NoCookies_SkipsValidation(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	// No cookies at all = not a cookie-based session (e.g., login/register).
 	// CSRF validation should be skipped.
@@ -116,49 +118,46 @@ func TestCSRFMiddleware_NoCookies_SkipsValidation(t *testing.T) {
 	}
 }
 
-func TestHostnameOnly(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"example.com:8080", "example.com"},
-		{"example.com", "example.com"},
-		{"localhost:3000", "localhost"},
-		{"localhost", "localhost"},
-		{"[::1]:8080", "::1"},
-		{"192.168.1.1:443", "192.168.1.1"},
-		{"192.168.1.1", "192.168.1.1"},
+func TestRequestScheme(t *testing.T) {
+	s := testServer(t)
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/test", nil)
+	if got := s.requestScheme(req); got != "https" {
+		t.Fatalf("requestScheme() = %q, want https", got)
 	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := hostnameOnly(tt.input)
-			if result != tt.expected {
-				t.Errorf("hostnameOnly(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
+
+	s.isDev = false
+	req = httptest.NewRequest(http.MethodPost, "http://example.com/api/test", nil)
+	if got := s.requestScheme(req); got != "https" {
+		t.Fatalf("requestScheme() in production = %q, want https", got)
 	}
 }
 
 func TestIsValidOrigin(t *testing.T) {
 	tests := []struct {
 		name     string
+		url      string
 		host     string
 		origin   string
 		expected bool
 	}{
-		{"same host no port", "example.com", "https://example.com", true},
-		{"same host different port", "example.com:8080", "https://example.com", true},
-		{"same host both ports", "example.com:8080", "https://example.com:443", true},
-		{"different host", "example.com", "https://evil.com", false},
-		{"invalid origin URL", "example.com", "://bad-url", false},
-		{"localhost match", "localhost:3000", "http://localhost:5173", true},
-		{"localhost vs 127.0.0.1", "127.0.0.1:3000", "http://localhost:5173", false},
+		{"same host no port", "https://example.com/api/test", "example.com", "https://example.com", true},
+		{"same host different port", "https://example.com:8080/api/test", "example.com:8080", "https://example.com", false},
+		{"same host both ports", "https://example.com:8080/api/test", "example.com:8080", "https://example.com:8080", true},
+		{"different host", "https://example.com/api/test", "example.com", "https://evil.com", false},
+		{"invalid origin URL", "https://example.com/api/test", "example.com", "://bad-url", false},
+		{"localhost exact match", "http://localhost:5173/api/test", "localhost:5173", "http://localhost:5173", true},
+		{"localhost different port", "http://localhost:3000/api/test", "localhost:3000", "http://localhost:5173", false},
+		{"localhost vs 127.0.0.1", "http://127.0.0.1:3000/api/test", "127.0.0.1:3000", "http://localhost:5173", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/test", nil)
+			req := httptest.NewRequest(http.MethodPost, tt.url, nil)
 			req.Host = tt.host
-			result := isValidOrigin(req, tt.origin)
+			scheme := "http"
+			if strings.HasPrefix(tt.url, "https://") {
+				scheme = "https"
+			}
+			result := isValidOrigin(req, tt.origin, scheme)
 			if result != tt.expected {
 				t.Errorf("isValidOrigin(host=%q, origin=%q) = %v, want %v",
 					tt.host, tt.origin, result, tt.expected)
@@ -168,7 +167,9 @@ func TestIsValidOrigin(t *testing.T) {
 }
 
 func TestCSRFMiddleware_RejectsInvalidOrigin(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	s := testServer(t)
+	s.isDev = false
+	handler := s.csrfMiddleware(ok200)
 
 	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
 	req.Host = "example.com"
@@ -185,10 +186,13 @@ func TestCSRFMiddleware_RejectsInvalidOrigin(t *testing.T) {
 }
 
 func TestCSRFMiddleware_AllowsMatchingOrigin(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	s := testServer(t)
+	s.isDev = false
+	handler := s.csrfMiddleware(ok200)
 
-	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)
-	req.Host = "example.com:8080"
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/something", nil)
+	req.Host = "example.com"
+	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Origin", "https://example.com")
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
 	req.Header.Set(testCSRFTokenHdr, "tok123")
@@ -201,8 +205,28 @@ func TestCSRFMiddleware_AllowsMatchingOrigin(t *testing.T) {
 	}
 }
 
+func TestCSRFMiddleware_RejectsMismatchedPortOrigin(t *testing.T) {
+	s := testServer(t)
+	s.isDev = false
+	handler := s.csrfMiddleware(ok200)
+
+	req := httptest.NewRequest(http.MethodPost, "https://example.com:8080/api/something", nil)
+	req.Host = "example.com:8080"
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Origin", "https://example.com")
+	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
+	req.Header.Set(testCSRFTokenHdr, "tok123")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf(testExpected403, rr.Code)
+	}
+}
+
 func TestCSRFMiddleware_AccessCookiePresent_RequiresCSRF(t *testing.T) {
-	handler := csrfMiddleware(ok200)
+	handler := testServer(t).csrfMiddleware(ok200)
 
 	// Access cookie present but no CSRF cookie/header = should be blocked.
 	req := httptest.NewRequest(http.MethodPost, testAPISomething, nil)

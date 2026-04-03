@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	testAgentConf    = "agent.conf"
-	testHubAddr      = "localhost:9090"
+	testAgentConf     = "agent.conf"
+	testHubAddr       = "localhost:9090"
 	testLoadConfigFmt = "loadConfig: %v"
-	testVarLogPath   = "/var/log"
-	testHomeAppPath  = "/home/app"
+	testVarLogPath    = "/var/log"
+	testHomeAppPath   = "/home/app"
 )
 
 // TestRunSelfUnregister_ReadsTokenFromConfigOnly verifies that runSelfUnregister
@@ -25,6 +25,7 @@ func TestRunSelfUnregister_ReadsTokenFromConfigOnly(t *testing.T) {
 	cfg := agentConfig{
 		ServerID:        "test-server-id",
 		HubURL:          testHubAddr,
+		HubCAPin:        "abcd",
 		UnregisterToken: "config-file-token",
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -42,6 +43,9 @@ func TestRunSelfUnregister_ReadsTokenFromConfigOnly(t *testing.T) {
 	}
 	if loaded.UnregisterToken != "config-file-token" {
 		t.Errorf("expected unregister_token 'config-file-token', got %q", loaded.UnregisterToken)
+	}
+	if loaded.HubCAPin != "abcd" {
+		t.Errorf("expected hub_ca_pin 'abcd', got %q", loaded.HubCAPin)
 	}
 }
 
@@ -84,7 +88,7 @@ func TestSaveNewConfig_PersistsUnregisterToken(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, testAgentConf)
 
-	saveNewConfig(configPath, testHubAddr, "srv-123", "my-unreg-token")
+	saveNewConfig(configPath, testHubAddr, "srv-123", "deadbeef", "my-unreg-token")
 
 	loaded, err := loadConfig(configPath)
 	if err != nil {
@@ -98,6 +102,9 @@ func TestSaveNewConfig_PersistsUnregisterToken(t *testing.T) {
 	}
 	if loaded.HubURL != testHubAddr {
 		t.Errorf("expected hub_url '%s', got %q", testHubAddr, loaded.HubURL)
+	}
+	if loaded.HubCAPin != "deadbeef" {
+		t.Errorf("expected hub_ca_pin 'deadbeef', got %q", loaded.HubCAPin)
 	}
 }
 

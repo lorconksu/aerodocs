@@ -42,7 +42,7 @@ func csrfTokensMatch(r *http.Request) bool {
 // csrfMiddleware enforces the double-submit cookie pattern for mutating requests.
 // Safe methods (GET, HEAD, OPTIONS) are exempt. Requests using Bearer authentication
 // are also exempt since they originate from non-browser clients.
-func csrfMiddleware(next http.Handler) http.Handler {
+func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isMutationMethod(r.Method) || isUsingBearerAuth(r) || isCSRFExemptPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
@@ -51,7 +51,7 @@ func csrfMiddleware(next http.Handler) http.Handler {
 
 		// Origin header validation — reject cross-origin mutations
 		if origin := r.Header.Get("Origin"); origin != "" {
-			if !isValidOrigin(r, origin) {
+			if !isValidOrigin(r, origin, s.requestScheme(r)) {
 				respondError(w, http.StatusForbidden, "origin not allowed")
 				return
 			}
@@ -75,24 +75,42 @@ func csrfMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// hostnameOnly extracts the hostname from a host string, stripping any port.
-func hostnameOnly(hostport string) string {
-	host, _, err := net.SplitHostPort(hostport)
-	if err != nil {
-		// No port present — hostport is already just a hostname.
-		return hostport
+func (s *Server) requestScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
 	}
-	return host
+	if !s.isDev {
+		return "https"
+	}
+	return "http"
 }
 
-// isValidOrigin checks that the Origin header's hostname matches the request's
-// Host hostname. Ports are stripped before comparison so that port mismatches
-// (e.g. Origin "https://example.com" vs Host "example.com:8080") do not cause
-// false rejections.
-func isValidOrigin(r *http.Request, origin string) bool {
+func normalizedOriginAuthority(hostport, scheme string) string {
+	host := hostport
+	port := ""
+	if parsedHost, parsedPort, err := net.SplitHostPort(hostport); err == nil {
+		host = parsedHost
+		port = parsedPort
+	}
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// isValidOrigin checks that the Origin header exactly matches the effective
+// request origin, including scheme and port after default-port normalization.
+func isValidOrigin(r *http.Request, origin, scheme string) bool {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
-	return hostnameOnly(u.Host) == hostnameOnly(r.Host)
+	if u.Scheme != scheme {
+		return false
+	}
+	return normalizedOriginAuthority(u.Host, u.Scheme) == normalizedOriginAuthority(r.Host, scheme)
 }

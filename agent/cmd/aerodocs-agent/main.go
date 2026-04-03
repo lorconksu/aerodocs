@@ -22,6 +22,7 @@ const version = "0.1.0"
 type agentConfig struct {
 	ServerID        string   `json:"server_id"`
 	HubURL          string   `json:"hub_url"`
+	HubCAPin        string   `json:"hub_ca_pin,omitempty"`
 	UnregisterToken string   `json:"unregister_token,omitempty"`
 	AllowedPaths    []string `json:"allowed_paths,omitempty"`
 }
@@ -29,6 +30,7 @@ type agentConfig struct {
 func main() {
 	hub := flag.String("hub", "", "Hub gRPC address (e.g., hub.example.com:9090)")
 	token := flag.String("token", "", "one-time registration token")
+	caPin := flag.String("ca-pin", "", "SHA-256 fingerprint of the Hub CA certificate")
 	configPath := flag.String("config", "/etc/aerodocs/agent.conf", "path to config file")
 	selfUnregister := flag.Bool("self-unregister", false, "connect to Hub, request deletion of this server, then exit")
 	insecureFlag := flag.Bool("insecure", false, "disable TLS (for development only)")
@@ -40,7 +42,7 @@ func main() {
 		return
 	}
 
-	cfg, hubAddr, serverID, regToken := resolveConfig(*configPath, *hub, *token)
+	cfg, hubAddr, serverID, regToken, hubCAPin := resolveConfig(*configPath, *hub, *token, *caPin)
 
 	// Merge allowed paths from config and CLI flag
 	allowedPaths := parseAllowedPaths(*allowedPathsFlag)
@@ -55,6 +57,7 @@ func main() {
 		HubAddr:      hubAddr,
 		ServerID:     serverID,
 		Token:        regToken,
+		HubCAPin:     hubCAPin,
 		Hostname:     hostname,
 		IPAddress:    "",
 		OS:           osInfo,
@@ -75,7 +78,7 @@ func main() {
 
 	if cfg == nil && c.ServerID() != "" {
 		unregToken := os.Getenv("AERODOCS_UNREGISTER_TOKEN")
-		saveNewConfig(*configPath, hubAddr, c.ServerID(), unregToken)
+		saveNewConfig(*configPath, hubAddr, c.ServerID(), hubCAPin, unregToken)
 	}
 
 	log.Println("agent stopped")
@@ -110,7 +113,7 @@ func runSelfUnregister(configPath string) {
 // resolveConfig determines the effective hub address, server ID, and registration token
 // from the saved config file and CLI flags. If a token flag is provided, any existing
 // config is discarded to force a fresh registration.
-func resolveConfig(configPath, hubFlag, tokenFlag string) (cfg *agentConfig, hubAddr, serverID, regToken string) {
+func resolveConfig(configPath, hubFlag, tokenFlag, caPinFlag string) (cfg *agentConfig, hubAddr, serverID, regToken, hubCAPin string) {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		cfg = nil
@@ -139,22 +142,30 @@ func resolveConfig(configPath, hubFlag, tokenFlag string) (cfg *agentConfig, hub
 
 	hubAddr = hubFlag
 	regToken = tokenFlag
+	hubCAPin = caPinFlag
 
 	if cfg != nil {
 		hubAddr = cfg.HubURL
 		serverID = cfg.ServerID
 		regToken = ""
+		hubCAPin = cfg.HubCAPin
 		log.Printf("loaded config: server_id=%s hub=%s", serverID, hubAddr)
 	}
+	if hubCAPin == "" && tokenFlag != "" {
+		fmt.Fprintf(os.Stderr, "--ca-pin is required when using --token\n")
+		flag.Usage()
+		os.Exit(1)
+	}
 
-	return cfg, hubAddr, serverID, regToken
+	return cfg, hubAddr, serverID, regToken, hubCAPin
 }
 
 // saveNewConfig persists the server ID and hub URL returned after a successful first registration.
-func saveNewConfig(configPath, hubAddr, serverID, unregisterToken string) {
+func saveNewConfig(configPath, hubAddr, serverID, hubCAPin, unregisterToken string) {
 	newCfg := agentConfig{
 		ServerID:        serverID,
 		HubURL:          hubAddr,
+		HubCAPin:        hubCAPin,
 		UnregisterToken: unregisterToken,
 	}
 	if err := saveConfig(configPath, newCfg); err != nil {

@@ -39,14 +39,14 @@ export interface LoginTOTPRequest {
 }
 
 export interface AuthResponse {
-  access_token: string
-  refresh_token: string
+  access_token?: string
+  refresh_token?: string
   user: User
 }
 
 export interface TokenPair {
-  access_token: string
-  refresh_token: string
+  access_token?: string
+  refresh_token?: string
 }
 
 export interface TOTPSetupResponse {

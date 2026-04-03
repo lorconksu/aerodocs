@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	testServerID      = "srv-abc123"
+	testServerID       = "srv-abc123"
 	testGenerateCSRFmt = "GenerateCSR: %v"
 	testStoreCertFmt   = "StoreCert: %v"
 )
@@ -27,12 +27,13 @@ func newTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 		t.Fatalf("generate CA key: %v", err)
 	}
 	caTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "Test CA"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(24 * time.Hour),
-		IsCA:         true,
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test CA"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
 	}
 	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
 	if err != nil {
@@ -117,6 +118,25 @@ func TestStoreCertAndTLSConfig(t *testing.T) {
 	}
 	if tlsCfg.RootCAs == nil {
 		t.Error("RootCAs is nil")
+	}
+}
+
+func TestStoreCert_RejectsMismatchedPrivateKey(t *testing.T) {
+	caCert, caKey := newTestCA(t)
+
+	signer := NewMemoryStore()
+	csrDER, err := signer.GenerateCSR("test-server")
+	if err != nil {
+		t.Fatalf(testGenerateCSRFmt, err)
+	}
+	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
+
+	receiver := NewMemoryStore()
+	if _, err := receiver.GenerateCSR("other-server"); err != nil {
+		t.Fatalf(testGenerateCSRFmt, err)
+	}
+	if err := receiver.StoreCert(certDER, caCert.Raw); err == nil {
+		t.Fatal("expected StoreCert to reject a cert for a different private key")
 	}
 }
 

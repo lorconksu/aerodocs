@@ -21,10 +21,10 @@ const (
 // sequenceStream returns messages from a slice and then io.EOF.
 type sequenceStream struct {
 	mockStream
-	msgs    []*pb.AgentMessage
-	pos     int
-	ctx     context.Context
-	cancel  context.CancelFunc
+	msgs   []*pb.AgentMessage
+	pos    int
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func newSequenceStream(msgs []*pb.AgentMessage) *sequenceStream {
@@ -42,6 +42,9 @@ func (s *sequenceStream) Recv() (*pb.AgentMessage, error) {
 }
 
 func (s *sequenceStream) Context() context.Context {
+	if s.mockStream.ctx != nil {
+		return s.mockStream.ctx
+	}
 	return s.ctx
 }
 
@@ -105,6 +108,7 @@ func TestConnect_HeartbeatWithCoalescer(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeerCert("s-coal2")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -186,10 +190,32 @@ func TestConnect_Heartbeat(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeerCert("s1")
 
 	err := h.Connect(stream)
 	if err != nil {
 		t.Fatalf("Connect with heartbeat: %v", err)
+	}
+}
+
+func TestConnect_HeartbeatWithoutClientCertRejected(t *testing.T) {
+	h, st := testHandler(t)
+	h.pending = NewPendingRequests()
+	h.logSessions = NewLogSessions()
+
+	st.CreateServer(&model.Server{ID: "s1", Name: "test", Status: "online", Labels: "{}"})
+
+	stream := newSequenceStream([]*pb.AgentMessage{
+		{
+			Payload: &pb.AgentMessage_Heartbeat{
+				Heartbeat: &pb.Heartbeat{ServerId: "s1"},
+			},
+		},
+	})
+
+	err := h.Connect(stream)
+	if err == nil {
+		t.Fatal("expected heartbeat reconnect without client cert to be rejected")
 	}
 }
 
@@ -306,9 +332,9 @@ func TestSweepStaleConnections_StaleTimeout(t *testing.T) {
 	}
 }
 
-// TestRegisterHandshake_PrefersAgentIP verifies that registration uses agent-reported IP
-// over the gRPC peer address (important when behind a TCP proxy like Traefik).
-func TestRegisterHandshake_PrefersAgentIP(t *testing.T) {
+// TestRegisterHandshake_UsesPeerIP verifies that registration records the peer IP
+// instead of trusting agent-supplied IP data.
+func TestRegisterHandshake_UsesPeerIP(t *testing.T) {
 	h, st := testHandler(t)
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
@@ -333,6 +359,7 @@ func TestRegisterHandshake_PrefersAgentIP(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeer("", "198.51.100.95")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -340,12 +367,12 @@ func TestRegisterHandshake_PrefersAgentIP(t *testing.T) {
 	}
 
 	srv, _ := st.GetServerByID("s-ip-test")
-	if srv.IPAddress == nil || *srv.IPAddress != "192.168.1.100" {
+	if srv.IPAddress == nil || *srv.IPAddress != "198.51.100.95" {
 		got := "<nil>"
 		if srv.IPAddress != nil {
 			got = *srv.IPAddress
 		}
-		t.Fatalf("expected agent-reported IP 192.168.1.100, got %s", got)
+		t.Fatalf("expected peer IP 198.51.100.95, got %s", got)
 	}
 }
 
@@ -376,6 +403,7 @@ func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeer("", "192.0.2.10")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -389,9 +417,9 @@ func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
 	_ = srv
 }
 
-// TestHeartbeatHandshake_PrefersAgentIP verifies that heartbeat reconnect
-// uses agent-reported IP over the proxy peer address.
-func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
+// TestHeartbeatHandshake_UsesPeerIP verifies that reconnect IP attribution
+// comes from the authenticated peer rather than the heartbeat payload.
+func TestHeartbeatHandshake_UsesPeerIP(t *testing.T) {
 	h, st := testHandler(t)
 	h.pending = NewPendingRequests()
 	h.logSessions = NewLogSessions()
@@ -410,6 +438,7 @@ func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeer(testServerHBIP, "192.0.2.27")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -417,12 +446,12 @@ func TestHeartbeatHandshake_PrefersAgentIP(t *testing.T) {
 	}
 
 	srv, _ := st.GetServerByID(testServerHBIP)
-	if srv.IPAddress == nil || *srv.IPAddress != "198.51.100.95" {
+	if srv.IPAddress == nil || *srv.IPAddress != "192.0.2.27" {
 		got := "<nil>"
 		if srv.IPAddress != nil {
 			got = *srv.IPAddress
 		}
-		t.Fatalf("expected agent-reported IP 198.51.100.95, got %s", got)
+		t.Fatalf("expected peer IP 192.0.2.27, got %s", got)
 	}
 }
 
@@ -453,6 +482,7 @@ func TestRegisterHandshake_InvalidAgentIP(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeer("", "192.0.2.97")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -487,6 +517,7 @@ func TestHeartbeatHandshake_InvalidAgentIP(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeer("s-hb-invalid-ip", "192.0.2.98")
 
 	err := h.Connect(stream)
 	if err != nil {
@@ -519,6 +550,7 @@ func TestHeartbeatHandshake_FallsBackToPeerIP(t *testing.T) {
 			},
 		},
 	})
+	stream.mockStream = *streamWithPeer("s-hb-fb", "192.0.2.99")
 
 	err := h.Connect(stream)
 	if err != nil {

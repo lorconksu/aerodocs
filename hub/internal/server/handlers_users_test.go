@@ -44,10 +44,12 @@ func registerAndGetAdminToken(t *testing.T, s *Server) string {
 	rec3 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec3, req3)
 
-	var authResp model.AuthResponse
-	json.NewDecoder(rec3.Body).Decode(&authResp)
+	accessCookie := findCookie(rec3.Result().Cookies(), cookieAccess)
+	if accessCookie == nil {
+		t.Fatal("expected access cookie after TOTP enable")
+	}
 
-	return authResp.AccessToken
+	return accessCookie.Value
 }
 
 func TestUpdateUserRole_Success(t *testing.T) {

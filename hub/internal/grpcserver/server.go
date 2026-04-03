@@ -93,7 +93,7 @@ func New(cfg Config) *Server {
 		tlsCfg := &tls.Config{
 			ClientAuth:   tls.VerifyClientCertIfGiven,
 			ClientCAs:    caPool,
-			Certificates: []tls.Certificate{{Certificate: [][]byte{serverCert.Raw}, PrivateKey: serverKey, Leaf: serverCert}},
+			Certificates: []tls.Certificate{{Certificate: [][]byte{serverCert.Raw, cfg.CACert.Raw}, PrivateKey: serverKey, Leaf: serverCert}},
 			MinVersion:   tls.VersionTLS13,
 		}
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))

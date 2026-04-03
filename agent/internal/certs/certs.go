@@ -1,6 +1,7 @@
 package certs
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -88,6 +89,12 @@ func (s *Store) StoreCert(certDER, caCertDER []byte) error {
 	if key == nil {
 		return fmt.Errorf("no private key available (call GenerateCSR first)")
 	}
+	if err := cert.CheckSignatureFrom(caCert); err != nil {
+		return fmt.Errorf("verify client cert signature: %w", err)
+	}
+	if err := verifyCertMatchesKey(cert, key); err != nil {
+		return err
+	}
 
 	// Encode PEM
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
@@ -125,6 +132,21 @@ func (s *Store) StoreCert(certDER, caCertDER []byte) error {
 		}
 	}
 
+	return nil
+}
+
+func verifyCertMatchesKey(cert *x509.Certificate, key *ecdsa.PrivateKey) error {
+	certPubDER, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+	if err != nil {
+		return fmt.Errorf("marshal cert public key: %w", err)
+	}
+	keyPubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return fmt.Errorf("marshal private key public key: %w", err)
+	}
+	if !bytes.Equal(certPubDER, keyPubDER) {
+		return fmt.Errorf("client certificate does not match generated private key")
+	}
 	return nil
 }
 

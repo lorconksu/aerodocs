@@ -2,9 +2,15 @@ package grpcserver
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"net"
 	"testing"
 
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/model"
@@ -39,10 +45,10 @@ func (m *mockStream) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockStream) SendMsg(msg interface{}) error  { return nil }
-func (m *mockStream) RecvMsg(msg interface{}) error  { return nil }
-func (m *mockStream) SetHeader(metadata.MD) error    { return nil }
-func (m *mockStream) SendHeader(metadata.MD) error   { return nil }
+func (m *mockStream) SendMsg(msg interface{}) error { return nil }
+func (m *mockStream) RecvMsg(msg interface{}) error { return nil }
+func (m *mockStream) SetHeader(metadata.MD) error   { return nil }
+func (m *mockStream) SendHeader(metadata.MD) error  { return nil }
 func (m *mockStream) SetTrailer(metadata.MD) {
 	// no-op: mock stub for testing
 }
@@ -70,6 +76,24 @@ func testHandler(t *testing.T) (*Handler, *store.Store) {
 		notifier: notifier,
 	}
 	return h, st
+}
+
+func streamWithPeer(serverID, ip string) *mockStream {
+	p := &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP(ip), Port: 1234}}
+	if serverID != "" {
+		p.AuthInfo = credentials.TLSInfo{
+			State: tls.ConnectionState{
+				PeerCertificates: []*x509.Certificate{
+					{Subject: pkix.Name{CommonName: serverID}},
+				},
+			},
+		}
+	}
+	return &mockStream{ctx: peer.NewContext(context.Background(), p)}
+}
+
+func streamWithPeerCert(serverID string) *mockStream {
+	return streamWithPeer(serverID, "127.0.0.1")
 }
 
 func TestHandleRegister_ValidToken(t *testing.T) {
@@ -134,7 +158,7 @@ func TestHandleHeartbeat_AlreadyOnline(t *testing.T) {
 func TestHandleRegister_ExpiredToken(t *testing.T) {
 	h, st := testHandler(t)
 	tokenHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // NOSONAR — test fixture, SHA256 of empty string
-	expiresAt := "2000-01-01 00:00:00" // expired
+	expiresAt := "2000-01-01 00:00:00"                                              // expired
 	st.CreateServer(&model.Server{
 		ID: "s1", Name: "test", Status: "pending", Labels: "{}",
 		RegistrationToken: &tokenHash, TokenExpiresAt: &expiresAt,

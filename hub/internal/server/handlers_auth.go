@@ -231,9 +231,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 
 	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		User:         *user,
+		User: *user,
 	})
 }
 
@@ -286,10 +284,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setAuthCookies(w, accessToken, refreshToken)
-	respondJSON(w, http.StatusOK, model.TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	})
+	respondJSON(w, http.StatusOK, model.TokenPair{})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -474,9 +469,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 
 	setAuthCookies(w, accessToken, refreshToken)
 	respondJSON(w, http.StatusOK, model.AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		User:         *user,
+		User: *user,
 	})
 }
 

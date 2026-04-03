@@ -1,6 +1,13 @@
 package client
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,13 +19,13 @@ import (
 )
 
 const (
-	testHubAddr              = "localhost:9090"
+	testHubAddr                = "localhost:9090"
 	testExpectedFileDeleteResp = "expected FileDeleteResponse"
-	testExpectedRespOnSendCh = "expected response on sendCh"
-	testSessionID            = "session-1"
-	testExpectedAckOnSendCh  = "expected ack on sendCh"
-	testReqList              = "req-list"
-	testReqLog               = "req-log"
+	testExpectedRespOnSendCh   = "expected response on sendCh"
+	testSessionID              = "session-1"
+	testExpectedAckOnSendCh    = "expected ack on sendCh"
+	testReqList                = "req-list"
+	testReqLog                 = "req-log"
 )
 
 // newTestDropzone creates a Dropzone using a test directory.
@@ -106,6 +113,63 @@ func TestUseTLS(t *testing.T) {
 			t.Fatal("useTLS should be false when insecure=true")
 		}
 	})
+}
+
+func TestBootstrapTLSConfig_RequiresCAPin(t *testing.T) {
+	c := &Client{hubAddr: testHubAddr}
+	if _, err := c.bootstrapTLSConfig(); err == nil {
+		t.Fatal("expected bootstrap TLS config to require a CA pin")
+	}
+}
+
+func TestVerifyPinnedHubCertificate(t *testing.T) {
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate CA key: %v", err)
+	}
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test Hub CA"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create CA cert: %v", err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatalf("parse CA cert: %v", err)
+	}
+
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate server key: %v", err)
+	}
+	serverTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "hub.example.com"},
+		DNSNames:     []string{"hub.example.com"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	serverDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create server cert: %v", err)
+	}
+
+	pin := sha256.Sum256(caCert.Raw)
+	if err := verifyPinnedHubCertificate([][]byte{serverDER, caCert.Raw}, pin[:], "hub.example.com"); err != nil {
+		t.Fatalf("verify pinned hub certificate: %v", err)
+	}
+	if err := verifyPinnedHubCertificate([][]byte{serverDER, caCert.Raw}, pin[:], "other.example.com"); err == nil {
+		t.Fatal("expected hostname mismatch to fail")
+	}
 }
 
 func TestHandleFileDeleteRequest_OutsideDropzone(t *testing.T) {

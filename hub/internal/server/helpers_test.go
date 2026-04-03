@@ -86,7 +86,6 @@ const (
 	testLocalhost       = "127.0.0.1"
 )
 
-
 // mustJSON encodes v as JSON and returns a *bytes.Reader. Fails the test on error.
 func mustJSON(t *testing.T, v interface{}) *bytes.Reader {
 	t.Helper()
@@ -147,8 +146,10 @@ func createViewerAndGetToken(t *testing.T, s *Server, adminToken string) string 
 	enableRec := httptest.NewRecorder()
 	s.routes().ServeHTTP(enableRec, enableReq)
 
-	var authResp model.AuthResponse
-	json.NewDecoder(enableRec.Body).Decode(&authResp)
+	accessCookie := findCookie(enableRec.Result().Cookies(), cookieAccess)
+	if accessCookie == nil {
+		t.Fatal("createViewerAndGetToken: missing access cookie after TOTP enable")
+	}
 
-	return authResp.AccessToken
+	return accessCookie.Value
 }

@@ -97,5 +97,5 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/", s.spaHandler())
 
 	// Apply CSRF, then CORS, then cache control for API, then security headers as outermost wrapper
-	return securityHeaders(apiCacheControl(s.corsMiddleware(csrfMiddleware(mux))))
+	return securityHeaders(apiCacheControl(s.corsMiddleware(s.csrfMiddleware(mux))))
 }
