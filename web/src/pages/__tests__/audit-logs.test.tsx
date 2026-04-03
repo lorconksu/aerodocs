@@ -8,17 +8,81 @@ vi.mock('@/lib/api', () => ({
   apiFetch: vi.fn(),
 }))
 
+vi.mock('@/hooks/use-auth', () => ({
+  useAuth: () => ({
+    user: { role: 'admin' },
+  }),
+}))
+
 import { apiFetch } from '@/lib/api'
 const mockApiFetch = apiFetch as ReturnType<typeof vi.fn>
 
 const mockEntries = [
-  { id: 'e1', user_id: 'u1', action: 'user.login', target: null, detail: null, ip_address: '1.2.3.4', created_at: new Date().toISOString() },
-  { id: 'e2', user_id: null, action: 'server.created', target: 'web-prod-1', detail: null, ip_address: null, created_at: new Date().toISOString() },
+  { id: 'e1', user_id: 'u1', actor_type: 'user', outcome: 'success', action: 'user.login', target: null, detail: null, ip_address: '1.2.3.4', created_at: new Date().toISOString() },
+  { id: 'e2', user_id: null, actor_type: 'system', outcome: 'success', action: 'server.created', target: 'web-prod-1', detail: null, ip_address: null, created_at: new Date().toISOString() },
 ]
 
 const mockUsers = [
   { id: 'u1', username: 'admin', email: 'a@b.com', role: 'admin', totp_enabled: true, avatar: null, created_at: '', updated_at: '' },
 ]
+
+const mockHealth = { degraded: false, failure_count: 0, last_failure_at: null, last_failure_reason: null, last_recovered_at: null }
+const mockSettings = {
+  retention_days: 90,
+  review_reminder_days: 7,
+  password_history_count: 5,
+  temporary_password_ttl_hours: 72,
+  thresholds: {
+    login_failures_per_hour: 10,
+    registration_failures_per_hour: 5,
+    privileged_actions_per_hour: 20,
+  },
+}
+const mockCatalog = {
+  entries: [
+    { action: 'user.login', label: 'User Login', category: 'auth' },
+    { action: 'server.created', label: 'Server Created', category: 'server' },
+  ],
+  last_updated_at: '',
+}
+const mockDetections = { detections: [] }
+const mockReviews = { reviews: [] }
+const mockSavedFilters = { filters: [] }
+const mockExportHistory = { entries: [] }
+const mockFlags = { flags: [] }
+
+function installAuditMocks({
+  entries = mockEntries,
+  total = entries.length,
+  limit = 50,
+  offset = 0,
+} = {}) {
+  mockApiFetch.mockImplementation(async (path: string) => {
+    if (path.startsWith('/audit-logs/export')) {
+      return { manifest: { exported_at: new Date().toISOString(), total_records: total } }
+    }
+    if (path.startsWith('/audit-logs?')) {
+      const params = new URLSearchParams(path.split('?')[1] ?? '')
+      return {
+        entries,
+        total,
+        limit: Number(params.get('limit') ?? limit),
+        offset: Number(params.get('offset') ?? offset),
+      }
+    }
+    if (path === '/audit-users') return { users: mockUsers }
+    if (path === '/audit-logs/health') return mockHealth
+    if (path === '/audit-logs/settings') return mockSettings
+    if (path === '/audit-logs/catalog') return mockCatalog
+    if (path === '/audit-logs/detections') return mockDetections
+    if (path === '/audit-logs/reviews?limit=5') return mockReviews
+    if (path === '/audit-logs/filters') return mockSavedFilters
+    if (path === '/audit-logs/exports') return mockExportHistory
+    if (path === '/audit-logs/flags') return mockFlags
+    if (path === '/audit-logs/reviews') return {}
+    return {}
+  })
+}
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -34,15 +98,12 @@ function renderPage() {
 describe('AuditLogsPage', () => {
   beforeEach(() => {
     mockApiFetch.mockReset()
-    // Default: return mock data for both queries
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: mockEntries, total: 2, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks()
   })
 
   it('renders page heading', async () => {
     renderPage()
-    expect(screen.getByText('Audit Logs')).toBeInTheDocument()
+    expect(await screen.findByText('Audit Logs')).toBeInTheDocument()
   })
 
   it('shows loading state', () => {
@@ -53,9 +114,7 @@ describe('AuditLogsPage', () => {
 
   it('shows empty state when no entries', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: [], total: 0, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: [], total: 0 })
     renderPage()
     await waitFor(() => {
       expect(screen.getByText('No audit log entries found.')).toBeInTheDocument()
@@ -65,8 +124,8 @@ describe('AuditLogsPage', () => {
   it('renders audit log entries', async () => {
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('user.login')).toBeInTheDocument()
-      expect(screen.getByText('server.created')).toBeInTheDocument()
+      expect(screen.getAllByText('user.login').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('server.created').length).toBeGreaterThan(0)
     })
   })
 
@@ -99,8 +158,8 @@ describe('AuditLogsPage', () => {
       expect(screen.getByText('All Actions')).toBeInTheDocument()
     })
 
-    const actionSelect = screen.getByDisplayValue('All Actions')
-    fireEvent.change(actionSelect, { target: { value: 'user.login' } })
+    const fromInput = document.querySelector('input[type="date"]') as HTMLInputElement
+    fireEvent.change(fromInput, { target: { value: '2024-01-01' } })
 
     await waitFor(() => {
       expect(screen.getByText('Clear Filters')).toBeInTheDocument()
@@ -111,8 +170,8 @@ describe('AuditLogsPage', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('All Actions')).toBeInTheDocument())
 
-    const actionSelect = screen.getByDisplayValue('All Actions')
-    fireEvent.change(actionSelect, { target: { value: 'user.login' } })
+    const fromInput = document.querySelector('input[type="date"]') as HTMLInputElement
+    fireEvent.change(fromInput, { target: { value: '2024-01-01' } })
     await waitFor(() => expect(screen.getByText('Clear Filters')).toBeInTheDocument())
 
     fireEvent.click(screen.getByText('Clear Filters'))
@@ -123,9 +182,7 @@ describe('AuditLogsPage', () => {
 
   it('shows pagination when total > 0', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: mockEntries, total: 100 })
     renderPage()
     await waitFor(() => {
       expect(screen.getByText(/Showing 1-50 of 100/)).toBeInTheDocument()
@@ -134,9 +191,7 @@ describe('AuditLogsPage', () => {
 
   it('Previous button is disabled on first page', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: mockEntries, total: 100 })
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
@@ -145,11 +200,7 @@ describe('AuditLogsPage', () => {
 
   it('Next button works to advance page', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 50 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: mockEntries, total: 100 })
     renderPage()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument())
 
@@ -161,9 +212,7 @@ describe('AuditLogsPage', () => {
 
   it('Next button is disabled on last page', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: mockEntries, total: 2, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: mockEntries, total: 2 })
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
@@ -200,12 +249,10 @@ describe('AuditLogsPage', () => {
 
   it('shows user ID when user not found in users list', async () => {
     const entriesWithUnknownUser = [
-      { id: 'e3', user_id: 'unknown-id', action: 'user.login', target: null, detail: null, ip_address: null, created_at: new Date().toISOString() },
+      { id: 'e3', user_id: 'unknown-id', actor_type: 'user', outcome: 'success', action: 'user.login', target: null, detail: null, ip_address: null, created_at: new Date().toISOString() },
     ]
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: entriesWithUnknownUser, total: 1, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: entriesWithUnknownUser, total: 1 })
     renderPage()
     await waitFor(() => {
       expect(screen.getByText('unknown-id')).toBeInTheDocument()
@@ -232,15 +279,7 @@ describe('AuditLogsPage', () => {
 
   it('Previous button works when on page 2 (line 187)', async () => {
     mockApiFetch.mockReset()
-    mockApiFetch
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
-      // After clicking Next (offset=50)
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 50 })
-      .mockResolvedValueOnce({ users: mockUsers })
-      // After clicking Previous (offset=0)
-      .mockResolvedValueOnce({ entries: mockEntries, total: 100, limit: 50, offset: 0 })
-      .mockResolvedValueOnce({ users: mockUsers })
+    installAuditMocks({ entries: mockEntries, total: 100 })
     renderPage()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument())
 

@@ -26,6 +26,8 @@ var securityEvents = map[string]bool{
 	model.NotifyUserCreated:     true,
 	model.NotifyTOTPChanged:     true,
 	model.NotifyPasswordChanged: true,
+	model.NotifyAuditDegraded:   true,
+	model.NotifyAuditRecovered:  true,
 }
 
 type emailJob struct {

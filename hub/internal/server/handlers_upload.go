@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	maxUploadSize   = 100 * 1024 * 1024 // 100MB
-	uploadChunkSize = 64 * 1024         // 64KB
-	uploadTimeout   = 30 * time.Second
+	maxUploadSize     = 100 * 1024 * 1024 // 100MB
+	uploadChunkSize   = 64 * 1024         // 64KB
+	uploadTimeout     = 30 * time.Second
+	agentDropzonePath = "aerodocs://dropzone"
 )
 
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +70,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		userID := UserIDFromContext(r.Context())
 		ip := clientIP(r)
 		detail := filename
-		s.store.LogAudit(model.AuditEntry{
+		s.auditLogRequest(r, model.AuditEntry{
 			ID:        uuid.NewString(),
 			UserID:    &userID,
 			Action:    model.AuditFileUploaded,
@@ -244,7 +245,7 @@ func (s *Server) handleDeleteDropzoneFile(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	path := "/tmp/aerodocs-dropzone/" + filename
+	path := agentDropzonePath + "/" + filename
 	raw := s.sendAgentRequest(w, serverID, func(requestID string) *pb.HubMessage {
 		return &pb.HubMessage{
 			Payload: &pb.HubMessage_FileDeleteRequest{
@@ -282,7 +283,7 @@ func (s *Server) handleListDropzone(w http.ResponseWriter, r *http.Request) {
 			Payload: &pb.HubMessage_FileListRequest{
 				FileListRequest: &pb.FileListRequest{
 					RequestId: requestID,
-					Path:      "/tmp/aerodocs-dropzone",
+					Path:      agentDropzonePath,
 				},
 			},
 		}

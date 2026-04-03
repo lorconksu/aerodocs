@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Copy, Check } from 'lucide-react'
 import { apiFetchWithToken } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
+import { validatePassword } from '@/lib/password'
 import type { TOTPSetupResponse, TOTPEnableRequest, AuthResponse } from '@/types/api'
 import { useTOTPDigits, TOTPDigitInput } from '@/components/totp-digit-input'
 
@@ -12,12 +13,17 @@ export function SetupTOTPPage() {
   const location = useLocation()
   const { login } = useAuth()
   // Security: setupToken is passed via React Router state (in-memory only, not in URL)
-  const setupToken = (location.state as { setupToken?: string })?.setupToken
+  const setupState = (location.state as { setupToken?: string; mustChangePassword?: boolean }) ?? {}
+  const setupToken = setupState.setupToken
+  const mustChangePassword = setupState.mustChangePassword === true
 
   const [totpData, setTotpData] = useState<TOTPSetupResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([])
   const hasFetched = useRef(false)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -32,9 +38,19 @@ export function SetupTOTPPage() {
     setLoading(true)
 
     try {
+      if (mustChangePassword) {
+        const errors = validatePassword(newPassword)
+        setPasswordErrors(errors)
+        if (errors.length > 0) {
+          throw new Error(errors[0] || 'New password does not meet policy')
+        }
+        if (newPassword !== confirmPassword) {
+          throw new Error('New password confirmation does not match')
+        }
+      }
       const resp = await apiFetchWithToken<AuthResponse>('/auth/totp/enable', setupToken, {
         method: 'POST',
-        body: JSON.stringify({ code } satisfies TOTPEnableRequest),
+        body: JSON.stringify({ code, new_password: mustChangePassword ? newPassword : undefined } satisfies TOTPEnableRequest),
       })
 
       login(resp.user)
@@ -106,6 +122,38 @@ export function SetupTOTPPage() {
             handleKeyDown={handleKeyDown}
             disabled={loading}
           />
+
+          {mustChangePassword && (
+            <div className="space-y-3 mb-4">
+              <div className="text-xs text-text-muted">
+                This account was created with a temporary password. Set a permanent password now.
+              </div>
+              <input
+                type="password"
+                placeholder="New password"
+                value={newPassword}
+                onChange={e => {
+                  setNewPassword(e.target.value)
+                  setPasswordErrors(validatePassword(e.target.value))
+                }}
+                className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
+              />
+              <input
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent"
+              />
+              {newPassword && passwordErrors.length > 0 && (
+                <div className="space-y-1">
+                  {passwordErrors.map(err => (
+                    <div key={err} className="text-status-warning text-[10px]">• {err}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={handleVerifyClick}

@@ -31,15 +31,16 @@ type Server struct {
 }
 
 type Config struct {
-	Addr             string
-	ExternalHostname string // public hostname for TLS SAN (extracted from --grpc-external-addr)
-	Store            *store.Store
-	ConnMgr          *connmgr.ConnManager
-	Pending          *PendingRequests
-	LogSessions      *LogSessions
-	CACert           *x509.Certificate
-	CAKey            *ecdsa.PrivateKey
-	Notifier         *notify.Notifier
+	Addr                   string
+	ExternalHostname       string // public hostname for TLS SAN (extracted from --grpc-external-addr)
+	HeartbeatFlushInterval time.Duration
+	Store                  *store.Store
+	ConnMgr                *connmgr.ConnManager
+	Pending                *PendingRequests
+	LogSessions            *LogSessions
+	CACert                 *x509.Certificate
+	CAKey                  *ecdsa.PrivateKey
+	Notifier               *notify.Notifier
 }
 
 func New(cfg Config) *Server {
@@ -49,7 +50,11 @@ func New(cfg Config) *Server {
 	if cfg.LogSessions == nil {
 		cfg.LogSessions = NewLogSessions()
 	}
-	hbCoalescer := NewHeartbeatCoalescer(cfg.Store, 30*time.Second)
+	flushInterval := cfg.HeartbeatFlushInterval
+	if flushInterval <= 0 {
+		flushInterval = 30 * time.Second
+	}
+	hbCoalescer := NewHeartbeatCoalescer(cfg.Store, flushInterval)
 	s := &Server{
 		store:       cfg.Store,
 		connMgr:     cfg.ConnMgr,
@@ -79,12 +84,15 @@ func New(cfg Config) *Server {
 	)
 
 	if cfg.CACert != nil && cfg.CAKey != nil {
-		var dnsNames []string
+		var sanHosts []string
 		if cfg.ExternalHostname != "" {
-			dnsNames = append(dnsNames, cfg.ExternalHostname)
+			sanHosts = append(sanHosts, cfg.ExternalHostname)
 		}
-		dnsNames = append(dnsNames, "aerodocs-hub", "localhost")
-		serverCert, serverKey, err := ca.GenerateServerCert(cfg.CACert, cfg.CAKey, "aerodocs-hub", dnsNames...)
+		if host, _, err := net.SplitHostPort(cfg.Addr); err == nil && host != "" {
+			sanHosts = append(sanHosts, host)
+		}
+		sanHosts = append(sanHosts, "aerodocs-hub", "localhost")
+		serverCert, serverKey, err := ca.GenerateServerCert(cfg.CACert, cfg.CAKey, "aerodocs-hub", sanHosts...)
 		if err != nil {
 			log.Fatalf("grpc: generate server TLS cert: %v", err)
 		}

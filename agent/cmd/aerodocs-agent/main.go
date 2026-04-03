@@ -18,6 +18,9 @@ import (
 )
 
 const version = "0.1.0"
+const defaultConfigPath = "/etc/aerodocs/agent.conf"
+const defaultCertDir = "/etc/aerodocs/tls/"
+const defaultDropzoneDir = "/tmp/aerodocs-dropzone"
 
 type agentConfig struct {
 	ServerID        string   `json:"server_id"`
@@ -31,7 +34,9 @@ func main() {
 	hub := flag.String("hub", "", "Hub gRPC address (e.g., hub.example.com:9090)")
 	token := flag.String("token", "", "one-time registration token")
 	caPin := flag.String("ca-pin", "", "SHA-256 fingerprint of the Hub CA certificate")
-	configPath := flag.String("config", "/etc/aerodocs/agent.conf", "path to config file")
+	configPath := flag.String("config", defaultConfigPath, "path to config file")
+	certDir := flag.String("cert-dir", "", "directory for mTLS client certificates")
+	dropzoneDir := flag.String("dropzone-dir", "", "directory for staged uploads")
 	selfUnregister := flag.Bool("self-unregister", false, "connect to Hub, request deletion of this server, then exit")
 	insecureFlag := flag.Bool("insecure", false, "disable TLS (for development only)")
 	allowedPathsFlag := flag.String("allowed-paths", "", "comma-separated list of allowed filesystem paths")
@@ -57,6 +62,8 @@ func main() {
 		HubAddr:      hubAddr,
 		ServerID:     serverID,
 		Token:        regToken,
+		CertDir:      resolveCertDir(*configPath, *certDir),
+		DropzoneDir:  resolveDropzoneDir(*configPath, *dropzoneDir),
 		HubCAPin:     hubCAPin,
 		Hostname:     hostname,
 		IPAddress:    "",
@@ -82,6 +89,26 @@ func main() {
 	}
 
 	log.Println("agent stopped")
+}
+
+func resolveCertDir(configPath, certDirFlag string) string {
+	if certDirFlag != "" {
+		return certDirFlag
+	}
+	if configPath != defaultConfigPath {
+		return filepath.Join(filepath.Dir(configPath), "tls")
+	}
+	return defaultCertDir
+}
+
+func resolveDropzoneDir(configPath, dropzoneDirFlag string) string {
+	if dropzoneDirFlag != "" {
+		return dropzoneDirFlag
+	}
+	if configPath != defaultConfigPath {
+		return filepath.Join(filepath.Dir(configPath), "dropzone")
+	}
+	return defaultDropzoneDir
 }
 
 // runSelfUnregister loads the config, sends an unregister request to the Hub, removes the config

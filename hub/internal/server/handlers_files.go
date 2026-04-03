@@ -115,7 +115,7 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
 	detail := path
-	s.store.LogAudit(model.AuditEntry{
+	s.auditLogRequest(r, model.AuditEntry{
 		ID:        uuid.NewString(),
 		UserID:    &userID,
 		Action:    model.AuditFileRead,

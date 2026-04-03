@@ -154,9 +154,12 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 
 	adminID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditServerCreated, Target: &srv.ID, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditServerCreated,
+		Target:    &srv.ID,
+		IPAddress: &ip,
 	})
 
 	baseURL, err := s.resolvePublicBaseURL()
@@ -245,9 +248,12 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 
 	adminID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditServerUpdated, Target: &id, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditServerUpdated,
+		Target:    &id,
+		IPAddress: &ip,
 	})
 
 	srv, _ := s.store.GetServerByID(id)
@@ -269,9 +275,12 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 
 	adminID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditServerDeleted, Target: &id, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditServerDeleted,
+		Target:    &id,
+		IPAddress: &ip,
 	})
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -308,9 +317,12 @@ func (s *Server) handleBatchDeleteServers(w http.ResponseWriter, r *http.Request
 	adminID := UserIDFromContext(r.Context())
 	ip := clientIP(r)
 	detail := fmt.Sprintf("deleted %d servers", len(req.IDs))
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditServerBatchDeleted, Detail: &detail, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditServerBatchDeleted,
+		Detail:    &detail,
+		IPAddress: &ip,
 	})
 
 	respondJSON(w, http.StatusOK, model.BatchDeleteResponse{

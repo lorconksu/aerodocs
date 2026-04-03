@@ -14,6 +14,8 @@ type Config struct {
 	HubAddr      string
 	ServerID     string
 	Token        string
+	CertDir      string
+	DropzoneDir  string
 	Hostname     string
 	IPAddress    string
 	OS           string
@@ -34,6 +36,8 @@ func New(cfg Config) *Client {
 			HubAddr:      cfg.HubAddr,
 			ServerID:     cfg.ServerID,
 			Token:        cfg.Token,
+			CertDir:      cfg.CertDir,
+			DropzoneDir:  cfg.DropzoneDir,
 			Hostname:     cfg.Hostname,
 			IPAddress:    cfg.IPAddress,
 			OS:           cfg.OS,

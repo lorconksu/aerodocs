@@ -82,13 +82,14 @@ func StartHarness(t *testing.T) *TestHarness {
 
 	// Start gRPC server
 	gs := grpcserver.New(grpcserver.Config{
-		Addr:        grpcAddr,
-		Store:       st,
-		ConnMgr:     cm,
-		Pending:     pending,
-		LogSessions: logSessions,
-		CACert:      caCert,
-		CAKey:       caKey,
+		Addr:                   grpcAddr,
+		HeartbeatFlushInterval: 1 * time.Second,
+		Store:                  st,
+		ConnMgr:                cm,
+		Pending:                pending,
+		LogSessions:            logSessions,
+		CACert:                 caCert,
+		CAKey:                  caKey,
 	})
 
 	grpcErrCh := make(chan error, 1)

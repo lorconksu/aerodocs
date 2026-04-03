@@ -16,6 +16,11 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const (
+	testSMTPMailHost    = "mail.example.com"
+	testLegacyPlaintext = "legacy-plain"
+)
+
 // encrypt is a test helper that encrypts data using AES-256-GCM (mirrors auth.Encrypt).
 func encrypt(plaintext, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
@@ -403,7 +408,7 @@ func TestEnqueueJob_NonSecurityDropped(t *testing.T) {
 // and returns cached value on subsequent calls.
 func TestCachedSMTPConfig(t *testing.T) {
 	st := testStoreAndUser(t)
-	st.SetConfig("smtp_host", "mail.example.com")
+	st.SetConfig("smtp_host", testSMTPMailHost)
 	st.SetConfig("smtp_port", "465")
 	st.SetConfig("smtp_tls", "true")
 	st.SetConfig("smtp_enabled", "true")
@@ -412,8 +417,8 @@ func TestCachedSMTPConfig(t *testing.T) {
 	defer n.Close()
 
 	cfg := n.cachedSMTPConfig()
-	if cfg.Host != "mail.example.com" {
-		t.Fatalf("expected host 'mail.example.com', got '%s'", cfg.Host)
+	if cfg.Host != testSMTPMailHost {
+		t.Fatalf("expected host %q, got %q", testSMTPMailHost, cfg.Host)
 	}
 	if cfg.Port != 465 {
 		t.Fatalf("expected port 465, got %d", cfg.Port)
@@ -607,7 +612,7 @@ func TestLoadSMTPConfig_WithEncryptedPassword(t *testing.T) {
 	encryptedStored := "enc:" + fmt.Sprintf("%x", ciphertext)
 
 	st.SetConfig("smtp_password", encryptedStored)
-	st.SetConfig("smtp_host", "mail.example.com")
+	st.SetConfig("smtp_host", testSMTPMailHost)
 	st.SetConfig("smtp_enabled", "true")
 
 	cfg := LoadSMTPConfig(st, secret)
@@ -620,13 +625,13 @@ func TestLoadSMTPConfig_WithEncryptedPassword(t *testing.T) {
 func TestLoadSMTPConfig_WithPlaintextPassword(t *testing.T) {
 	st := testStoreAndUser(t)
 
-	st.SetConfig("smtp_password", "legacy-plain")
-	st.SetConfig("smtp_host", "mail.example.com")
+	st.SetConfig("smtp_password", testLegacyPlaintext)
+	st.SetConfig("smtp_host", testSMTPMailHost)
 	st.SetConfig("smtp_enabled", "true")
 
 	cfg := LoadSMTPConfig(st, "any-secret")
-	if cfg.Password != "legacy-plain" {
-		t.Fatalf("expected plaintext password %q, got %q", "legacy-plain", cfg.Password)
+	if cfg.Password != testLegacyPlaintext {
+		t.Fatalf("expected plaintext password %q, got %q", testLegacyPlaintext, cfg.Password)
 	}
 }
 

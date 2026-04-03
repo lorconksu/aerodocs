@@ -50,7 +50,7 @@ func (s *Server) handleCreatePath(w http.ResponseWriter, r *http.Request) {
 	// Audit log
 	userID := UserIDFromContext(r.Context())
 	detail := req.UserID + ":" + req.Path
-	s.store.LogAudit(model.AuditEntry{
+	s.auditLogRequest(r, model.AuditEntry{
 		ID:     uuid.NewString(),
 		UserID: &userID,
 		Action: model.AuditPathGranted,
@@ -84,7 +84,7 @@ func (s *Server) handleDeletePath(w http.ResponseWriter, r *http.Request) {
 	// Audit log
 	userID := UserIDFromContext(r.Context())
 	detail := perm.UserID + ":" + perm.Path
-	s.store.LogAudit(model.AuditEntry{
+	s.auditLogRequest(r, model.AuditEntry{
 		ID:     uuid.NewString(),
 		UserID: &userID,
 		Action: model.AuditPathRevoked,

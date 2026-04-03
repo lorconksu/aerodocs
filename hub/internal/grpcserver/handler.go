@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -37,6 +38,7 @@ type Handler struct {
 
 type handshakeResult struct {
 	serverID          string
+	bootstrapOnly     bool
 	requireClientCert bool
 }
 
@@ -54,6 +56,10 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		return err
 	}
 
+	if handshake.bootstrapOnly {
+		return nil
+	}
+
 	if err := h.verifyCertCN(stream, handshake.serverID, handshake.requireClientCert); err != nil {
 		return err
 	}
@@ -67,7 +73,7 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 		agentIP = *srv.IPAddress
 	}
 	h.onAgentConnected(serverID, agentIP)
-	defer h.onAgentDisconnected(serverID)
+	defer h.onAgentDisconnected(serverID, stream)
 
 	for {
 		msg, err := stream.Recv()
@@ -129,6 +135,7 @@ func (h *Handler) onAgentConnected(serverID, peerAddr string) {
 		Action:    model.AuditServerConnected,
 		Target:    &serverID,
 		IPAddress: &peerAddr,
+		ActorType: model.AuditActorTypeDevice,
 	})
 	if h.notifier != nil {
 		serverName := h.resolveServerName(serverID)
@@ -142,15 +149,18 @@ func (h *Handler) onAgentConnected(serverID, peerAddr string) {
 }
 
 // onAgentDisconnected unregisters the connection, flushes heartbeats, and logs the disconnect event.
-func (h *Handler) onAgentDisconnected(serverID string) {
-	h.connMgr.Unregister(serverID)
+func (h *Handler) onAgentDisconnected(serverID string, stream pb.AgentService_ConnectServer) {
+	if !h.connMgr.UnregisterIfCurrent(serverID, stream) {
+		return
+	}
 	if h.hbCoalescer != nil {
 		h.hbCoalescer.Flush(serverID)
 	}
 	_ = h.store.UpdateServerStatus(serverID, "offline")
 	h.store.LogAudit(model.AuditEntry{
-		Action: model.AuditServerDisconnected,
-		Target: &serverID,
+		Action:    model.AuditServerDisconnected,
+		Target:    &serverID,
+		ActorType: model.AuditActorTypeDevice,
 	})
 	if h.notifier != nil {
 		serverName := h.resolveServerName(serverID)
@@ -192,8 +202,9 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (*hands
 }
 
 func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent, peerIP string) (*handshakeResult, error) {
-	serverID, err := h.handleRegister(reg.Token, reg.Hostname, peerIP, reg.Os, reg.AgentVersion)
+	serverID, clientCert, caCert, err := h.handleRegister(reg.Token, reg.Hostname, peerIP, reg.Os, reg.AgentVersion, reg.Csr)
 	if err != nil {
+		h.logRegistrationAuditFailure(reg, peerIP, err)
 		_ = stream.Send(&pb.HubMessage{
 			Payload: &pb.HubMessage_RegisterAck{
 				RegisterAck: &pb.RegisterAck{Success: false, Error: err.Error()},
@@ -201,9 +212,15 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 		})
 		return nil, status.Errorf(codes.Unauthenticated, "registration failed: %v", err)
 	}
+	h.logRegistrationAuditSuccess(serverID, reg, peerIP)
 	if err := stream.Send(&pb.HubMessage{
 		Payload: &pb.HubMessage_RegisterAck{
-			RegisterAck: &pb.RegisterAck{Success: true, ServerId: serverID},
+			RegisterAck: &pb.RegisterAck{
+				Success:    true,
+				ServerId:   serverID,
+				ClientCert: clientCert,
+				CaCert:     caCert,
+			},
 		},
 	}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to send register ack: %v", err)
@@ -221,7 +238,56 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 		})
 	}
 
-	return &handshakeResult{serverID: serverID}, nil
+	return &handshakeResult{serverID: serverID, bootstrapOnly: true}, nil
+}
+
+func (h *Handler) logRegistrationAuditSuccess(serverID string, reg *pb.RegisterAgent, peerIP string) {
+	detail := registrationAuditDetail(reg, "")
+	h.store.LogAudit(model.AuditEntry{
+		Action:    model.AuditServerRegistered,
+		Target:    &serverID,
+		Detail:    &detail,
+		IPAddress: optionalStringPointer(peerIP),
+		ActorType: model.AuditActorTypeDevice,
+	})
+}
+
+func (h *Handler) logRegistrationAuditFailure(reg *pb.RegisterAgent, peerIP string, err error) {
+	detail := registrationAuditDetail(reg, err.Error())
+	h.store.LogAudit(model.AuditEntry{
+		Action:    model.AuditServerRegistrationFailed,
+		Detail:    &detail,
+		IPAddress: optionalStringPointer(peerIP),
+		ActorType: model.AuditActorTypeDevice,
+	})
+}
+
+func registrationAuditDetail(reg *pb.RegisterAgent, failure string) string {
+	parts := []string{"phase=bootstrap", "method=registration_token"}
+	if reg != nil {
+		if reg.Hostname != "" {
+			parts = append(parts, "hostname="+reg.Hostname)
+		}
+		if reg.Os != "" {
+			parts = append(parts, "os="+reg.Os)
+		}
+		if reg.AgentVersion != "" {
+			parts = append(parts, "agent_version="+reg.AgentVersion)
+		}
+	}
+	if failure != "" {
+		parts = append(parts, "result=failed", "reason="+failure)
+	} else {
+		parts = append(parts, "result=accepted")
+	}
+	return strings.Join(parts, " ")
+}
+
+func optionalStringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, hb *pb.Heartbeat, peerIP string) (*handshakeResult, error) {
@@ -308,23 +374,41 @@ func (h *Handler) handleStreamHeartbeat(serverID string, stream pb.AgentService_
 	return err
 }
 
-func (h *Handler) handleRegister(rawToken, hostname, ip, os, agentVersion string) (string, error) {
+func (h *Handler) handleRegister(rawToken, hostname, ip, os, agentVersion string, csr []byte) (string, []byte, []byte, error) {
 	hash := sha256.Sum256([]byte(rawToken))
 	tokenHash := fmt.Sprintf("%x", hash)
 	srv, err := h.store.GetServerByToken(tokenHash)
 	if err != nil {
-		return "", fmt.Errorf("invalid or expired registration token")
+		return "", nil, nil, fmt.Errorf("invalid or expired registration token")
 	}
 	if srv.TokenExpiresAt != nil {
 		expiresAt, err := time.Parse("2006-01-02 15:04:05", *srv.TokenExpiresAt)
 		if err == nil && time.Now().UTC().After(expiresAt) {
-			return "", fmt.Errorf("registration token expired")
+			return "", nil, nil, fmt.Errorf("registration token expired")
 		}
 	}
-	if err := h.store.ActivateServer(srv.ID, hostname, ip, os, agentVersion); err != nil {
-		return "", fmt.Errorf("failed to activate server: %w", err)
+	clientCert, caCert, err := h.issueRegistrationCertificate(srv.ID, csr)
+	if err != nil {
+		return "", nil, nil, err
 	}
-	return srv.ID, nil
+	if err := h.store.ActivateServer(srv.ID, hostname, ip, os, agentVersion); err != nil {
+		return "", nil, nil, fmt.Errorf("failed to activate server: %w", err)
+	}
+	return srv.ID, clientCert, caCert, nil
+}
+
+func (h *Handler) issueRegistrationCertificate(serverID string, csr []byte) ([]byte, []byte, error) {
+	if len(csr) == 0 {
+		return nil, nil, fmt.Errorf("registration CSR required")
+	}
+	if h.caCert == nil || h.caKey == nil {
+		return nil, nil, fmt.Errorf("CA not configured")
+	}
+	clientCert, err := ca.SignCSR(h.caCert, h.caKey, csr, serverID, 12*time.Hour)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sign client certificate: %w", err)
+	}
+	return clientCert.Raw, h.caCert.Raw, nil
 }
 
 func (h *Handler) handleHeartbeat(serverID string) error {

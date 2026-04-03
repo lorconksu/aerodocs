@@ -1,0 +1,38 @@
+package model
+
+const AuditCatalogLastUpdated = "2026-04-03T00:00:00Z"
+
+var AuditCatalog = []AuditCatalogEntry{
+	{Action: AuditUserLogin, Label: "User login", Category: "Authentication", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserLoginFailed, Label: "User login failed", Category: "Authentication", Outcome: AuditOutcomeFailure, ActorType: AuditActorTypeAnonymous, ResourceType: "user"},
+	{Action: AuditUserLoginTOTPFailed, Label: "User TOTP failed", Category: "Authentication", Outcome: AuditOutcomeFailure, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserRegistered, Label: "Initial admin registered", Category: "Authentication", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeAnonymous, ResourceType: "user"},
+	{Action: AuditUserTOTPSetup, Label: "TOTP setup started", Category: "Authentication", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserTOTPEnabled, Label: "TOTP enabled", Category: "Authentication", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserTOTPDisabled, Label: "TOTP disabled", Category: "Authentication", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserCreated, Label: "User created", Category: "User Management", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserTOTPReset, Label: "TOTP reset", Category: "User Management", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeSystem, ResourceType: "user"},
+	{Action: AuditUserPasswordChanged, Label: "Password changed", Category: "Authentication", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserPasswordReuseRejected, Label: "Password reuse rejected", Category: "Authentication", Outcome: AuditOutcomeFailure, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserRoleUpdated, Label: "User role updated", Category: "User Management", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditUserDeleted, Label: "User deleted", Category: "User Management", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "user"},
+	{Action: AuditServerCreated, Label: "Server created", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "server"},
+	{Action: AuditServerUpdated, Label: "Server updated", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "server"},
+	{Action: AuditServerDeleted, Label: "Server deleted", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "server"},
+	{Action: AuditServerBatchDeleted, Label: "Servers batch deleted", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "server"},
+	{Action: AuditServerRegistered, Label: "Server registered", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeDevice, ResourceType: "server"},
+	{Action: AuditServerRegistrationFailed, Label: "Server registration failed", Category: "Agent Lifecycle", Outcome: AuditOutcomeFailure, ActorType: AuditActorTypeDevice, ResourceType: "server"},
+	{Action: AuditServerConnected, Label: "Server connected", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeDevice, ResourceType: "server"},
+	{Action: AuditServerDisconnected, Label: "Server disconnected", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeDevice, ResourceType: "server"},
+	{Action: AuditServerUnregistered, Label: "Server unregistered", Category: "Agent Lifecycle", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "server"},
+	{Action: AuditFileRead, Label: "File read", Category: "File Access", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "file"},
+	{Action: AuditFileUploaded, Label: "File uploaded", Category: "File Access", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "file"},
+	{Action: AuditPathGranted, Label: "Path granted", Category: "File Access", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "path"},
+	{Action: AuditPathRevoked, Label: "Path revoked", Category: "File Access", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "path"},
+	{Action: AuditLogTailStarted, Label: "Log tail started", Category: "Log Access", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "log"},
+	{Action: AuditAuditExported, Label: "Audit exported", Category: "Audit Governance", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "audit"},
+	{Action: AuditAuditReviewCompleted, Label: "Audit review completed", Category: "Audit Governance", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "audit"},
+	{Action: AuditAuditFilterSaved, Label: "Audit filter saved", Category: "Audit Governance", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "audit"},
+	{Action: AuditAuditFilterDeleted, Label: "Audit filter deleted", Category: "Audit Governance", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "audit"},
+	{Action: AuditAuditRetentionUpdated, Label: "Audit retention updated", Category: "Audit Governance", Outcome: AuditOutcomeSuccess, ActorType: AuditActorTypeUser, ResourceType: "audit"},
+}

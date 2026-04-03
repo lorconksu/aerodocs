@@ -82,6 +82,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusConflict, "setup already completed")
 		return
 	}
+	settings := s.store.GetAuditSettings()
+	_ = s.store.AddPasswordHistory(user.ID, hash)
+	_ = s.store.TrimPasswordHistory(user.ID, settings.PasswordHistoryCount)
 
 	// Recheck: if another registration won the race with a different username, roll back
 	count, _ = s.store.UserCount()
@@ -92,9 +95,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &user.ID,
-		Action: model.AuditUserRegistered, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &user.ID,
+		Action:    model.AuditUserRegistered,
+		IPAddress: &ip,
 	})
 
 	setupToken, err := auth.GenerateSetupToken(s.jwtSecret, user.ID, string(user.Role))
@@ -121,8 +126,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Dummy bcrypt compare to prevent username enumeration via timing
 		auth.ComparePassword("$2a$12$000000000000000000000000000000000000000000000000000000", "dummy")
 		ip := clientIP(r)
-		s.store.LogAudit(model.AuditEntry{
-			ID: uuid.NewString(), Action: model.AuditUserLoginFailed, IPAddress: &ip,
+		s.auditLogRequest(r, model.AuditEntry{
+			ID:        uuid.NewString(),
+			Action:    model.AuditUserLoginFailed,
+			IPAddress: &ip,
+			ActorType: model.AuditActorTypeAnonymous,
 		})
 		if s.notifier != nil {
 			s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
@@ -136,9 +144,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	if !auth.ComparePassword(user.PasswordHash, req.Password) {
 		ip := clientIP(r)
-		s.store.LogAudit(model.AuditEntry{
-			ID: uuid.NewString(), UserID: &user.ID,
-			Action: model.AuditUserLoginFailed, IPAddress: &ip,
+		s.auditLogRequest(r, model.AuditEntry{
+			ID:        uuid.NewString(),
+			UserID:    &user.ID,
+			Action:    model.AuditUserLoginFailed,
+			IPAddress: &ip,
 		})
 		if s.notifier != nil {
 			s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
@@ -150,6 +160,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if user.MustChangePassword && user.TempPasswordExpiresAt != nil && time.Now().UTC().After(*user.TempPasswordExpiresAt) {
+		ip := clientIP(r)
+		detail := "temporary password expired"
+		s.auditLogRequest(r, model.AuditEntry{
+			ID:        uuid.NewString(),
+			UserID:    &user.ID,
+			Action:    model.AuditUserLoginFailed,
+			Detail:    &detail,
+			IPAddress: &ip,
+			Outcome:   model.AuditOutcomeFailure,
+		})
+		respondError(w, http.StatusUnauthorized, "temporary password expired — contact an administrator")
+		return
+	}
+
 	// If TOTP not set up yet, return setup token
 	if !user.TOTPEnabled {
 		setupToken, err := auth.GenerateSetupToken(s.jwtSecret, user.ID, string(user.Role))
@@ -158,8 +183,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		respondJSON(w, http.StatusOK, model.LoginResponse{
-			SetupToken:        setupToken,
-			RequiresTOTPSetup: true,
+			SetupToken:         setupToken,
+			RequiresTOTPSetup:  true,
+			MustChangePassword: user.MustChangePassword,
 		})
 		return
 	}
@@ -209,9 +235,11 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 
 	if totpSecret == nil || !auth.ValidateTOTPWithReplay(s.totpCache, user.ID, *totpSecret, req.Code) {
 		ip := clientIP(r)
-		s.store.LogAudit(model.AuditEntry{
-			ID: uuid.NewString(), UserID: &user.ID,
-			Action: model.AuditUserLoginTOTPFailed, IPAddress: &ip,
+		s.auditLogRequest(r, model.AuditEntry{
+			ID:        uuid.NewString(),
+			UserID:    &user.ID,
+			Action:    model.AuditUserLoginTOTPFailed,
+			IPAddress: &ip,
 		})
 		respondError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
@@ -224,9 +252,11 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &user.ID,
-		Action: model.AuditUserLogin, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &user.ID,
+		Action:    model.AuditUserLogin,
+		IPAddress: &ip,
 	})
 
 	setAuthCookies(w, accessToken, refreshToken)
@@ -386,9 +416,11 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &userID,
-		Action: model.AuditUserTOTPSetup, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &userID,
+		Action:    model.AuditUserTOTPSetup,
+		IPAddress: &ip,
 	})
 
 	// Respond with plaintext secret and QR URL for the user's authenticator app
@@ -433,6 +465,49 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if user.MustChangePassword {
+		settings := s.store.GetAuditSettings()
+		if req.NewPassword == "" {
+			respondError(w, http.StatusBadRequest, "new_password is required for temporary-password users")
+			return
+		}
+		if err := auth.ValidatePasswordPolicy(req.NewPassword); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		matchesRecent, err := s.store.PasswordMatchesRecent(userID, req.NewPassword, settings.PasswordHistoryCount)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to validate password history")
+			return
+		}
+		if matchesRecent {
+			ip := clientIP(r)
+			s.auditLogRequest(r, model.AuditEntry{
+				ID:        uuid.NewString(),
+				UserID:    &userID,
+				Action:    model.AuditUserPasswordReuseRejected,
+				IPAddress: &ip,
+				Outcome:   model.AuditOutcomeFailure,
+			})
+			respondError(w, http.StatusBadRequest, "new password must not match a recent password")
+			return
+		}
+		hash, err := auth.HashPassword(req.NewPassword)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to hash password")
+			return
+		}
+		if err := s.store.UpdateUserPassword(userID, hash); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to update password")
+			return
+		}
+		_ = s.store.AddPasswordHistory(userID, hash)
+		_ = s.store.TrimPasswordHistory(userID, settings.PasswordHistoryCount)
+		user.PasswordHash = hash
+		user.MustChangePassword = false
+		user.TempPasswordExpiresAt = nil
+	}
+
 	// Encrypt the TOTP secret before final storage
 	encryptedSecret, err := s.encryptTOTPSecret(*totpSecretForValidation)
 	if err != nil {
@@ -446,9 +521,11 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &userID,
-		Action: model.AuditUserTOTPEnabled, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &userID,
+		Action:    model.AuditUserTOTPEnabled,
+		IPAddress: &ip,
 	})
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyTOTPChanged, map[string]string{
@@ -496,6 +573,24 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	settings := s.store.GetAuditSettings()
+	matchesRecent, err := s.store.PasswordMatchesRecent(userID, req.NewPassword, settings.PasswordHistoryCount)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to validate password history")
+		return
+	}
+	if matchesRecent {
+		ip := clientIP(r)
+		s.auditLogRequest(r, model.AuditEntry{
+			ID:        uuid.NewString(),
+			UserID:    &userID,
+			Action:    model.AuditUserPasswordReuseRejected,
+			IPAddress: &ip,
+			Outcome:   model.AuditOutcomeFailure,
+		})
+		respondError(w, http.StatusBadRequest, "new password must not match a recent password")
+		return
+	}
 
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
@@ -507,6 +602,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update password")
 		return
 	}
+	_ = s.store.AddPasswordHistory(userID, hash)
+	_ = s.store.TrimPasswordHistory(userID, settings.PasswordHistoryCount)
 
 	// Invalidate all existing sessions by incrementing token generation
 	if _, err := s.store.IncrementTokenGeneration(userID); err != nil {
@@ -515,9 +612,11 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &userID,
-		Action: model.AuditUserPasswordChanged, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &userID,
+		Action:    model.AuditUserPasswordChanged,
+		IPAddress: &ip,
 	})
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyPasswordChanged, map[string]string{
@@ -579,9 +678,12 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
-	s.store.LogAudit(model.AuditEntry{
-		ID: uuid.NewString(), UserID: &adminID,
-		Action: model.AuditUserTOTPDisabled, Target: &req.UserID, IPAddress: &ip,
+	s.auditLogRequest(r, model.AuditEntry{
+		ID:        uuid.NewString(),
+		UserID:    &adminID,
+		Action:    model.AuditUserTOTPDisabled,
+		Target:    &req.UserID,
+		IPAddress: &ip,
 	})
 	if s.notifier != nil {
 		s.notifier.Notify(model.NotifyTOTPChanged, map[string]string{

@@ -99,7 +99,9 @@ describe('LoginPage', () => {
     fireEvent.submit(screen.getByRole('button', { name: /sign in/i }).closest('form')!)
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/setup/totp', { state: { setupToken: 'setup-tok' } })
+      expect(mockNavigate).toHaveBeenCalledWith('/setup/totp', {
+        state: { setupToken: 'setup-tok', mustChangePassword: false },
+      })
     })
   })
 

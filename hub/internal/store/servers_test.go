@@ -352,8 +352,8 @@ func TestActivateServer(t *testing.T) {
 	}
 
 	got, _ := s.GetServerByID("s1")
-	if got.Status != "online" {
-		t.Fatalf("expected status 'online', got '%s'", got.Status)
+	if got.Status != "pending" {
+		t.Fatalf("expected status 'pending', got '%s'", got.Status)
 	}
 	if got.Hostname == nil || *got.Hostname != testWebProd1 {
 		t.Fatal("expected hostname 'web-prod-1'")

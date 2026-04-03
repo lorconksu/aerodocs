@@ -5,22 +5,34 @@ import "time"
 type Role string
 
 const (
-	RoleAdmin  Role = "admin"
-	RoleViewer Role = "viewer"
+	RoleAdmin   Role = "admin"
+	RoleAuditor Role = "auditor"
+	RoleViewer  Role = "viewer"
 )
 
+func IsValidRole(role Role) bool {
+	switch role {
+	case RoleAdmin, RoleAuditor, RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 type User struct {
-	ID              string    `json:"id"`
-	Username        string    `json:"username"`
-	Email           string    `json:"email"`
-	PasswordHash    string    `json:"-"`
-	Role            Role      `json:"role"`
-	TOTPSecret      *string   `json:"-"`
-	TOTPEnabled     bool      `json:"totp_enabled"`
-	TokenGeneration int       `json:"-"`
-	Avatar          *string   `json:"avatar"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                    string     `json:"id"`
+	Username              string     `json:"username"`
+	Email                 string     `json:"email"`
+	PasswordHash          string     `json:"-"`
+	Role                  Role       `json:"role"`
+	TOTPSecret            *string    `json:"-"`
+	TOTPEnabled           bool       `json:"totp_enabled"`
+	TokenGeneration       int        `json:"-"`
+	Avatar                *string    `json:"avatar"`
+	MustChangePassword    bool       `json:"must_change_password,omitempty"`
+	TempPasswordExpiresAt *time.Time `json:"temp_password_expires_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type UpdateAvatarRequest struct {
@@ -54,7 +66,8 @@ type RefreshRequest struct {
 }
 
 type TOTPEnableRequest struct {
-	Code string `json:"code"`
+	Code        string `json:"code"`
+	NewPassword string `json:"new_password,omitempty"`
 }
 
 type TOTPDisableRequest struct {
@@ -82,9 +95,10 @@ type AuthStatusResponse struct {
 }
 
 type LoginResponse struct {
-	TOTPToken         string `json:"totp_token,omitempty"`
-	SetupToken        string `json:"setup_token,omitempty"`
-	RequiresTOTPSetup bool   `json:"requires_totp_setup,omitempty"`
+	TOTPToken          string `json:"totp_token,omitempty"`
+	SetupToken         string `json:"setup_token,omitempty"`
+	RequiresTOTPSetup  bool   `json:"requires_totp_setup,omitempty"`
+	MustChangePassword bool   `json:"must_change_password,omitempty"`
 }
 
 type AuthResponse struct {

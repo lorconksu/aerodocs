@@ -15,6 +15,7 @@ import (
 const (
 	testBearerPrefix    = "Bearer "
 	testPassword        = "MyP@ssw0rd!234"
+	testNewPassword     = "NewP@ssw0rd!567"
 	testAdminEmail      = "admin@test.com"
 	testRegisterPath    = "/api/auth/register"
 	testMePath          = "/api/auth/me"
@@ -138,9 +139,12 @@ func createViewerAndGetToken(t *testing.T, s *Server, adminToken string) string 
 	var totpResp model.TOTPSetupResponse
 	json.NewDecoder(setupRec.Body).Decode(&totpResp)
 
-	// Enable TOTP
+	// Enable TOTP and rotate the temporary password on first setup.
 	code, _ := auth.GenerateValidCode(totpResp.Secret)
-	enableBody, _ := json.Marshal(model.TOTPEnableRequest{Code: code})
+	enableBody, _ := json.Marshal(model.TOTPEnableRequest{
+		Code:        code,
+		NewPassword: testNewPassword,
+	})
 	enableReq := httptest.NewRequest("POST", "/api/auth/totp/enable", bytes.NewReader(enableBody))
 	enableReq.Header.Set("Authorization", testBearerPrefix+loginResp.SetupToken)
 	enableRec := httptest.NewRecorder()

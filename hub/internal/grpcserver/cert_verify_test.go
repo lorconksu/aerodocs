@@ -22,6 +22,7 @@ const (
 	testServerIDNoCA           = "s-noca"
 	testServerIDBadCSR         = "s-badcsr"
 	testServerIDRouteCert      = "s-route-cert"
+	testReconnectServerID      = "server-1"
 )
 
 func TestExtractServerIDFromCert(t *testing.T) {
@@ -106,13 +107,25 @@ func TestHandleCertRenewal(t *testing.T) {
 
 func TestHandleCertRenewal_NoCA(t *testing.T) {
 	h, st := testHandler(t)
-	// No CA configured (caCert and caKey are nil)
+	h.caCert = nil
+	h.caKey = nil
 
 	st.CreateServer(&model.Server{ID: testServerIDNoCA, Name: "noca-test", Status: "online", Labels: "{}"})
 	stream := &mockStream{}
 	h.connMgr.Register(testServerIDNoCA, stream)
 
-	req := &pb.CertRenewRequest{Csr: []byte("fake-csr")}
+	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate client key: %v", err)
+	}
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		Subject: pkix.Name{CommonName: testServerIDNoCA},
+	}, clientKey)
+	if err != nil {
+		t.Fatalf("create CSR: %v", err)
+	}
+
+	req := &pb.CertRenewRequest{Csr: csrDER}
 	h.handleCertRenewal(testServerIDNoCA, stream, req)
 
 	if len(stream.sent) == 0 {
@@ -206,21 +219,21 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 
 func TestVerifyCertCN_RequiresClientCertForReconnect(t *testing.T) {
 	h, _ := testHandler(t)
-	if err := h.verifyCertCN(&mockStream{}, "server-1", true); err == nil {
+	if err := h.verifyCertCN(&mockStream{}, testReconnectServerID, true); err == nil {
 		t.Fatal("expected reconnect without client cert to be rejected")
 	}
 }
 
 func TestVerifyCertCN_AllowsRegistrationWithoutClientCert(t *testing.T) {
 	h, _ := testHandler(t)
-	if err := h.verifyCertCN(&mockStream{}, "server-1", false); err != nil {
+	if err := h.verifyCertCN(&mockStream{}, testReconnectServerID, false); err != nil {
 		t.Fatalf("expected registration without client cert to be allowed, got %v", err)
 	}
 }
 
 func TestVerifyCertCN_AcceptsMatchingCert(t *testing.T) {
 	h, _ := testHandler(t)
-	if err := h.verifyCertCN(streamWithPeerCert("server-1"), "server-1", true); err != nil {
+	if err := h.verifyCertCN(streamWithPeerCert(testReconnectServerID), testReconnectServerID, true); err != nil {
 		t.Fatalf("expected matching client cert to be accepted, got %v", err)
 	}
 }

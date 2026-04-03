@@ -664,17 +664,21 @@ func TestDecryptSMTPPassword_WrongKey(t *testing.T) {
 
 // TestValidateSMTPConfig verifies SMTP config validation.
 func TestValidateSMTPConfig(t *testing.T) {
+	const (
+		testSMTPHost = "smtp.test.com"
+		testSMTPFrom = "a@b.com"
+	)
 	tests := []struct {
 		name    string
 		cfg     model.SMTPConfig
 		wantErr bool
 	}{
 		{"disabled config is always valid", model.SMTPConfig{Enabled: false}, false},
-		{"valid enabled config", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 587, From: "a@b.com"}, false},
-		{"invalid port low", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 0, From: "a@b.com"}, true},
-		{"invalid port high", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 70000, From: "a@b.com"}, true},
-		{"missing from @", model.SMTPConfig{Enabled: true, Host: "smtp.test.com", Port: 587, From: "invalid"}, true},
-		{"missing host", model.SMTPConfig{Enabled: true, Host: "", Port: 587, From: "a@b.com"}, true},
+		{"valid enabled config", model.SMTPConfig{Enabled: true, Host: testSMTPHost, Port: 587, From: testSMTPFrom}, false},
+		{"invalid port low", model.SMTPConfig{Enabled: true, Host: testSMTPHost, Port: 0, From: testSMTPFrom}, true},
+		{"invalid port high", model.SMTPConfig{Enabled: true, Host: testSMTPHost, Port: 70000, From: testSMTPFrom}, true},
+		{"missing from @", model.SMTPConfig{Enabled: true, Host: testSMTPHost, Port: 587, From: "invalid"}, true},
+		{"missing host", model.SMTPConfig{Enabled: true, Host: "", Port: 587, From: testSMTPFrom}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

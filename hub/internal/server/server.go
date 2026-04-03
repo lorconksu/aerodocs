@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
+	"github.com/wyiu/aerodocs/hub/internal/model"
 	"github.com/wyiu/aerodocs/hub/internal/notify"
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
@@ -74,6 +76,35 @@ func New(cfg Config) *Server {
 		totpCache:        auth.NewTOTPUsedCodes(),
 		tokenBlacklist:   auth.NewTokenBlacklist(cfg.Store.DB()),
 		notifier:         cfg.Notifier,
+	}
+
+	if s.store != nil {
+		s.store.SetAuditObservers(func(health model.AuditHealth) {
+			if s.notifier == nil {
+				return
+			}
+			context := map[string]string{
+				"failure_count": strconv.Itoa(health.FailureCount),
+			}
+			if health.LastFailureAt != nil {
+				context["last_failure_at"] = *health.LastFailureAt
+			}
+			if health.LastFailureReason != nil {
+				context["last_failure_reason"] = *health.LastFailureReason
+			}
+			s.notifier.Notify(model.NotifyAuditDegraded, context)
+		}, func(health model.AuditHealth) {
+			if s.notifier == nil {
+				return
+			}
+			context := map[string]string{
+				"failure_count": strconv.Itoa(health.FailureCount),
+			}
+			if health.LastRecoveredAt != nil {
+				context["last_recovered_at"] = *health.LastRecoveredAt
+			}
+			s.notifier.Notify(model.NotifyAuditRecovered, context)
+		})
 	}
 
 	mux := s.routes()

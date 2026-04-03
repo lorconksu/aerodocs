@@ -7,12 +7,14 @@ import (
 	"time"
 )
 
+const sqliteTimeLayout = "2006-01-02 15:04:05"
+
 // TokenBlacklist tracks revoked JWTs by their JTI until they expire naturally.
 // Entries are persisted to a SQLite table so revocations survive restarts.
 type TokenBlacklist struct {
 	mu      sync.RWMutex
 	entries map[string]time.Time // jti -> expiry
-	db      *sql.DB             // nil = in-memory only (tests)
+	db      *sql.DB              // nil = in-memory only (tests)
 }
 
 // NewTokenBlacklist creates a token blacklist backed by the given database.
@@ -50,7 +52,7 @@ func (b *TokenBlacklist) loadFromDB() {
 			log.Printf("auth: scan token blacklist row: %v", err)
 			continue
 		}
-		t, err := time.Parse("2006-01-02 15:04:05", expiresAt)
+		t, err := time.Parse(sqliteTimeLayout, expiresAt)
 		if err != nil {
 			// Try RFC3339 format
 			t, err = time.Parse(time.RFC3339, expiresAt)
@@ -109,7 +111,7 @@ func (b *TokenBlacklist) Add(jti string, expiry time.Time) {
 	if b.db != nil {
 		_, err := b.db.Exec(
 			"INSERT OR REPLACE INTO token_blacklist (jti, expires_at) VALUES (?, ?)",
-			jti, expiry.UTC().Format("2006-01-02 15:04:05"),
+			jti, expiry.UTC().Format(sqliteTimeLayout),
 		)
 		if err != nil {
 			log.Printf("auth: persist token blacklist entry: %v", err)
@@ -139,7 +141,7 @@ func (b *TokenBlacklist) IsBlacklisted(jti string) bool {
 			// Re-read expiry from DB to cache properly
 			var expiresAt string
 			if err := b.db.QueryRow("SELECT expires_at FROM token_blacklist WHERE jti = ?", jti).Scan(&expiresAt); err == nil {
-				if t, err := time.Parse("2006-01-02 15:04:05", expiresAt); err == nil {
+				if t, err := time.Parse(sqliteTimeLayout, expiresAt); err == nil {
 					b.entries[jti] = t
 				}
 			}

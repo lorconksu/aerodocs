@@ -37,6 +37,28 @@ func TestUnregister(t *testing.T) {
 	}
 }
 
+func TestUnregisterIfCurrent(t *testing.T) {
+	cm := New()
+	oldStream := &mockStream{}
+	newStream := &mockStream{}
+
+	cm.Register("s1", oldStream)
+	cm.Register("s1", newStream)
+
+	if cm.UnregisterIfCurrent("s1", oldStream) {
+		t.Fatal("expected stale stream unregister to be ignored")
+	}
+	if cm.GetConn("s1") == nil {
+		t.Fatal("expected current connection to remain registered")
+	}
+	if !cm.UnregisterIfCurrent("s1", newStream) {
+		t.Fatal("expected current stream unregister to succeed")
+	}
+	if cm.GetConn("s1") != nil {
+		t.Fatal("expected connection to be removed after unregistering current stream")
+	}
+}
+
 func TestActiveServerIDs(t *testing.T) {
 	cm := New()
 	cm.Register("s1", nil)

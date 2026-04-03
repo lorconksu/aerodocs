@@ -42,7 +42,7 @@ export function AppShell() {
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Fleet Dashboard' },
-    ...(user?.role === 'admin' ? [{ to: '/audit-logs', icon: ScrollText, label: 'Audit Logs' }] : []),
+    ...(user?.role === 'admin' || user?.role === 'auditor' ? [{ to: '/audit-logs', icon: ScrollText, label: 'Audit Logs' }] : []),
     { to: '/settings', icon: Settings, label: 'Settings' },
   ]
 
