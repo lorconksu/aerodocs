@@ -12,6 +12,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
+const errFailedToHashPassword = "failed to hash password"
+
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	count, err := s.store.InitializedUserCount()
 	if err != nil {
@@ -65,7 +67,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to hash password")
+		respondError(w, http.StatusInternalServerError, errFailedToHashPassword)
 		return
 	}
 
@@ -449,15 +451,10 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decrypt TOTP secret if encrypted for validation
-	totpSecretForValidation := user.TOTPSecret
-	if totpSecretForValidation != nil && strings.HasPrefix(*totpSecretForValidation, "enc:") {
-		decrypted, err := s.decryptTOTPSecret(*totpSecretForValidation)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to decrypt TOTP secret")
-			return
-		}
-		totpSecretForValidation = &decrypted
+	totpSecretForValidation, err := s.totpSecretForValidation(user.TOTPSecret)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to decrypt TOTP secret")
+		return
 	}
 
 	if !auth.ValidateTOTPWithReplay(s.totpCache, userID, *totpSecretForValidation, req.Code) {
@@ -465,47 +462,10 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.MustChangePassword {
-		settings := s.store.GetAuditSettings()
-		if req.NewPassword == "" {
-			respondError(w, http.StatusBadRequest, "new_password is required for temporary-password users")
-			return
-		}
-		if err := auth.ValidatePasswordPolicy(req.NewPassword); err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		matchesRecent, err := s.store.PasswordMatchesRecent(userID, req.NewPassword, settings.PasswordHistoryCount)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to validate password history")
-			return
-		}
-		if matchesRecent {
-			ip := clientIP(r)
-			s.auditLogRequest(r, model.AuditEntry{
-				ID:        uuid.NewString(),
-				UserID:    &userID,
-				Action:    model.AuditUserPasswordReuseRejected,
-				IPAddress: &ip,
-				Outcome:   model.AuditOutcomeFailure,
-			})
-			respondError(w, http.StatusBadRequest, "new password must not match a recent password")
-			return
-		}
-		hash, err := auth.HashPassword(req.NewPassword)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to hash password")
-			return
-		}
-		if err := s.store.UpdateUserPassword(userID, hash); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to update password")
-			return
-		}
-		_ = s.store.AddPasswordHistory(userID, hash)
-		_ = s.store.TrimPasswordHistory(userID, settings.PasswordHistoryCount)
-		user.PasswordHash = hash
-		user.MustChangePassword = false
-		user.TempPasswordExpiresAt = nil
+	if err := s.rotateTemporaryPasswordDuringTOTPEnable(r, user, req.NewPassword); err != nil {
+		status, message := totpEnablePasswordError(err)
+		respondError(w, status, message)
+		return
 	}
 
 	// Encrypt the TOTP secret before final storage
@@ -548,6 +508,72 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, model.AuthResponse{
 		User: *user,
 	})
+}
+
+func (s *Server) totpSecretForValidation(secret *string) (*string, error) {
+	if secret == nil || !strings.HasPrefix(*secret, "enc:") {
+		return secret, nil
+	}
+	decrypted, err := s.decryptTOTPSecret(*secret)
+	if err != nil {
+		return nil, err
+	}
+	return &decrypted, nil
+}
+
+func (s *Server) rotateTemporaryPasswordDuringTOTPEnable(r *http.Request, user *model.User, newPassword string) error {
+	if !user.MustChangePassword {
+		return nil
+	}
+	settings := s.store.GetAuditSettings()
+	if newPassword == "" {
+		return fmt.Errorf("bad_request:new_password is required for temporary-password users")
+	}
+	if err := auth.ValidatePasswordPolicy(newPassword); err != nil {
+		return fmt.Errorf("bad_request:%s", err.Error())
+	}
+	matchesRecent, err := s.store.PasswordMatchesRecent(user.ID, newPassword, settings.PasswordHistoryCount)
+	if err != nil {
+		return fmt.Errorf("internal:failed to validate password history")
+	}
+	if matchesRecent {
+		ip := clientIP(r)
+		s.auditLogRequest(r, model.AuditEntry{
+			ID:        uuid.NewString(),
+			UserID:    &user.ID,
+			Action:    model.AuditUserPasswordReuseRejected,
+			IPAddress: &ip,
+			Outcome:   model.AuditOutcomeFailure,
+		})
+		return fmt.Errorf("bad_request:new password must not match a recent password")
+	}
+	hash, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("internal:%s", errFailedToHashPassword)
+	}
+	if err := s.store.UpdateUserPassword(user.ID, hash); err != nil {
+		return fmt.Errorf("internal:failed to update password")
+	}
+	_ = s.store.AddPasswordHistory(user.ID, hash)
+	_ = s.store.TrimPasswordHistory(user.ID, settings.PasswordHistoryCount)
+	user.PasswordHash = hash
+	user.MustChangePassword = false
+	user.TempPasswordExpiresAt = nil
+	return nil
+}
+
+func totpEnablePasswordError(err error) (int, string) {
+	if err == nil {
+		return http.StatusOK, ""
+	}
+	message := err.Error()
+	if strings.HasPrefix(message, "bad_request:") {
+		return http.StatusBadRequest, strings.TrimPrefix(message, "bad_request:")
+	}
+	if strings.HasPrefix(message, "internal:") {
+		return http.StatusInternalServerError, strings.TrimPrefix(message, "internal:")
+	}
+	return http.StatusInternalServerError, "failed to update password"
 }
 
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -594,7 +620,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to hash password")
+		respondError(w, http.StatusInternalServerError, errFailedToHashPassword)
 		return
 	}
 

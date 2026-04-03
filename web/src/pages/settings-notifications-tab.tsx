@@ -75,13 +75,13 @@ export function NotificationsTab() {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     setSmtpSuccess('')
     saveMutation.mutate(form)
   }
 
-  const handleTest = (e: React.FormEvent) => {
+  const handleTest = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!testRecipient) return
     setTestSuccess('')

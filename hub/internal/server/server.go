@@ -78,34 +78,7 @@ func New(cfg Config) *Server {
 		notifier:         cfg.Notifier,
 	}
 
-	if s.store != nil {
-		s.store.SetAuditObservers(func(health model.AuditHealth) {
-			if s.notifier == nil {
-				return
-			}
-			context := map[string]string{
-				"failure_count": strconv.Itoa(health.FailureCount),
-			}
-			if health.LastFailureAt != nil {
-				context["last_failure_at"] = *health.LastFailureAt
-			}
-			if health.LastFailureReason != nil {
-				context["last_failure_reason"] = *health.LastFailureReason
-			}
-			s.notifier.Notify(model.NotifyAuditDegraded, context)
-		}, func(health model.AuditHealth) {
-			if s.notifier == nil {
-				return
-			}
-			context := map[string]string{
-				"failure_count": strconv.Itoa(health.FailureCount),
-			}
-			if health.LastRecoveredAt != nil {
-				context["last_recovered_at"] = *health.LastRecoveredAt
-			}
-			s.notifier.Notify(model.NotifyAuditRecovered, context)
-		})
-	}
+	s.installAuditObservers()
 
 	mux := s.routes()
 
@@ -120,6 +93,38 @@ func New(cfg Config) *Server {
 	}
 
 	return s
+}
+
+func (s *Server) installAuditObservers() {
+	if s.store == nil {
+		return
+	}
+	s.store.SetAuditObservers(func(health model.AuditHealth) {
+		if s.notifier == nil {
+			return
+		}
+		context := map[string]string{
+			"failure_count": strconv.Itoa(health.FailureCount),
+		}
+		if health.LastFailureAt != nil {
+			context["last_failure_at"] = *health.LastFailureAt
+		}
+		if health.LastFailureReason != nil {
+			context["last_failure_reason"] = *health.LastFailureReason
+		}
+		s.notifier.Notify(model.NotifyAuditDegraded, context)
+	}, func(health model.AuditHealth) {
+		if s.notifier == nil {
+			return
+		}
+		context := map[string]string{
+			"failure_count": strconv.Itoa(health.FailureCount),
+		}
+		if health.LastRecoveredAt != nil {
+			context["last_recovered_at"] = *health.LastRecoveredAt
+		}
+		s.notifier.Notify(model.NotifyAuditRecovered, context)
+	})
 }
 
 func (s *Server) Start() error {

@@ -30,6 +30,16 @@ function sanitizeHljsHtml(html: string): string {
   })
 }
 
+function markdownChildrenToText(children: React.ReactNode): string {
+  if (Array.isArray(children)) {
+    return children.map(markdownChildrenToText).join('')
+  }
+  if (typeof children === 'string' || typeof children === 'number' || typeof children === 'boolean') {
+    return String(children)
+  }
+  return ''
+}
+
 // Mermaid diagram component
 /* c8 ignore start */
 function MermaidDiagram({ chart }: Readonly<{ chart: string }>) {
@@ -75,7 +85,7 @@ const markdownComponents: Components = {
   code({ className, children, ...props }) {
     const match = /language-(\w+)/.exec(className || '')
     const lang = match?.[1]
-    const content = String(children).replace(/\n$/, '')
+    const content = markdownChildrenToText(children).replace(/\n$/, '')
 
     if (lang === 'mermaid') {
       return <MermaidDiagram chart={content} />
@@ -83,7 +93,7 @@ const markdownComponents: Components = {
 
     // Inline code (no language class)
     if (!lang) {
-      return <code className={className} {...props}>{children}</code>
+      return <code className={className} {...props}>{content}</code>
     }
 
     // Block code — use highlight.js
@@ -97,7 +107,7 @@ const markdownComponents: Components = {
         />
       )
     } catch {
-      return <code className={className} {...props}>{children}</code>
+      return <code className={className} {...props}>{content}</code>
     }
   },
 }

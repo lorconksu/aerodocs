@@ -205,7 +205,7 @@ function PathManagement({ serverId }: Readonly<{ serverId: string }>) {
     },
   })
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!newUserId || !newPath) return
     addMutation.mutate({ user_id: newUserId, path: newPath })
@@ -712,9 +712,7 @@ function LiveTail({
   // Appends new log lines into a pending buffer, flushed at most once per frame.
   const appendLogLines = useCallback((newLogLines: string[]) => {
     pendingLinesRef.current.push(...newLogLines)
-    if (rafIdRef.current === null) {
-      rafIdRef.current = requestAnimationFrame(flushPendingLines)
-    }
+    rafIdRef.current ??= requestAnimationFrame(flushPendingLines)
   }, [flushPendingLines])
 
   // Reads an SSE stream and forwards parsed log lines via appendLogLines.
