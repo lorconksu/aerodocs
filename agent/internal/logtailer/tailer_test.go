@@ -210,3 +210,25 @@ func TestValidateLogPath_BlockedPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateLogPath_RejectsSymlinkEscape(t *testing.T) {
+	allowedDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "outside.log")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	linkPath := filepath.Join(allowedDir, "escape.log")
+	if err := os.Symlink(outsideFile, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	_, err := validateLogPath(linkPath)
+	if err == nil {
+		t.Fatal("expected symlink escape to be rejected")
+	}
+	if !strings.Contains(err.Error(), "outside requested directory") {
+		t.Fatalf("expected symlink escape error, got %v", err)
+	}
+}

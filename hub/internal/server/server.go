@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/auth"
@@ -33,6 +34,8 @@ type Server struct {
 	connMgr          *connmgr.ConnManager
 	pending          *grpcserver.PendingRequests
 	logSessions      *grpcserver.LogSessions
+	logTailMu        sync.Mutex
+	logTailSessions  map[string]int
 	totpCache        *auth.TOTPUsedCodes
 	tokenBlacklist   *auth.TokenBlacklist
 	notifier         *notify.Notifier
@@ -67,6 +70,7 @@ func New(cfg Config) *Server {
 		connMgr:          cfg.ConnMgr,
 		pending:          cfg.Pending,
 		logSessions:      cfg.LogSessions,
+		logTailSessions:  make(map[string]int),
 		totpCache:        auth.NewTOTPUsedCodes(),
 		tokenBlacklist:   auth.NewTokenBlacklist(cfg.Store.DB()),
 		notifier:         cfg.Notifier,

@@ -226,6 +226,9 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 
 func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, hb *pb.Heartbeat, peerIP string) (*handshakeResult, error) {
 	serverID := hb.ServerId
+	if err := h.verifyCertCN(stream, serverID, true); err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "heartbeat authentication failed: %v", err)
+	}
 	if err := h.handleHeartbeat(serverID); err != nil {
 		return nil, status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
 	}
@@ -241,7 +244,7 @@ func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer
 		_ = h.store.UpdateServerIP(serverID, peerIP)
 	}
 
-	return &handshakeResult{serverID: serverID, requireClientCert: true}, nil
+	return &handshakeResult{serverID: serverID}, nil
 }
 
 // routeAgentMessage dispatches an incoming agent message to the appropriate handler.

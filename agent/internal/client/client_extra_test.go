@@ -253,6 +253,41 @@ func TestHandleMessage_LogStreamRequest(t *testing.T) {
 	delete(c.tailSessions, testLogReqMsg)
 }
 
+func TestIsPathAllowed_RejectsSymlinkEscape(t *testing.T) {
+	allowedRoot := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "outside.log")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	linkPath := filepath.Join(allowedRoot, "escape.log")
+	if err := os.Symlink(outsideFile, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if isPathAllowed(linkPath, []string{allowedRoot}) {
+		t.Fatal("expected symlink escape to be rejected")
+	}
+}
+
+func TestIsPathAllowed_AllowsSymlinkWithinRoot(t *testing.T) {
+	allowedRoot := t.TempDir()
+	target := filepath.Join(allowedRoot, "app.log")
+	if err := os.WriteFile(target, []byte("inside"), 0644); err != nil {
+		t.Fatalf("write target file: %v", err)
+	}
+
+	linkPath := filepath.Join(allowedRoot, "current.log")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if !isPathAllowed(linkPath, []string{allowedRoot}) {
+		t.Fatal("expected in-root symlink to be allowed")
+	}
+}
+
 // TestNewClient_DefaultValues verifies client is initialized with sensible defaults.
 func TestNewClient_DefaultValues(t *testing.T) {
 	c := New(Config{
