@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
@@ -36,6 +37,12 @@ func TestNew_CreatesServer(t *testing.T) {
 	}
 	if s.jwtSecret != jwtSecret {
 		t.Fatalf("expected jwtSecret '%s', got '%s'", jwtSecret, s.jwtSecret)
+	}
+	if s.httpServer.ReadHeaderTimeout != 5*time.Second {
+		t.Fatalf("expected ReadHeaderTimeout 5s, got %s", s.httpServer.ReadHeaderTimeout)
+	}
+	if s.httpServer.MaxHeaderBytes != 1<<20 {
+		t.Fatalf("expected MaxHeaderBytes %d, got %d", 1<<20, s.httpServer.MaxHeaderBytes)
 	}
 }
 

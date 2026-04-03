@@ -61,6 +61,14 @@ func (s *Server) authMiddleware(requiredType string, next http.Handler) http.Han
 			return
 		}
 
+		if claims.TokenType == auth.TokenTypeAccess {
+			user, err := s.store.GetUserByID(claims.Subject)
+			if err != nil || claims.TokenGeneration != user.TokenGeneration {
+				respondError(w, http.StatusUnauthorized, "token has been revoked")
+				return
+			}
+		}
+
 		ctx := context.WithValue(r.Context(), ctxUserID, claims.Subject)
 		ctx = context.WithValue(ctx, ctxUserRole, claims.Role)
 		ctx = context.WithValue(ctx, ctxTokenType, claims.TokenType)
@@ -231,17 +239,10 @@ func apiCacheControl(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP extracts the real client IP, checking X-Forwarded-For first
-// (set by Traefik), then falling back to RemoteAddr.
+// clientIP returns the direct peer IP from RemoteAddr.
+// Forwarded headers are not trusted here because the hub may be reachable
+// without a proxy, and audit/security signals should not be spoofable.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
-		// The first one is the original client IP.
-		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
-		}
-		return strings.TrimSpace(xff)
-	}
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

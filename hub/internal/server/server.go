@@ -21,62 +21,67 @@ import (
 var Version = "dev"
 
 type Server struct {
-	httpServer  *http.Server
-	store       *store.Store
-	jwtSecret   string
-	isDev       bool
-	frontendFS  *embed.FS
-	agentBinDir string
+	httpServer       *http.Server
+	store            *store.Store
+	jwtSecret        string
+	isDev            bool
+	frontendFS       *embed.FS
+	agentBinDir      string
 	grpcAddr         string
 	grpcExternalAddr string
+	grpcCACertSHA256 string
 	connMgr          *connmgr.ConnManager
-	pending     *grpcserver.PendingRequests
-	logSessions *grpcserver.LogSessions
-	totpCache      *auth.TOTPUsedCodes
-	tokenBlacklist *auth.TokenBlacklist
-	notifier       *notify.Notifier
+	pending          *grpcserver.PendingRequests
+	logSessions      *grpcserver.LogSessions
+	totpCache        *auth.TOTPUsedCodes
+	tokenBlacklist   *auth.TokenBlacklist
+	notifier         *notify.Notifier
 }
 
 type Config struct {
-	Addr        string
-	Store       *store.Store
-	JWTSecret   string
-	IsDev       bool
-	FrontendFS  *embed.FS
-	AgentBinDir string
+	Addr             string
+	Store            *store.Store
+	JWTSecret        string
+	IsDev            bool
+	FrontendFS       *embed.FS
+	AgentBinDir      string
 	GRPCAddr         string
 	GRPCExternalAddr string
+	GRPCCACertSHA256 string
 	ConnMgr          *connmgr.ConnManager
-	Pending     *grpcserver.PendingRequests
-	LogSessions *grpcserver.LogSessions
-	Notifier    *notify.Notifier
+	Pending          *grpcserver.PendingRequests
+	LogSessions      *grpcserver.LogSessions
+	Notifier         *notify.Notifier
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		store:       cfg.Store,
-		jwtSecret:   cfg.JWTSecret,
-		isDev:       cfg.IsDev,
-		frontendFS:  cfg.FrontendFS,
-		agentBinDir: cfg.AgentBinDir,
+		store:            cfg.Store,
+		jwtSecret:        cfg.JWTSecret,
+		isDev:            cfg.IsDev,
+		frontendFS:       cfg.FrontendFS,
+		agentBinDir:      cfg.AgentBinDir,
 		grpcAddr:         cfg.GRPCAddr,
 		grpcExternalAddr: cfg.GRPCExternalAddr,
-		connMgr:     cfg.ConnMgr,
-		pending:     cfg.Pending,
-		logSessions: cfg.LogSessions,
-		totpCache:      auth.NewTOTPUsedCodes(),
-		tokenBlacklist: auth.NewTokenBlacklist(cfg.Store.DB()),
-		notifier:       cfg.Notifier,
+		grpcCACertSHA256: cfg.GRPCCACertSHA256,
+		connMgr:          cfg.ConnMgr,
+		pending:          cfg.Pending,
+		logSessions:      cfg.LogSessions,
+		totpCache:        auth.NewTOTPUsedCodes(),
+		tokenBlacklist:   auth.NewTokenBlacklist(cfg.Store.DB()),
+		notifier:         cfg.Notifier,
 	}
 
 	mux := s.routes()
 
 	s.httpServer = &http.Server{
-		Addr:         cfg.Addr,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.Addr,
+		Handler:           mux,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	return s

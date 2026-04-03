@@ -60,10 +60,17 @@ func TestRefreshToken_NewTokenWorks(t *testing.T) {
 
 	var pair model.TokenPair
 	json.NewDecoder(rec.Body).Decode(&pair)
+	if pair.AccessToken != "" || pair.RefreshToken != "" {
+		t.Fatal("expected refresh response body to omit rotated tokens")
+	}
 
-	// The new refresh token from the response should work
-	body2, _ := json.Marshal(model.RefreshRequest{RefreshToken: pair.RefreshToken})
-	req2 := httptest.NewRequest("POST", testRefreshPath, bytes.NewReader(body2))
+	// The new refresh token from the cookie should work
+	refreshCookie := findCookie(rec.Result().Cookies(), cookieRefresh)
+	if refreshCookie == nil {
+		t.Fatal("expected refresh cookie after refresh")
+	}
+	req2 := httptest.NewRequest("POST", testRefreshPath, nil)
+	req2.AddCookie(refreshCookie)
 	rec2 := httptest.NewRecorder()
 	s.routes().ServeHTTP(rec2, req2)
 

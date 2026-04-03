@@ -8,12 +8,10 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
@@ -37,6 +35,11 @@ type Handler struct {
 	notifier    *notify.Notifier
 }
 
+type handshakeResult struct {
+	serverID          string
+	requireClientCert bool
+}
+
 // extractServerIDFromCert extracts the server ID from a client certificate's CN.
 func extractServerIDFromCert(cert *x509.Certificate) string {
 	if cert == nil {
@@ -46,15 +49,16 @@ func extractServerIDFromCert(cert *x509.Certificate) string {
 }
 
 func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
-	serverID, err := h.performHandshake(stream)
+	handshake, err := h.performHandshake(stream)
 	if err != nil {
 		return err
 	}
 
-	if err := h.verifyCertCN(stream, serverID); err != nil {
+	if err := h.verifyCertCN(stream, handshake.serverID, handshake.requireClientCert); err != nil {
 		return err
 	}
 
+	serverID := handshake.serverID
 	h.connMgr.Register(serverID, stream)
 
 	// Use stored IP (set during handshake with agent-reported IP) for logging
@@ -83,18 +87,22 @@ func (h *Handler) Connect(stream pb.AgentService_ConnectServer) error {
 }
 
 // verifyCertCN checks that the mTLS client certificate CN matches the server ID.
-// If a client certificate is presented, the CN must match. If no certificate is
-// presented, the connection is allowed for backward compatibility with agents that
-// have not yet obtained mTLS certs (e.g., during initial registration).
-func (h *Handler) verifyCertCN(stream pb.AgentService_ConnectServer, serverID string) error {
+// Registration is allowed without a client certificate; reconnects must present one.
+func (h *Handler) verifyCertCN(stream pb.AgentService_ConnectServer, serverID string, requireCert bool) error {
 	p, ok := peer.FromContext(stream.Context())
 	if !ok {
-		log.Printf("warning: no peer info for agent %s — allowing without cert verification", serverID)
+		if requireCert {
+			return fmt.Errorf("missing peer info for authenticated reconnect")
+		}
+		log.Printf("warning: no peer info for agent %s — allowing bootstrap registration without cert verification", serverID)
 		return nil
 	}
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
-		log.Printf("warning: agent %s connected without client certificate", serverID)
+		if requireCert {
+			return fmt.Errorf("agent %s connected without required client certificate", serverID)
+		}
+		log.Printf("warning: agent %s connected without client certificate during registration", serverID)
 		return nil
 	}
 	certCN := extractServerIDFromCert(tlsInfo.State.PeerCertificates[0])
@@ -104,20 +112,8 @@ func (h *Handler) verifyCertCN(stream pb.AgentService_ConnectServer, serverID st
 	return nil
 }
 
-// peerAddr extracts the real client IP from the stream context.
-// Checks X-Forwarded-For metadata first (set by Traefik), then falls
-// back to the gRPC peer address.
+// peerAddr extracts the client IP from the gRPC peer address.
 func (h *Handler) peerAddr(stream pb.AgentService_ConnectServer) string {
-	if md, ok := metadata.FromIncomingContext(stream.Context()); ok {
-		if xff := md.Get("x-forwarded-for"); len(xff) > 0 {
-			// First IP in the chain is the original client
-			ip := xff[0]
-			if idx := strings.Index(ip, ","); idx != -1 {
-				ip = strings.TrimSpace(ip[:idx])
-			}
-			return strings.TrimSpace(ip)
-		}
-	}
 	if p, ok := peer.FromContext(stream.Context()); ok {
 		if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
 			return host
@@ -176,14 +172,13 @@ func (h *Handler) resolveServerName(serverID string) string {
 }
 
 // performHandshake receives the first message from the agent, handles registration or
-// reconnect-via-heartbeat, sends the appropriate ack, and returns the server ID.
-func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string, error) {
-	// Extract real client IP — check X-Forwarded-For first (Traefik), then peer address
+// reconnect-via-heartbeat, sends the appropriate ack, and returns the authenticated server ID.
+func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (*handshakeResult, error) {
 	peerIP := h.peerAddr(stream)
 
 	msg, err := stream.Recv()
 	if err != nil {
-		return "", status.Errorf(codes.InvalidArgument, "failed to receive first message: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "failed to receive first message: %v", err)
 	}
 
 	switch p := msg.Payload.(type) {
@@ -192,33 +187,26 @@ func (h *Handler) performHandshake(stream pb.AgentService_ConnectServer) (string
 	case *pb.AgentMessage_Heartbeat:
 		return h.performHeartbeatHandshake(stream, p.Heartbeat, peerIP)
 	default:
-		return "", status.Errorf(codes.InvalidArgument, "first message must be Register or Heartbeat")
+		return nil, status.Errorf(codes.InvalidArgument, "first message must be Register or Heartbeat")
 	}
 }
 
-func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent, peerIP string) (string, error) {
-	// Prefer agent-reported IP when behind a TCP proxy (e.g. Traefik TLS passthrough)
-	// where the peer address is the proxy, not the real client.
-	// Validate the agent-reported IP to prevent arbitrary string injection.
-	agentIP := reg.GetIpAddress()
-	if agentIP == "" || net.ParseIP(agentIP) == nil {
-		agentIP = peerIP
-	}
-	serverID, err := h.handleRegister(reg.Token, reg.Hostname, agentIP, reg.Os, reg.AgentVersion)
+func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer, reg *pb.RegisterAgent, peerIP string) (*handshakeResult, error) {
+	serverID, err := h.handleRegister(reg.Token, reg.Hostname, peerIP, reg.Os, reg.AgentVersion)
 	if err != nil {
 		_ = stream.Send(&pb.HubMessage{
 			Payload: &pb.HubMessage_RegisterAck{
 				RegisterAck: &pb.RegisterAck{Success: false, Error: err.Error()},
 			},
 		})
-		return "", status.Errorf(codes.Unauthenticated, "registration failed: %v", err)
+		return nil, status.Errorf(codes.Unauthenticated, "registration failed: %v", err)
 	}
 	if err := stream.Send(&pb.HubMessage{
 		Payload: &pb.HubMessage_RegisterAck{
 			RegisterAck: &pb.RegisterAck{Success: true, ServerId: serverID},
 		},
 	}); err != nil {
-		return "", status.Errorf(codes.Internal, "failed to send register ack: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to send register ack: %v", err)
 	}
 
 	if h.notifier != nil {
@@ -233,33 +221,27 @@ func (h *Handler) performRegisterHandshake(stream pb.AgentService_ConnectServer,
 		})
 	}
 
-	return serverID, nil
+	return &handshakeResult{serverID: serverID}, nil
 }
 
-func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, hb *pb.Heartbeat, peerIP string) (string, error) {
+func (h *Handler) performHeartbeatHandshake(stream pb.AgentService_ConnectServer, hb *pb.Heartbeat, peerIP string) (*handshakeResult, error) {
 	serverID := hb.ServerId
 	if err := h.handleHeartbeat(serverID); err != nil {
-		return "", status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
+		return nil, status.Errorf(codes.NotFound, "heartbeat failed: %v", err)
 	}
 	if err := stream.Send(&pb.HubMessage{
 		Payload: &pb.HubMessage_HeartbeatAck{
 			HeartbeatAck: &pb.HeartbeatAck{Timestamp: time.Now().Unix()},
 		},
 	}); err != nil {
-		return "", status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to send heartbeat ack: %v", err)
 	}
 
-	// Prefer agent-reported IP (from heartbeat) when behind a TCP proxy.
-	// Validate the agent-reported IP to prevent arbitrary string injection.
-	ip := hb.GetIpAddress()
-	if ip == "" || net.ParseIP(ip) == nil {
-		ip = peerIP
-	}
-	if ip != "" {
-		_ = h.store.UpdateServerIP(serverID, ip)
+	if peerIP != "" {
+		_ = h.store.UpdateServerIP(serverID, peerIP)
 	}
 
-	return serverID, nil
+	return &handshakeResult{serverID: serverID, requireClientCert: true}, nil
 }
 
 // routeAgentMessage dispatches an incoming agent message to the appropriate handler.

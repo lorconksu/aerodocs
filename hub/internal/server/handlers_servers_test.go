@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wyiu/aerodocs/hub/internal/model"
@@ -90,6 +91,9 @@ func TestCreateServer(t *testing.T) {
 	}
 	if resp.InstallCommand == "" {
 		t.Fatal("expected install_command in response")
+	}
+	if !strings.Contains(resp.InstallCommand, "--ca-pin '") {
+		t.Fatalf("expected install_command to include --ca-pin, got %q", resp.InstallCommand)
 	}
 }
 
@@ -229,4 +233,3 @@ func TestBatchDeleteServers_EmptyList(t *testing.T) {
 		t.Fatalf(testExpected400, rec.Code)
 	}
 }
-

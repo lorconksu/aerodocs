@@ -102,9 +102,17 @@ func TestRefresh_DemotedUser_GetsCurrentRole(t *testing.T) {
 
 	var tokenPair model.TokenPair
 	json.NewDecoder(refreshRec.Body).Decode(&tokenPair)
+	if tokenPair.AccessToken != "" || tokenPair.RefreshToken != "" {
+		t.Fatal("expected refresh response body to omit rotated tokens")
+	}
+
+	accessCookie := findCookie(refreshRec.Result().Cookies(), cookieAccess)
+	if accessCookie == nil {
+		t.Fatal("expected access cookie after refresh")
+	}
 
 	// Parse the new access token and verify the role is viewer
-	claims, err := auth.ValidateToken(s.jwtSecret, tokenPair.AccessToken)
+	claims, err := auth.ValidateToken(s.jwtSecret, accessCookie.Value)
 	if err != nil {
 		t.Fatalf("validate new access token: %v", err)
 	}

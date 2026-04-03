@@ -1,8 +1,12 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -40,6 +44,7 @@ type Config struct {
 	UnregisterToken string
 	Insecure        bool
 	AllowedPaths    []string
+	HubCAPin        string
 }
 
 const maxTailSessions = 50
@@ -61,6 +66,7 @@ type Client struct {
 	unregisterToken string
 	insecure        bool
 	allowedPaths    []string
+	hubCAPin        string
 }
 
 func New(cfg Config) *Client {
@@ -84,6 +90,7 @@ func New(cfg Config) *Client {
 		unregisterToken: cfg.UnregisterToken,
 		insecure:        cfg.Insecure,
 		allowedPaths:    cfg.AllowedPaths,
+		hubCAPin:        cfg.HubCAPin,
 	}
 }
 
@@ -415,8 +422,7 @@ func (c *Client) startCertRenewalTicker(interval time.Duration, sendCh chan<- *p
 // dialHub creates a gRPC connection to the hub with 3-tier TLS:
 //  1. mTLS if the cert store has a valid certificate
 //  2. Insecure (no TLS) if the --insecure flag is set
-//  3. TOFU (TLS with InsecureSkipVerify) for IP addresses
-//  4. Standard TLS for hostnames
+//  3. Pinned-CA bootstrap TLS for the first registration
 func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	var creds grpc.DialOption
 	if tlsCfg := c.certStore.TLSConfig(); tlsCfg != nil {
@@ -424,10 +430,11 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 	} else if !c.useTLS() {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	} else {
-		// Initial bootstrap: use TOFU (skip server cert verify) since the agent
-		// will receive mTLS certs from the hub during registration and switch to
-		// full mutual TLS verification for all subsequent connections.
-		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})) // NOSONAR — intentional TOFU for bootstrap; mTLS takes over after cert enrollment
+		tlsCfg, err := c.bootstrapTLSConfig()
+		if err != nil {
+			return nil, err
+		}
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
 	}
 	conn, err := grpc.NewClient(c.hubAddr, creds,
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -440,6 +447,69 @@ func (c *Client) dialHub() (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("dial hub: %w", err)
 	}
 	return conn, nil
+}
+
+func (c *Client) bootstrapTLSConfig() (*tls.Config, error) {
+	if c.hubCAPin == "" {
+		return nil, fmt.Errorf("missing hub CA pin for bootstrap TLS")
+	}
+	expectedPin, err := hex.DecodeString(c.hubCAPin)
+	if err != nil {
+		return nil, fmt.Errorf("decode hub CA pin: %w", err)
+	}
+	host, _, err := net.SplitHostPort(c.hubAddr)
+	if err != nil {
+		host = c.hubAddr
+	}
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		InsecureSkipVerify: true, // Verified against the pinned CA below.
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			return verifyPinnedHubCertificate(rawCerts, expectedPin, host)
+		},
+	}, nil
+}
+
+func verifyPinnedHubCertificate(rawCerts [][]byte, expectedPin []byte, host string) error {
+	if len(rawCerts) == 0 {
+		return fmt.Errorf("hub did not present a certificate chain")
+	}
+	certs := make([]*x509.Certificate, 0, len(rawCerts))
+	for _, raw := range rawCerts {
+		cert, err := x509.ParseCertificate(raw)
+		if err != nil {
+			return fmt.Errorf("parse hub certificate: %w", err)
+		}
+		certs = append(certs, cert)
+	}
+	leaf := certs[0]
+	var pinnedCA *x509.Certificate
+	intermediates := x509.NewCertPool()
+	for _, cert := range certs[1:] {
+		sum := sha256.Sum256(cert.Raw)
+		if bytes.Equal(sum[:], expectedPin) {
+			pinnedCA = cert
+			continue
+		}
+		intermediates.AddCert(cert)
+	}
+	if pinnedCA == nil {
+		return fmt.Errorf("hub TLS chain did not include the expected CA pin")
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(pinnedCA)
+	opts := x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	if parsedIP := net.ParseIP(host); parsedIP == nil && host != "" {
+		opts.DNSName = host
+	}
+	if _, err := leaf.Verify(opts); err != nil {
+		return fmt.Errorf("verify hub certificate: %w", err)
+	}
+	return nil
 }
 
 // registerOrHandshake sends the initial register (first connect) or heartbeat
@@ -500,7 +570,10 @@ func (c *Client) generateCSRForRegistration() []byte {
 }
 
 // storeMTLSCerts persists the mTLS client cert and CA cert from a register ack.
-func (c *Client) storeMTLSCerts(ack interface{ GetClientCert() []byte; GetCaCert() []byte }) {
+func (c *Client) storeMTLSCerts(ack interface {
+	GetClientCert() []byte
+	GetCaCert() []byte
+}) {
 	if len(ack.GetClientCert()) == 0 || len(ack.GetCaCert()) == 0 {
 		return
 	}

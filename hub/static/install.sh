@@ -10,6 +10,7 @@ TOKEN=""
 HUB=""
 URL=""
 UNREGISTER_TOKEN=""
+CA_PIN=""
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
@@ -18,6 +19,7 @@ while [[ $# -gt 0 ]]; do
     --hub)               HUB="$2";               shift 2 ;;
     --url)               URL="$2";               shift 2 ;;
     --unregister-token)  UNREGISTER_TOKEN="$2";  shift 2 ;;
+    --ca-pin)            CA_PIN="$2";            shift 2 ;;
     --force)             FORCE=true;              shift ;;
     *)                   echo "Unknown argument: $1"; exit 1 ;;
   esac
@@ -45,11 +47,16 @@ if [[ -n "$UNREGISTER_TOKEN" ]] && ! echo "$UNREGISTER_TOKEN" | grep -qE '^[a-fA
     echo "ERROR: Invalid unregister token format" >&2
     exit 1
 fi
+if [[ -n "$CA_PIN" ]] && ! echo "$CA_PIN" | grep -qE '^[a-fA-F0-9]{64}$'; then
+    echo "ERROR: Invalid CA pin format" >&2
+    exit 1
+fi
 
-if [[ -z "$TOKEN" ]] || [[ -z "$HUB" ]]; then
+if [[ -z "$TOKEN" ]] || [[ -z "$HUB" ]] || [[ -z "$CA_PIN" ]]; then
   echo "Usage: sudo bash install.sh --token <TOKEN> --hub <GRPC_ADDR>"
   echo "  --token   One-time registration token from Hub"
   echo "  --hub     Hub gRPC address (e.g., 10.0.1.5:9090)"
+  echo "  --ca-pin  SHA-256 fingerprint of the Hub CA certificate"
   echo "  --force   Replace existing installation without prompting"
   exit 1
 fi
@@ -177,8 +184,9 @@ cat > /etc/aerodocs/agent.env <<'ENVEOF'
 AERODOCS_HUB=__HUB_ADDR__
 AERODOCS_TOKEN=__REG_TOKEN__
 AERODOCS_UNREGISTER_TOKEN=__UNREG_TOKEN__
+AERODOCS_HUB_CA_PIN=__CA_PIN__
 ENVEOF
-sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g; s|__UNREG_TOKEN__|${UNREGISTER_TOKEN}|g" /etc/aerodocs/agent.env
+sed -i "s|__HUB_ADDR__|${HUB}|g; s|__REG_TOKEN__|${TOKEN}|g; s|__UNREG_TOKEN__|${UNREGISTER_TOKEN}|g; s|__CA_PIN__|${CA_PIN}|g" /etc/aerodocs/agent.env
 chmod 600 /etc/aerodocs/agent.env
 
 # --- Install systemd service ---
@@ -192,7 +200,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/aerodocs/agent.env
-ExecStart=/usr/local/bin/aerodocs-agent --hub ${AERODOCS_HUB} --token ${AERODOCS_TOKEN}
+ExecStart=/usr/local/bin/aerodocs-agent --hub ${AERODOCS_HUB} --token ${AERODOCS_TOKEN} --ca-pin ${AERODOCS_HUB_CA_PIN}
 Restart=always
 RestartSec=5
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"net"
@@ -62,24 +63,26 @@ func runServer() error {
 	if err != nil {
 		return fmt.Errorf("init CA: %w", err)
 	}
+	grpcCAPin := fmt.Sprintf("%x", sha256.Sum256(caCert.Raw))
 
 	cm := connmgr.New()
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
 
 	srv := server.New(server.Config{
-		Addr:        *addr,
-		Store:       st,
-		JWTSecret:   jwtSecret,
-		IsDev:       *dev,
-		FrontendFS:  &hub.FrontendFS,
-		AgentBinDir: *agentBinDir,
+		Addr:             *addr,
+		Store:            st,
+		JWTSecret:        jwtSecret,
+		IsDev:            *dev,
+		FrontendFS:       &hub.FrontendFS,
+		AgentBinDir:      *agentBinDir,
 		GRPCAddr:         *grpcAddr,
 		GRPCExternalAddr: *grpcExternalAddr,
-		ConnMgr:     cm,
-		Pending:     pending,
-		LogSessions: logSessions,
-		Notifier:    notifier,
+		GRPCCACertSHA256: grpcCAPin,
+		ConnMgr:          cm,
+		Pending:          pending,
+		LogSessions:      logSessions,
+		Notifier:         notifier,
 	})
 
 	// Extract hostname from external gRPC address for TLS SAN

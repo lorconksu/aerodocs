@@ -17,6 +17,13 @@ import (
 
 var hostPattern = regexp.MustCompile(`^[a-zA-Z0-9._:\-]+$`)
 
+func hostFromAddr(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
+}
+
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -82,6 +89,24 @@ func (s *Server) resolveGRPCTarget(host string) string {
 	return target
 }
 
+func (s *Server) resolvePublicBaseURL() (string, error) {
+	if s.isDev {
+		return "http://localhost:8080", nil
+	}
+
+	grpcTarget := s.resolveGRPCTarget("")
+	if grpcTarget == "" {
+		return "", fmt.Errorf("public hub address is not configured")
+	}
+
+	host := hostFromAddr(grpcTarget)
+	if host == "" || !hostPattern.MatchString(host) {
+		return "", fmt.Errorf("invalid public hub address")
+	}
+
+	return fmt.Sprintf("https://%s", host), nil
+}
+
 func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	var req model.CreateServerRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -134,20 +159,12 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		Action: model.AuditServerCreated, Target: &srv.ID, IPAddress: &ip,
 	})
 
-	// Build install command using the request's host and configured gRPC address
-	scheme := "https"
-	if s.isDev {
-		scheme = "http"
-	}
-	host := r.Host
-	// Sanitize host - only allow alphanumeric, dots, colons, hyphens
-	if !hostPattern.MatchString(host) {
-		respondError(w, http.StatusBadRequest, "invalid host header")
+	baseURL, err := s.resolvePublicBaseURL()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "public hub address is not configured")
 		return
 	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, host)
-
-	grpcTarget := s.resolveGRPCTarget(host)
+	grpcTarget := s.resolveGRPCTarget(hostFromAddr(strings.TrimPrefix(baseURL, "https://")))
 
 	// Validate the gRPC target address (skip in dev mode where listen addr may be ":0")
 	if !s.isDev && !isValidGRPCAddr(grpcTarget) {
@@ -159,8 +176,8 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	unregisterToken := s.selfUnregisterToken(srv.ID)
 
 	installCmd := fmt.Sprintf(
-		"curl -sSL '%s/install.sh' | sudo bash -s -- --token '%s' --hub '%s' --url '%s' --unregister-token '%s'",
-		baseURL, rawToken, grpcTarget, baseURL, unregisterToken,
+		"curl -sSL '%s/install.sh' | sudo bash -s -- --token '%s' --hub '%s' --url '%s' --unregister-token '%s' --ca-pin '%s'",
+		baseURL, rawToken, grpcTarget, baseURL, unregisterToken, s.grpcCACertSHA256,
 	)
 
 	respondJSON(w, http.StatusCreated, model.CreateServerResponse{
@@ -356,4 +373,3 @@ func isValidGRPCAddr(addr string) bool {
 	}
 	return hostPattern.MatchString(host)
 }
-

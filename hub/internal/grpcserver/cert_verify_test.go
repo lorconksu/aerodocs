@@ -203,3 +203,24 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 		t.Fatalf("unexpected error: %s", resp.Error)
 	}
 }
+
+func TestVerifyCertCN_RequiresClientCertForReconnect(t *testing.T) {
+	h, _ := testHandler(t)
+	if err := h.verifyCertCN(&mockStream{}, "server-1", true); err == nil {
+		t.Fatal("expected reconnect without client cert to be rejected")
+	}
+}
+
+func TestVerifyCertCN_AllowsRegistrationWithoutClientCert(t *testing.T) {
+	h, _ := testHandler(t)
+	if err := h.verifyCertCN(&mockStream{}, "server-1", false); err != nil {
+		t.Fatalf("expected registration without client cert to be allowed, got %v", err)
+	}
+}
+
+func TestVerifyCertCN_AcceptsMatchingCert(t *testing.T) {
+	h, _ := testHandler(t)
+	if err := h.verifyCertCN(streamWithPeerCert("server-1"), "server-1", true); err != nil {
+		t.Fatalf("expected matching client cert to be accepted, got %v", err)
+	}
+}
