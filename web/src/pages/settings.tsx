@@ -11,6 +11,28 @@ import { CreateUserModal } from '@/pages/create-user-modal'
 import { NotificationsTab } from '@/pages/settings-notifications-tab'
 import { PreferencesTab } from '@/pages/settings-preferences-tab'
 
+function roleBadgeTone(role: Role): string {
+  switch (role) {
+    case 'admin':
+      return 'bg-accent/20 text-accent'
+    case 'auditor':
+      return 'bg-status-warning/20 text-status-warning'
+    default:
+      return 'bg-elevated text-text-muted'
+  }
+}
+
+function roleLabel(role: Role): string {
+  switch (role) {
+    case 'admin':
+      return 'Admin'
+    case 'auditor':
+      return 'Auditor'
+    default:
+      return 'Viewer'
+  }
+}
+
 function ProfileTab() {
   const { user } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
@@ -79,7 +101,7 @@ function ProfileTab() {
     },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     setSuccess('')
 
@@ -313,7 +335,7 @@ function UsersTab() {
     },
   })
 
-  const handleDisableTotp = (e: React.FormEvent) => {
+  const handleDisableTotp = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!disableTotpUserId) return
     disableTotpMutation.mutate({
@@ -376,16 +398,10 @@ function UsersTab() {
                 <td className="px-4 py-2 text-text-secondary">{u.email}</td>
                 <td className="px-4 py-2">
                   {u.id === currentUser?.id ? (
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      u.role === 'admin'
-                        ? 'bg-accent/20 text-accent'
-                        : u.role === 'auditor'
-                          ? 'bg-status-warning/20 text-status-warning'
-                          : 'bg-elevated text-text-muted'
-                    }`}>
-                      {/* c8 ignore next */}
-                      {u.role === 'admin' ? 'Admin' : u.role === 'auditor' ? 'Auditor' : 'Viewer'}
-                    </span>
+	                    <span className={`text-xs px-2 py-0.5 rounded ${roleBadgeTone(u.role)}`}>
+	                      {/* c8 ignore next */}
+	                      {roleLabel(u.role)}
+	                    </span>
                   ) : (
                     <select
                       value={u.role}

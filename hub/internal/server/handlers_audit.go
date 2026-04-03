@@ -11,6 +11,8 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const errAuditFilterJSONInvalid = "filters_json must be valid JSON and at most 16KB"
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	health, err := s.store.GetAuditHealth()
 	if err != nil {
@@ -200,7 +202,7 @@ func (s *Server) handleCreateAuditReview(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := validateJSONBlob(req.FiltersJSON, 16<<10); err != nil {
-		respondError(w, http.StatusBadRequest, "filters_json must be valid JSON and at most 16KB")
+		respondError(w, http.StatusBadRequest, errAuditFilterJSONInvalid)
 		return
 	}
 	reviewerID := UserIDFromContext(r.Context())
@@ -240,7 +242,7 @@ func (s *Server) handleCreateAuditSavedFilter(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := validateJSONBlob(req.FiltersJSON, 16<<10); err != nil {
-		respondError(w, http.StatusBadRequest, "filters_json must be valid JSON and at most 16KB")
+		respondError(w, http.StatusBadRequest, errAuditFilterJSONInvalid)
 		return
 	}
 	userID := UserIDFromContext(r.Context())
@@ -305,7 +307,7 @@ func (s *Server) handleCreateAuditFlag(w http.ResponseWriter, r *http.Request) {
 		req.FiltersJSON = "{}"
 	}
 	if err := validateJSONBlob(req.FiltersJSON, 16<<10); err != nil {
-		respondError(w, http.StatusBadRequest, "filters_json must be valid JSON and at most 16KB")
+		respondError(w, http.StatusBadRequest, errAuditFilterJSONInvalid)
 		return
 	}
 	userID := UserIDFromContext(r.Context())
@@ -327,101 +329,128 @@ func (s *Server) handleCreateAuditFlag(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAuditDetections(w http.ResponseWriter, r *http.Request) {
 	settings := s.store.GetAuditSettings()
-	var detections []model.AuditDetection
-
 	from := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
-	action := model.AuditUserLoginFailed
-	loginFailedEntries, loginFailedTotal, err := s.store.ListAuditLogs(model.AuditFilter{
-		Action: &action,
-		From:   &from,
-		Limit:  5,
-	})
-	if err == nil && loginFailedTotal >= settings.Thresholds.LoginFailuresPerHour {
-		detections = append(detections, model.AuditDetection{
-			ID:          "login-failures",
-			Type:        "login_failures",
-			Severity:    "medium",
-			Title:       "Repeated failed logins",
-			Description: fmt.Sprintf("%d failed logins in the last hour (threshold %d)", loginFailedTotal, settings.Thresholds.LoginFailuresPerHour),
-		})
-		_ = loginFailedEntries
+	detections := []model.AuditDetection{
+		s.loginFailureDetection(from, settings),
+		s.registrationFailureDetection(from, settings),
+		s.privilegedActionDetection(from, settings),
+		s.reviewOverdueDetection(settings),
 	}
+	respondJSON(w, http.StatusOK, model.AuditDetectionsResponse{Detections: compactDetections(detections)})
+}
 
-	action = model.AuditServerRegistrationFailed
-	_, registrationFailedTotal, err := s.store.ListAuditLogs(model.AuditFilter{
-		Action: &action,
-		From:   &from,
-		Limit:  5,
-	})
-	if err == nil && registrationFailedTotal >= settings.Thresholds.RegistrationFailuresPerHour {
-		detections = append(detections, model.AuditDetection{
-			ID:          "registration-failures",
-			Type:        "registration_failures",
-			Severity:    "high",
-			Title:       "Repeated failed agent registrations",
-			Description: fmt.Sprintf("%d failed registration attempts in the last hour (threshold %d)", registrationFailedTotal, settings.Thresholds.RegistrationFailuresPerHour),
-		})
-	}
-
-	privilegedAction := model.AuditUserRoleUpdated
-	_, privilegedTotal, err := s.store.ListAuditLogs(model.AuditFilter{
-		Action: &privilegedAction,
-		From:   &from,
-		Limit:  5,
-	})
-	if err == nil {
-		for _, actionName := range []string{
-			model.AuditUserDeleted,
-			model.AuditServerDeleted,
-			model.AuditServerBatchDeleted,
-			model.AuditAuditExported,
-		} {
-			currentAction := actionName
-			_, actionTotal, actionErr := s.store.ListAuditLogs(model.AuditFilter{
-				Action: &currentAction,
-				From:   &from,
-				Limit:  5,
-			})
-			if actionErr == nil {
-				privilegedTotal += actionTotal
-			}
-		}
-		if privilegedTotal >= settings.Thresholds.PrivilegedActionsPerHour {
-			detections = append(detections, model.AuditDetection{
-				ID:          "privileged-action-burst",
-				Type:        "privileged_action_burst",
-				Severity:    "medium",
-				Title:       "Burst of privileged actions",
-				Description: fmt.Sprintf("%d privileged actions in the last hour (threshold %d)", privilegedTotal, settings.Thresholds.PrivilegedActionsPerHour),
-			})
+func compactDetections(detections []model.AuditDetection) []model.AuditDetection {
+	out := make([]model.AuditDetection, 0, len(detections))
+	for _, detection := range detections {
+		if detection.ID != "" {
+			out = append(out, detection)
 		}
 	}
+	return out
+}
 
+func (s *Server) loginFailureDetection(from string, settings model.AuditSettings) model.AuditDetection {
+	total, err := s.auditCountSince(model.AuditFilter{
+		Action: stringPtr(model.AuditUserLoginFailed),
+		From:   stringPtr(from),
+		Limit:  5,
+	})
+	if err != nil || total < settings.Thresholds.LoginFailuresPerHour {
+		return model.AuditDetection{}
+	}
+	return model.AuditDetection{
+		ID:          "login-failures",
+		Type:        "login_failures",
+		Severity:    "medium",
+		Title:       "Repeated failed logins",
+		Description: fmt.Sprintf("%d failed logins in the last hour (threshold %d)", total, settings.Thresholds.LoginFailuresPerHour),
+	}
+}
+
+func (s *Server) registrationFailureDetection(from string, settings model.AuditSettings) model.AuditDetection {
+	total, err := s.auditCountSince(model.AuditFilter{
+		Action: stringPtr(model.AuditServerRegistrationFailed),
+		From:   stringPtr(from),
+		Limit:  5,
+	})
+	if err != nil || total < settings.Thresholds.RegistrationFailuresPerHour {
+		return model.AuditDetection{}
+	}
+	return model.AuditDetection{
+		ID:          "registration-failures",
+		Type:        "registration_failures",
+		Severity:    "high",
+		Title:       "Repeated failed agent registrations",
+		Description: fmt.Sprintf("%d failed registration attempts in the last hour (threshold %d)", total, settings.Thresholds.RegistrationFailuresPerHour),
+	}
+}
+
+func (s *Server) privilegedActionDetection(from string, settings model.AuditSettings) model.AuditDetection {
+	actions := []string{
+		model.AuditUserRoleUpdated,
+		model.AuditUserDeleted,
+		model.AuditServerDeleted,
+		model.AuditServerBatchDeleted,
+		model.AuditAuditExported,
+	}
+	total := 0
+	for _, action := range actions {
+		actionTotal, err := s.auditCountSince(model.AuditFilter{
+			Action: stringPtr(action),
+			From:   stringPtr(from),
+			Limit:  5,
+		})
+		if err != nil {
+			return model.AuditDetection{}
+		}
+		total += actionTotal
+	}
+	if total < settings.Thresholds.PrivilegedActionsPerHour {
+		return model.AuditDetection{}
+	}
+	return model.AuditDetection{
+		ID:          "privileged-action-burst",
+		Type:        "privileged_action_burst",
+		Severity:    "medium",
+		Title:       "Burst of privileged actions",
+		Description: fmt.Sprintf("%d privileged actions in the last hour (threshold %d)", total, settings.Thresholds.PrivilegedActionsPerHour),
+	}
+}
+
+func (s *Server) reviewOverdueDetection(settings model.AuditSettings) model.AuditDetection {
 	reviews, err := s.store.ListAuditReviews(1)
-	if err == nil {
-		reminder := settings.ReviewReminderDays
-		if len(reviews) == 0 {
-			detections = append(detections, model.AuditDetection{
-				ID:          "review-overdue-none",
-				Type:        "review_overdue",
-				Severity:    "medium",
-				Title:       "No audit review completed",
-				Description: "No recorded audit reviews exist yet",
-			})
-		} else if completedAt, err := time.Parse(sqliteAuditTimeFormat(reviews[0].CompletedAt), reviews[0].CompletedAt); err == nil {
-			if time.Since(completedAt) > time.Duration(reminder)*24*time.Hour {
-				detections = append(detections, model.AuditDetection{
-					ID:          "review-overdue",
-					Type:        "review_overdue",
-					Severity:    "medium",
-					Title:       "Audit review overdue",
-					Description: fmt.Sprintf("Last review completed at %s", completedAt.UTC().Format(time.RFC3339)),
-				})
-			}
+	if err != nil {
+		return model.AuditDetection{}
+	}
+	if len(reviews) == 0 {
+		return model.AuditDetection{
+			ID:          "review-overdue-none",
+			Type:        "review_overdue",
+			Severity:    "medium",
+			Title:       "No audit review completed",
+			Description: "No recorded audit reviews exist yet",
 		}
 	}
+	completedAt, err := time.Parse(sqliteAuditTimeFormat(reviews[0].CompletedAt), reviews[0].CompletedAt)
+	if err != nil || time.Since(completedAt) <= time.Duration(settings.ReviewReminderDays)*24*time.Hour {
+		return model.AuditDetection{}
+	}
+	return model.AuditDetection{
+		ID:          "review-overdue",
+		Type:        "review_overdue",
+		Severity:    "medium",
+		Title:       "Audit review overdue",
+		Description: fmt.Sprintf("Last review completed at %s", completedAt.UTC().Format(time.RFC3339)),
+	}
+}
 
-	respondJSON(w, http.StatusOK, model.AuditDetectionsResponse{Detections: detections})
+func (s *Server) auditCountSince(filter model.AuditFilter) (int, error) {
+	_, total, err := s.store.ListAuditLogs(filter)
+	return total, err
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func (s *Server) handleListAuditUsers(w http.ResponseWriter, r *http.Request) {

@@ -57,7 +57,7 @@ SELECT
     detail,
     ip_address,
     CASE
-        WHEN action LIKE '%_failed' THEN 'failure'
+        WHEN substr(action, -7) = '_failed' THEN 'failure'
         ELSE 'success'
     END,
     CASE
@@ -66,11 +66,11 @@ SELECT
     END,
     NULL,
     CASE
-        WHEN action LIKE 'user.%' THEN 'user'
-        WHEN action LIKE 'server.%' THEN 'server'
-        WHEN action LIKE 'file.%' THEN 'file'
-        WHEN action LIKE 'path.%' THEN 'path'
-        WHEN action LIKE 'log.%' THEN 'log'
+        WHEN substr(action, 1, 5) = 'user.' THEN 'user'
+        WHEN substr(action, 1, 7) = 'server.' THEN 'server'
+        WHEN substr(action, 1, 5) = 'file.' THEN 'file'
+        WHEN substr(action, 1, 5) = 'path.' THEN 'path'
+        WHEN substr(action, 1, 4) = 'log.' THEN 'log'
         ELSE 'system'
     END,
     prev_hash,
@@ -101,7 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_password_history_created_at ON password_history(c
 INSERT INTO password_history (id, user_id, password_hash, created_at)
 SELECT 'history-' || id, id, password_hash, created_at
 FROM users
-WHERE password_hash <> '';
+WHERE nullif(password_hash, '') IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS audit_saved_filters (
     id           TEXT PRIMARY KEY,

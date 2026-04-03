@@ -50,7 +50,7 @@ export function useTOTPDigits(onComplete: (code: string) => void) {
 
 type TOTPDigitInputProps = Readonly<{
   digits: string[]
-  inputRefs: React.MutableRefObject<(HTMLInputElement | null)[]>
+  inputRefs: { current: (HTMLInputElement | null)[] }
   handleDigitChange: (index: number, value: string) => void
   handlePaste: (e: React.ClipboardEvent) => void
   handleKeyDown: (index: number, e: React.KeyboardEvent) => void

@@ -16,6 +16,8 @@ import (
 
 const (
 	testGenerateCAFmt          = "generate CA: %v"
+	testGenerateClientKeyFmt   = "generate client key: %v"
+	testCreateCSRFmt           = "create CSR: %v"
 	testServerIDCert           = "s-cert"
 	testExpectCertRenewResp    = "expected a CertRenewResponse to be sent"
 	testExpectCertRenewPayload = "expected CertRenewResponse payload"
@@ -61,14 +63,14 @@ func TestHandleCertRenewal(t *testing.T) {
 	// Generate a CSR
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("generate client key: %v", err)
+		t.Fatalf(testGenerateClientKeyFmt, err)
 	}
 	csrTemplate := &x509.CertificateRequest{
 		Subject: pkix.Name{CommonName: testServerIDCert},
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, clientKey)
 	if err != nil {
-		t.Fatalf("create CSR: %v", err)
+		t.Fatalf(testCreateCSRFmt, err)
 	}
 
 	req := &pb.CertRenewRequest{Csr: csrDER}
@@ -116,13 +118,13 @@ func TestHandleCertRenewal_NoCA(t *testing.T) {
 
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("generate client key: %v", err)
+		t.Fatalf(testGenerateClientKeyFmt, err)
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject: pkix.Name{CommonName: testServerIDNoCA},
 	}, clientKey)
 	if err != nil {
-		t.Fatalf("create CSR: %v", err)
+		t.Fatalf(testCreateCSRFmt, err)
 	}
 
 	req := &pb.CertRenewRequest{Csr: csrDER}
@@ -186,13 +188,13 @@ func TestRouteAgentMessage_CertRenewRequest(t *testing.T) {
 	// Generate a valid CSR
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("generate client key: %v", err)
+		t.Fatalf(testGenerateClientKeyFmt, err)
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject: pkix.Name{CommonName: testServerIDRouteCert},
 	}, clientKey)
 	if err != nil {
-		t.Fatalf("create CSR: %v", err)
+		t.Fatalf(testCreateCSRFmt, err)
 	}
 
 	msg := &pb.AgentMessage{

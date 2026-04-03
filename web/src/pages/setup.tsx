@@ -27,7 +27,7 @@ export function SetupPage() {
     return errors.length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!runValidatePassword(password)) return
 

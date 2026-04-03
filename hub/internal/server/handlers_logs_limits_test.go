@@ -5,7 +5,10 @@ import (
 	"testing"
 )
 
-const testViewerID = "viewer-1"
+const (
+	testViewerID = "viewer-1"
+	testAdminID  = "admin-1"
+)
 
 func TestTryAcquireLogTailSlot_ViewerLimit(t *testing.T) {
 	s := &Server{logTailSessions: make(map[string]int)}
@@ -31,11 +34,11 @@ func TestTryAcquireLogTailSlot_AdminHigherLimit(t *testing.T) {
 	s := &Server{logTailSessions: make(map[string]int)}
 
 	for i := 0; i < maxAdminLogStreamsPerUser; i++ {
-		if !s.tryAcquireLogTailSlot("srv-1", "admin-1", "admin") {
+		if !s.tryAcquireLogTailSlot("srv-1", testAdminID, "admin") {
 			t.Fatalf("expected admin slot %d to be granted", i+1)
 		}
 	}
-	if s.tryAcquireLogTailSlot("srv-1", "admin-1", "admin") {
+	if s.tryAcquireLogTailSlot("srv-1", testAdminID, "admin") {
 		t.Fatal("expected admin log-tail quota to be enforced")
 	}
 	if !s.tryAcquireLogTailSlot("srv-1", testViewerID, "viewer") {
@@ -55,7 +58,7 @@ func TestTryAcquireLogTailSlot_ViewerReserveLeavesAdminHeadroom(t *testing.T) {
 	if s.tryAcquireLogTailSlot("srv-1", "viewer-extra", "viewer") {
 		t.Fatal("expected viewer traffic to be capped before exhausting the agent-wide pool")
 	}
-	if !s.tryAcquireLogTailSlot("srv-1", "admin-1", "admin") {
+	if !s.tryAcquireLogTailSlot("srv-1", testAdminID, "admin") {
 		t.Fatal("expected reserved admin headroom to remain available")
 	}
 }

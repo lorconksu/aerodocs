@@ -328,7 +328,7 @@ export function AuditLogsPage() {
           <div className="text-sm font-semibold text-text-primary">Compliance Controls</div>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs text-text-muted">
-              Retention Days
+              <span>Retention Days</span>
               <input
                 type="number"
                 value={settingsForm?.retention_days ?? 90}
@@ -338,7 +338,7 @@ export function AuditLogsPage() {
               />
             </label>
             <label className="text-xs text-text-muted">
-              Review Reminder Days
+              <span>Review Reminder Days</span>
               <input
                 type="number"
                 value={settingsForm?.review_reminder_days ?? 7}
@@ -348,7 +348,7 @@ export function AuditLogsPage() {
               />
             </label>
             <label className="text-xs text-text-muted">
-              Password History Count
+              <span>Password History Count</span>
               <input
                 type="number"
                 value={settingsForm?.password_history_count ?? 5}
@@ -358,7 +358,7 @@ export function AuditLogsPage() {
               />
             </label>
             <label className="text-xs text-text-muted">
-              Temp Password TTL Hours
+              <span>Temp Password TTL Hours</span>
               <input
                 type="number"
                 value={settingsForm?.temporary_password_ttl_hours ?? 72}
@@ -368,7 +368,7 @@ export function AuditLogsPage() {
               />
             </label>
             <label className="text-xs text-text-muted">
-              Login Failures / Hour
+              <span>Login Failures / Hour</span>
               <input
                 type="number"
                 value={settingsForm?.thresholds.login_failures_per_hour ?? 10}
@@ -378,7 +378,7 @@ export function AuditLogsPage() {
               />
             </label>
             <label className="text-xs text-text-muted">
-              Registration Failures / Hour
+              <span>Registration Failures / Hour</span>
               <input
                 type="number"
                 value={settingsForm?.thresholds.registration_failures_per_hour ?? 5}
@@ -388,7 +388,7 @@ export function AuditLogsPage() {
               />
             </label>
             <label className="text-xs text-text-muted col-span-2">
-              Privileged Actions / Hour
+              <span>Privileged Actions / Hour</span>
               <input
                 type="number"
                 value={settingsForm?.thresholds.privileged_actions_per_hour ?? 20}
@@ -616,9 +616,10 @@ export function AuditLogsPage() {
                   <td className="px-4 py-2">
                     <button
                       onClick={() => {
-                        const note = window.prompt('Flag note')
-                        if (note && note.trim()) {
-                          flagMutation.mutate({ entryId: entry.id, note: note.trim() })
+                        const note = globalThis.prompt?.('Flag note')
+                        const trimmedNote = note?.trim()
+                        if (trimmedNote) {
+                          flagMutation.mutate({ entryId: entry.id, note: trimmedNote })
                         }
                       }}
                       className="text-xs text-accent hover:text-accent-hover transition-colors"

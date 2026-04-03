@@ -29,7 +29,7 @@ export function CreateUserModal({ onClose }: Readonly<CreateUserModalProps>) {
     },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     mutation.mutate({ username, email, role })
   }
