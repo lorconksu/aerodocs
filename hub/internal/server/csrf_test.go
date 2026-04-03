@@ -130,6 +130,12 @@ func TestRequestScheme(t *testing.T) {
 	if got := s.requestScheme(req); got != "https" {
 		t.Fatalf("requestScheme() in production = %q, want https", got)
 	}
+
+	req = httptest.NewRequest(http.MethodPost, "http://localhost:8081/api/test", nil)
+	req.Host = "localhost:8081"
+	if got := s.requestScheme(req); got != "http" {
+		t.Fatalf("requestScheme() on loopback = %q, want http", got)
+	}
 }
 
 func TestIsValidOrigin(t *testing.T) {
@@ -194,6 +200,25 @@ func TestCSRFMiddleware_AllowsMatchingOrigin(t *testing.T) {
 	req.Host = "example.com"
 	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Origin", "https://example.com")
+	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
+	req.Header.Set(testCSRFTokenHdr, "tok123")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf(testExpected200, rr.Code)
+	}
+}
+
+func TestCSRFMiddleware_AllowsLoopbackHTTPOriginInProduction(t *testing.T) {
+	s := testServer(t)
+	s.isDev = false
+	handler := s.csrfMiddleware(ok200)
+
+	req := httptest.NewRequest(http.MethodPost, "http://localhost:8081/api/something", nil)
+	req.Host = "localhost:8081"
+	req.Header.Set("Origin", "http://localhost:8081")
 	req.AddCookie(&http.Cookie{Name: "aerodocs_csrf", Value: "tok123"})
 	req.Header.Set(testCSRFTokenHdr, "tok123")
 
