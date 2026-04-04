@@ -23,9 +23,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if health.Degraded {
 		status = "degraded"
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	// Only expose status to unauthenticated callers; detailed audit health
+	// is available via the authenticated /api/audit-logs/health endpoint.
+	respondJSON(w, http.StatusOK, map[string]string{
 		"status": status,
-		"audit":  health,
 	})
 }
 

@@ -118,13 +118,27 @@ func loggingMiddleware(next http.Handler) http.Handler {
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" {
+		if !isValidRequestID(requestID) {
 			requestID = uuid.NewString()
 		}
 		w.Header().Set("X-Request-ID", requestID)
 		ctx := context.WithValue(r.Context(), ctxRequestID, requestID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// isValidRequestID checks that a client-supplied request ID is safe to reflect
+// in headers and logs: alphanumeric plus hyphens/underscores, max 128 chars.
+func isValidRequestID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // corsMiddleware adds CORS headers for development.
