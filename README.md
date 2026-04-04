@@ -8,6 +8,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/lorconksu/aerodocs/actions/workflows/docker-vuln-badge.yml">
+    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lorconksu/aerodocs/main/.github/badges/docker-vulns.json" alt="Docker image vulnerability counts for yiucloud/aerodocs:latest" />
+  </a>
+</p>
+
+<p align="center">
   <img src="docs/wiki/screenshots/dashboard.png" alt="AeroDocs Dashboard" width="800" />
 </p>
 
