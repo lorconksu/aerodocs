@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "label": "docker vulns",
-  "message": "scan pending",
-  "color": "lightgrey",
+  "message": "C:0 H:1 M:0 L:0",
+  "color": "orange",
   "namedLogo": "docker"
 }
