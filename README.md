@@ -8,6 +8,21 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/lorconksu/aerodocs/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/lorconksu/aerodocs/ci.yml?branch=main&label=CI" alt="CI status" />
+  </a>
+  <a href="https://github.com/lorconksu/aerodocs/releases">
+    <img src="https://img.shields.io/github/v/release/lorconksu/aerodocs?sort=semver&label=release" alt="Latest release" />
+  </a>
+  <a href="https://hub.docker.com/r/yiucloud/aerodocs">
+    <img src="https://img.shields.io/docker/pulls/yiucloud/aerodocs?label=docker%20pulls" alt="Docker pulls" />
+  </a>
+  <a href="https://github.com/lorconksu/aerodocs/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-BSL%201.1-0f766e" alt="License BSL 1.1" />
+  </a>
+</p>
+
+<p align="center">
   <a href="https://github.com/lorconksu/aerodocs/actions/workflows/docker-vuln-badge.yml">
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lorconksu/aerodocs/main/.github/badges/docker-vulns.json" alt="Docker image vulnerability counts for yiucloud/aerodocs:latest" />
   </a>
