@@ -35,7 +35,7 @@ This guide covers deploying AeroDocs Hub and agents on your own infrastructure u
 
 ```bash
 # Download the compose file
-curl -O https://raw.githubusercontent.com/yiucloud/aerodocs/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
 ```
 
 The default `docker-compose.yml`:

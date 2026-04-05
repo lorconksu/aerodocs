@@ -14,9 +14,8 @@
   <a href="https://github.com/lorconksu/aerodocs/releases">
     <img src="https://img.shields.io/github/v/release/lorconksu/aerodocs?sort=semver&label=release" alt="Latest release" />
   </a>
-  <a href="https://hub.docker.com/r/yiucloud/aerodocs">
-    <img src="https://img.shields.io/docker/pulls/yiucloud/aerodocs?label=docker%20pulls" alt="Docker pulls" />
-  </a>
+  <img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go&logoColor=white" alt="Go 1.26+" />
+  <img src="https://img.shields.io/badge/react-19-20232A?logo=react" alt="React 19" />
   <a href="https://github.com/lorconksu/aerodocs/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-BSL%201.1-0f766e" alt="License BSL 1.1" />
   </a>
@@ -24,7 +23,7 @@
 
 <p align="center">
   <a href="https://github.com/lorconksu/aerodocs/actions/workflows/docker-vuln-badge.yml">
-    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lorconksu/aerodocs/main/.github/badges/docker-vulns.json" alt="Docker image vulnerability counts for yiucloud/aerodocs:latest" />
+    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lorconksu/aerodocs/main/docs/badges/docker-vulns.json" alt="Docker image vulnerability counts for yiucloud/aerodocs:latest" />
   </a>
 </p>
 
@@ -68,7 +67,7 @@ For the full architecture breakdown, see [Architecture](docs/wiki/Architecture.m
 
 ```bash
 # Download the compose file
-curl -O https://raw.githubusercontent.com/yiucloud/aerodocs/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
 
 # Start AeroDocs
 docker compose up -d

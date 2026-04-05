@@ -20,7 +20,7 @@
 
 ```bash
 # Download the compose file
-curl -O https://raw.githubusercontent.com/yiucloud/aerodocs/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/lorconksu/aerodocs/main/docker-compose.yml
 
 # Start AeroDocs
 docker compose up -d
@@ -352,10 +352,10 @@ AeroDocs can be deployed in a Proxmox LXC container as a lightweight alternative
 
 ### Example: Proxmox LXC with Traefik
 
-If Traefik runs on a separate LXC (e.g., LXC 101) and AeroDocs runs on the AeroDocs container at `192.0.2.10`:
+If Traefik runs on a separate LXC and AeroDocs runs in another container at `192.0.2.10`:
 
 ```yaml
-# /etc/traefik/dynamic/aerodocs.yml on the Traefik LXC
+# /etc/traefik/dynamic/aerodocs.yml on the Traefik host
 http:
   routers:
     aerodocs:

@@ -543,7 +543,7 @@ func TestRegisterHandshake_FallsBackToPeerIP(t *testing.T) {
 			},
 		},
 	})
-	stream.mockStream = *streamWithPeer("", "192.0.2.10")
+	stream.mockStream = *streamWithPeer("", "192.0.2.96")
 
 	err := h.Connect(stream)
 	if err != nil {
