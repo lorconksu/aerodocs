@@ -1,6 +1,6 @@
 # Build args allow CI to override private DHI base images with public equivalents
 ARG NODE_IMAGE=dhi.io/node:25-debian13-dev
-ARG GO_IMAGE=dhi.io/golang:1-debian13-dev
+ARG GO_IMAGE=dhi.io/golang:1.26.2-debian13-dev
 
 # Stage 1: Build frontend (DHI hardened Node)
 FROM ${NODE_IMAGE} AS frontend
@@ -34,7 +34,12 @@ RUN sha256sum /out/aerodocs-agent-linux-arm64 | awk '{print $1}' > /out/aerodocs
 
 # Stage 3: Minimal runtime (Wolfi — glibc-based, fast CVE patching, no systemd/ncurses/tar)
 FROM cgr.dev/chainguard/wolfi-base:latest
-RUN apk add --no-cache ca-certificates-bundle tzdata && \
+# Wolfi pins core packages in /etc/apk/world, so request patched glibc builds explicitly.
+RUN apk add --no-cache ca-certificates-bundle tzdata \
+    "glibc>=2.43-r6" \
+    "glibc-locale-posix>=2.43-r6" \
+    "ld-linux>=2.43-r6" \
+    "libcrypt1>=2.43-r6" && \
     adduser -D -s /bin/false aerodocs && \
     mkdir -p /data && chown aerodocs:aerodocs /data
 
