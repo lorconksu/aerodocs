@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "label": "docker vulns",
-  "message": "C:0 H:1 M:0 L:0",
+  "message": "C:0 H:2 M:0 L:0 U:12",
   "color": "orange",
   "namedLogo": "docker"
 }
