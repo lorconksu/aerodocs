@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Self-hosted infrastructure observability platform</strong><br>
-  Monitor server fleets, tail logs in real-time, browse remote file systems, and securely transfer files — all from a single web interface.
+  <strong>Secure remote file access and server operations from one web UI</strong><br>
+  Browse files, stream logs, and move data across your servers from a self-hosted control plane built for small fleets.
 </p>
 
 <p align="center">
@@ -17,13 +17,7 @@
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go&logoColor=white" alt="Go 1.26+" />
   <img src="https://img.shields.io/badge/react-19-20232A?logo=react" alt="React 19" />
   <a href="https://github.com/lorconksu/aerodocs/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-BSL%201.1-0f766e" alt="License BSL 1.1" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/lorconksu/aerodocs/actions/workflows/docker-vuln-badge.yml">
-    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lorconksu/aerodocs/main/docs/badges/docker-vulns.json" alt="Docker image vulnerability counts for yiucloud/aerodocs:latest" />
+    <img src="https://img.shields.io/badge/license-Apache%202.0-0f766e" alt="License Apache 2.0" />
   </a>
 </p>
 
@@ -33,11 +27,16 @@
 
 ## What is AeroDocs?
 
-AeroDocs is a web-based control panel for managing small server fleets. It gives you structured, auditable access to your machines without handing out SSH keys or jumping between terminal sessions. Browse files, tail logs, transfer files, and monitor server health — all from one place.
+AeroDocs gives you secure, day-to-day access to your servers through one self-hosted web interface. Browse remote file systems, stream logs in real time, and transfer files without handing out SSH keys or bouncing between terminal sessions.
 
-It runs as a single binary with no external dependencies. The Hub server embeds the entire React frontend and uses SQLite for storage, so there's nothing to install, no runtime to manage, and no database to provision. Deploy it once and point your agents at it.
+It runs as a single binary with no external dependencies. The Hub embeds the full React frontend and uses SQLite for storage, so setup stays lightweight: no separate database, no extra services, and no runtime sprawl. Deploy it once and connect your agents.
 
-AeroDocs is built for home lab operators and small teams who want real visibility into their infrastructure without the overhead of enterprise monitoring stacks. Every action is logged, every user requires 2FA, and access is scoped per-server and per-path.
+AeroDocs is built for home lab operators and small teams who need dependable access, clear audit trails, and tight operational control. Every action is logged, every user requires 2FA, and permissions are scoped per-server and per-path.
+
+AeroDocs is open source software licensed under the Apache License 2.0. The
+software license does not grant rights to the `AeroDocs` name or logos; see
+[TRADEMARKS.md](TRADEMARKS.md) for branding rules and [CONTRIBUTING.md](CONTRIBUTING.md)
+for issue and pull-request expectations.
 
 ## Features
 
@@ -74,11 +73,6 @@ docker compose up -d
 ```
 
 The Hub starts on port 8081 (HTTP) and 9090 (gRPC). Open `http://localhost:8081` to create the initial admin account and set up 2FA.
-
-To pin a specific version instead of `latest`:
-```yaml
-image: yiucloud/aerodocs:1.2.17
-```
 
 ### Agent Installation
 
@@ -133,10 +127,6 @@ The agent installs as a systemd service, connects to the Hub over gRPC with mTLS
 - [Deployment Guide](docs/engineering/deployment.md) — Production deployment and reverse proxy setup
 - [Security Model](docs/engineering/security-model.md) — Threat model and security controls
 
-## Version
-
-Current release: **v1.2.17**
-
 ## License
 
-Licensed under the [Business Source License 1.1](LICENSE). You may use, copy, modify, and redistribute AeroDocs freely for non-commercial purposes. Commercial use that competes with AeroDocs requires a separate license. On **March 26, 2030**, the license automatically converts to **Apache 2.0**.
+AeroDocs is open source software licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution details and [TRADEMARKS.md](TRADEMARKS.md) for name and branding rules.
