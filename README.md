@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Self-hosted remote file browser and lightweight operations panel</strong><br>
-  Browse remote file systems, tail logs in real-time, and securely transfer files across small server fleets from a single web interface.
+  <strong>Self-hosted remote file access and operations for small server fleets</strong><br>
+  Browse files, tail logs, and securely transfer data across your servers from a single web interface.
 </p>
 
 <p align="center">
@@ -27,11 +27,11 @@
 
 ## What is AeroDocs?
 
-AeroDocs is a self-hosted web control panel for remote file browsing and lightweight server operations. It gives you structured, auditable access to your machines without handing out SSH keys or jumping between terminal sessions. Browse files, tail logs, transfer files, and handle day-to-day operational tasks from one place.
+AeroDocs is a self-hosted control panel for remote file access and day-to-day server operations. It gives you one web UI to browse remote file systems, stream logs, and transfer files without handing out SSH keys or bouncing between terminal sessions.
 
 It runs as a single binary with no external dependencies. The Hub server embeds the entire React frontend and uses SQLite for storage, so there's nothing to install, no runtime to manage, and no database to provision. Deploy it once and point your agents at it.
 
-AeroDocs is built for home lab operators and small teams who need dependable remote file access, log visibility, and controlled server interaction without the overhead of a heavier fleet-management stack. Every action is logged, every user requires 2FA, and access is scoped per-server and per-path.
+AeroDocs is built for home lab operators and small teams who need controlled access to their machines, not a full monitoring suite. Every action is logged, every user requires 2FA, and access is scoped per-server and per-path.
 
 AeroDocs is open source software licensed under the Apache License 2.0. The
 software license does not grant rights to the `AeroDocs` name or logos; see
