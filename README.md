@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Self-hosted remote file access and operations for small server fleets</strong><br>
-  Browse files, tail logs, and securely transfer data across your servers from a single web interface.
+  <strong>Secure remote file access and server operations from one web UI</strong><br>
+  Browse files, stream logs, and move data across your servers from a self-hosted control plane built for small fleets.
 </p>
 
 <p align="center">
@@ -27,11 +27,11 @@
 
 ## What is AeroDocs?
 
-AeroDocs is a self-hosted control panel for remote file access and day-to-day server operations. It gives you one web UI to browse remote file systems, stream logs, and transfer files without handing out SSH keys or bouncing between terminal sessions.
+AeroDocs gives you secure, day-to-day access to your servers through one self-hosted web interface. Browse remote file systems, stream logs in real time, and transfer files without handing out SSH keys or bouncing between terminal sessions.
 
-It runs as a single binary with no external dependencies. The Hub server embeds the entire React frontend and uses SQLite for storage, so there's nothing to install, no runtime to manage, and no database to provision. Deploy it once and point your agents at it.
+It runs as a single binary with no external dependencies. The Hub embeds the full React frontend and uses SQLite for storage, so setup stays lightweight: no separate database, no extra services, and no runtime sprawl. Deploy it once and connect your agents.
 
-AeroDocs is built for home lab operators and small teams who need controlled access to their machines, not a full monitoring suite. Every action is logged, every user requires 2FA, and access is scoped per-server and per-path.
+AeroDocs is built for home lab operators and small teams who need dependable access, clear audit trails, and tight operational control. Every action is logged, every user requires 2FA, and permissions are scoped per-server and per-path.
 
 AeroDocs is open source software licensed under the Apache License 2.0. The
 software license does not grant rights to the `AeroDocs` name or logos; see
