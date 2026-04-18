@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -12,9 +13,14 @@ import (
 	"github.com/wyiu/aerodocs/hub/internal/store"
 )
 
+const (
+	adminUsage         = "usage: aerodocs admin <command>\ncommands: reset-totp, create-api-token, list-api-tokens, revoke-api-token"
+	defaultAdminDBPath = "aerodocs.db"
+)
+
 func runAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: aerodocs admin <command>\ncommands: reset-totp, create-api-token, list-api-tokens, revoke-api-token")
+		return fmt.Errorf(adminUsage)
 	}
 
 	switch args[0] {
@@ -32,25 +38,22 @@ func runAdmin(args []string) error {
 }
 
 func runResetTOTP(args []string) error {
-	fs := flag.NewFlagSet("reset-totp", flag.ExitOnError)
+	fs := newAdminFlagSet("reset-totp")
 	username := fs.String("username", "", "username to reset TOTP for")
-	dbPath := fs.String("db", "aerodocs.db", "SQLite database path")
-	fs.Parse(args)
-
-	if *username == "" {
-		return fmt.Errorf("--username is required")
+	dbPath := fs.String("db", defaultAdminDBPath, "SQLite database path")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	st, err := store.New(*dbPath)
+	resolvedUsername, err := requireValue(*username, "username")
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return err
+	}
+	st, user, err := openStoreAndLookupUser(*dbPath, resolvedUsername)
+	if err != nil {
+		return err
 	}
 	defer st.Close()
-
-	user, err := st.GetUserByUsername(*username)
-	if err != nil {
-		return fmt.Errorf("user %q not found", *username)
-	}
 
 	// Generate new temporary password
 	tempPassword := auth.GenerateTemporaryPassword()
@@ -75,30 +78,28 @@ func runResetTOTP(args []string) error {
 }
 
 func runCreateAPIToken(args []string) error {
-	fs := flag.NewFlagSet("create-api-token", flag.ExitOnError)
+	fs := newAdminFlagSet("create-api-token")
 	username := fs.String("username", "", "username that owns the token")
 	name := fs.String("name", "", "human-readable token name")
-	dbPath := fs.String("db", "aerodocs.db", "SQLite database path")
+	dbPath := fs.String("db", defaultAdminDBPath, "SQLite database path")
 	expiresIn := fs.Duration("expires-in", 30*24*time.Hour, "token lifetime (0 for no expiry)")
-	fs.Parse(args)
-
-	if *username == "" {
-		return fmt.Errorf("--username is required")
-	}
-	if strings.TrimSpace(*name) == "" {
-		return fmt.Errorf("--name is required")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	st, err := store.New(*dbPath)
+	resolvedUsername, err := requireValue(*username, "username")
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return err
+	}
+	resolvedName, err := requireValue(*name, "name")
+	if err != nil {
+		return err
+	}
+	st, user, err := openStoreAndLookupUser(*dbPath, resolvedUsername)
+	if err != nil {
+		return err
 	}
 	defer st.Close()
-
-	user, err := st.GetUserByUsername(*username)
-	if err != nil {
-		return fmt.Errorf("user %q not found", *username)
-	}
 
 	raw, hash, prefix, err := auth.GenerateAPIToken()
 	if err != nil {
@@ -108,7 +109,7 @@ func runCreateAPIToken(args []string) error {
 	token := &model.APIToken{
 		ID:          uuid.NewString(),
 		UserID:      user.ID,
-		Name:        strings.TrimSpace(*name),
+		Name:        resolvedName,
 		TokenHash:   hash,
 		TokenPrefix: prefix,
 	}
@@ -125,36 +126,29 @@ func runCreateAPIToken(args []string) error {
 	fmt.Printf("Token ID: %s\n", token.ID)
 	fmt.Printf("Name: %s\n", token.Name)
 	fmt.Printf("Prefix: %s\n", token.TokenPrefix)
-	if token.ExpiresAt != nil {
-		fmt.Printf("Expires At: %s\n", token.ExpiresAt.Format(time.RFC3339))
-	} else {
-		fmt.Println("Expires At: never")
-	}
+	fmt.Printf("Expires At: %s\n", formatOptionalTime(token.ExpiresAt))
 	fmt.Printf("Token: %s\n", raw)
 	fmt.Println("Store the token securely. It will not be shown again.")
 	return nil
 }
 
 func runListAPITokens(args []string) error {
-	fs := flag.NewFlagSet("list-api-tokens", flag.ExitOnError)
+	fs := newAdminFlagSet("list-api-tokens")
 	username := fs.String("username", "", "username that owns the tokens")
-	dbPath := fs.String("db", "aerodocs.db", "SQLite database path")
-	fs.Parse(args)
-
-	if *username == "" {
-		return fmt.Errorf("--username is required")
+	dbPath := fs.String("db", defaultAdminDBPath, "SQLite database path")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	st, err := store.New(*dbPath)
+	resolvedUsername, err := requireValue(*username, "username")
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return err
+	}
+	st, user, err := openStoreAndLookupUser(*dbPath, resolvedUsername)
+	if err != nil {
+		return err
 	}
 	defer st.Close()
-
-	user, err := st.GetUserByUsername(*username)
-	if err != nil {
-		return fmt.Errorf("user %q not found", *username)
-	}
 
 	tokens, err := st.ListAPITokensByUserID(user.ID)
 	if err != nil {
@@ -166,46 +160,97 @@ func runListAPITokens(args []string) error {
 	}
 
 	fmt.Println("ID\tNAME\tPREFIX\tEXPIRES_AT\tLAST_USED_AT\tSTATUS")
+	now := time.Now().UTC()
 	for _, token := range tokens {
-		expiresAt := "never"
-		if token.ExpiresAt != nil {
-			expiresAt = token.ExpiresAt.Format(time.RFC3339)
-		}
-		lastUsedAt := "never"
-		if token.LastUsedAt != nil {
-			lastUsedAt = token.LastUsedAt.Format(time.RFC3339)
-		}
-		status := "active"
-		if token.RevokedAt != nil {
-			status = "revoked"
-		} else if token.ExpiresAt != nil && token.ExpiresAt.Before(time.Now().UTC()) {
-			status = "expired"
-		}
-		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", token.ID, token.Name, token.TokenPrefix, expiresAt, lastUsedAt, status)
+		fmt.Printf(
+			"%s\t%s\t%s\t%s\t%s\t%s\n",
+			token.ID,
+			token.Name,
+			token.TokenPrefix,
+			formatOptionalTime(token.ExpiresAt),
+			formatOptionalTime(token.LastUsedAt),
+			apiTokenStatus(token, now),
+		)
 	}
 	return nil
 }
 
 func runRevokeAPIToken(args []string) error {
-	fs := flag.NewFlagSet("revoke-api-token", flag.ExitOnError)
+	fs := newAdminFlagSet("revoke-api-token")
 	tokenID := fs.String("id", "", "token ID to revoke")
-	dbPath := fs.String("db", "aerodocs.db", "SQLite database path")
-	fs.Parse(args)
-
-	if *tokenID == "" {
-		return fmt.Errorf("--id is required")
-	}
-
-	st, err := store.New(*dbPath)
-	if err != nil {
-		return fmt.Errorf("open database: %w", err)
-	}
-	defer st.Close()
-
-	if err := st.RevokeAPIToken(*tokenID); err != nil {
+	dbPath := fs.String("db", defaultAdminDBPath, "SQLite database path")
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	fmt.Printf("API token %s revoked\n", *tokenID)
+	resolvedTokenID, err := requireValue(*tokenID, "id")
+	if err != nil {
+		return err
+	}
+
+	st, err := openAdminStore(*dbPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	if err := st.RevokeAPIToken(resolvedTokenID); err != nil {
+		return err
+	}
+
+	fmt.Printf("API token %s revoked\n", resolvedTokenID)
 	return nil
+}
+
+func newAdminFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	return fs
+}
+
+func requireValue(value, name string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", fmt.Errorf("--%s is required", name)
+	}
+	return trimmed, nil
+}
+
+func openAdminStore(dbPath string) (*store.Store, error) {
+	st, err := store.New(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	return st, nil
+}
+
+func openStoreAndLookupUser(dbPath, username string) (*store.Store, *model.User, error) {
+	st, err := openAdminStore(dbPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	user, err := st.GetUserByUsername(username)
+	if err != nil {
+		st.Close()
+		return nil, nil, fmt.Errorf("user %q not found", username)
+	}
+	return st, user, nil
+}
+
+func formatOptionalTime(value *time.Time) string {
+	if value == nil {
+		return "never"
+	}
+	return value.Format(time.RFC3339)
+}
+
+func apiTokenStatus(token model.APIToken, now time.Time) string {
+	if token.RevokedAt != nil {
+		return "revoked"
+	}
+	if token.ExpiresAt != nil && token.ExpiresAt.Before(now) {
+		return "expired"
+	}
+	return "active"
 }
