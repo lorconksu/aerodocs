@@ -5,9 +5,8 @@
 > - **Who:** Frontend developers, integration builders, and anyone automating AeroDocs
 > - **Why:** Complete reference for every HTTP endpoint with request/response schemas
 > - **Where:** All endpoints served by the Hub on the HTTP port (default :8081)
-<<<<<<< ours
 > - **When:** After authentication - most endpoints require a valid JWT access token or CLI-created API token
-> - **How:** JSON request/response bodies; secure cookie auth for browsers with Bearer-token auth for API clients; SSE for streaming
+> - **How:** JSON request/response bodies; secure cookie auth for browsers with Bearer fallback for scripts/API tokens; SSE for streaming
 
 ---
 
@@ -35,9 +34,8 @@
 |---|---|
 | Base URL | `http://<hub-host>:8081` (dev) or `https://<hub-domain>` (prod) |
 | Content Type | `application/json` (request and response) |
-<<<<<<< ours
 | Browser Auth | `aerodocs_access` and `aerodocs_refresh` secure cookies, plus `aerodocs_csrf` for mutating requests |
-| API Client Auth | `Authorization: Bearer <JWT access token or API token>` |
+| API Client Auth | `Authorization: Bearer <JWT access token or CLI-created API token>` |
 | Pagination | `?limit=N&offset=N` (default limit varies, max 100) |
 | CORS | Enabled in dev mode for `http://localhost:5173` |
 | Caching | `Cache-Control: no-store` on all API responses |

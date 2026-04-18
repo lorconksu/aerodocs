@@ -140,7 +140,9 @@ func runSelfUnregister(configPath string) {
 	} else {
 		log.Printf("self-unregister successful — server removed from Hub")
 	}
-	os.Remove(configPath)
+	if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("warning: failed to remove config file %s: %v", configPath, err)
+	}
 	os.Exit(0)
 }
 

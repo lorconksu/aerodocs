@@ -78,6 +78,19 @@ func (s *Store) UpdateAPITokenLastUsed(tokenID string, usedAt time.Time) error {
 	return nil
 }
 
+func (s *Store) RevokeAllAPITokensByUserID(userID string) error {
+	_, err := s.db.Exec(
+		`UPDATE api_tokens
+		 SET revoked_at = datetime('now'), updated_at = datetime('now')
+		 WHERE user_id = ? AND revoked_at IS NULL`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoke all api tokens: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) RevokeAPIToken(tokenID string) error {
 	result, err := s.db.Exec(
 		`UPDATE api_tokens

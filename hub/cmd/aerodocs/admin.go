@@ -49,20 +49,19 @@ func runResetTOTP(args []string) error {
 	if err != nil {
 		return err
 	}
+
 	st, user, err := openStoreAndLookupUser(*dbPath, resolvedUsername)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 
-	// Generate new temporary password
 	tempPassword := auth.GenerateTemporaryPassword()
 	hash, err := auth.HashPassword(tempPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
 
-	// Reset TOTP and password
 	if err := st.UpdateUserTOTP(user.ID, nil, false); err != nil {
 		return fmt.Errorf("reset TOTP: %w", err)
 	}
@@ -70,10 +69,9 @@ func runResetTOTP(args []string) error {
 		return fmt.Errorf("update password: %w", err)
 	}
 
-	fmt.Printf("TOTP reset for user %q\n", *username)
+	fmt.Printf("TOTP reset for user %q\n", resolvedUsername)
 	fmt.Printf("Temporary password: %s\n", tempPassword)
 	fmt.Println("User must set up TOTP again on next login.")
-
 	return nil
 }
 
@@ -95,6 +93,7 @@ func runCreateAPIToken(args []string) error {
 	if err != nil {
 		return err
 	}
+
 	st, user, err := openStoreAndLookupUser(*dbPath, resolvedUsername)
 	if err != nil {
 		return err
@@ -122,6 +121,20 @@ func runCreateAPIToken(args []string) error {
 		return err
 	}
 
+	tokenID := token.ID
+	tokenName := token.Name
+	apiTokenResourceType := "api_token"
+	_ = st.LogAudit(model.AuditEntry{
+		ID:           uuid.NewString(),
+		UserID:       &user.ID,
+		Action:       model.AuditAPITokenCreated,
+		Target:       &tokenID,
+		Detail:       &tokenName,
+		Outcome:      model.AuditOutcomeSuccess,
+		ActorType:    model.AuditActorTypeSystem,
+		ResourceType: &apiTokenResourceType,
+	})
+
 	fmt.Printf("API token created for %q\n", user.Username)
 	fmt.Printf("Token ID: %s\n", token.ID)
 	fmt.Printf("Name: %s\n", token.Name)
@@ -144,6 +157,7 @@ func runListAPITokens(args []string) error {
 	if err != nil {
 		return err
 	}
+
 	st, user, err := openStoreAndLookupUser(*dbPath, resolvedUsername)
 	if err != nil {
 		return err
@@ -197,6 +211,17 @@ func runRevokeAPIToken(args []string) error {
 	if err := st.RevokeAPIToken(resolvedTokenID); err != nil {
 		return err
 	}
+
+	revokedID := resolvedTokenID
+	apiTokenResourceType := "api_token"
+	_ = st.LogAudit(model.AuditEntry{
+		ID:           uuid.NewString(),
+		Action:       model.AuditAPITokenRevoked,
+		Target:       &revokedID,
+		Outcome:      model.AuditOutcomeSuccess,
+		ActorType:    model.AuditActorTypeSystem,
+		ResourceType: &apiTokenResourceType,
+	})
 
 	fmt.Printf("API token %s revoked\n", resolvedTokenID)
 	return nil

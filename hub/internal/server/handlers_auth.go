@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -642,6 +643,11 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.store.IncrementTokenGeneration(userID); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to invalidate sessions")
 		return
+	}
+
+	// Revoke all API tokens — password change is a security event that should invalidate all credentials
+	if err := s.store.RevokeAllAPITokensByUserID(userID); err != nil {
+		log.Printf("warning: failed to revoke api tokens on password change for user %s: %v", userID, err)
 	}
 
 	ip := clientIP(r)
