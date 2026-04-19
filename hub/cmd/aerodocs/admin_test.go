@@ -112,6 +112,13 @@ func TestRunResetTOTP_Success(t *testing.T) {
 	if got.PasswordHash == originalHash {
 		t.Fatal("expected temporary password hash to be updated")
 	}
+	initialized, err := verifyStore.InitialSetupComplete()
+	if err != nil {
+		t.Fatalf("initial setup complete: %v", err)
+	}
+	if !initialized {
+		t.Fatal("expected reset-totp to preserve completed setup state")
+	}
 	if !strings.Contains(output, "Temporary password:") {
 		t.Fatalf("expected temporary password in output, got %q", output)
 	}
