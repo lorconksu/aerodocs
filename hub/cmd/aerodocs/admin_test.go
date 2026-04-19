@@ -124,6 +124,31 @@ func TestRunResetTOTP_Success(t *testing.T) {
 	}
 }
 
+func TestRunResetTOTP_MarkSetupCompleteFailure(t *testing.T) {
+	dbPath, st := newAdminTestStore(t)
+	secret := "totp-secret"
+	createAdminUser(t, st, "resetme", model.RoleAdmin, &secret, true)
+	if _, err := st.DB().Exec(`
+		CREATE TRIGGER block_setup_config_insert
+		BEFORE INSERT ON _config
+		WHEN NEW.key = 'initial_setup_completed'
+		BEGIN
+			SELECT RAISE(FAIL, 'config writes blocked');
+		END;
+	`); err != nil {
+		t.Fatalf("create config trigger: %v", err)
+	}
+	st.Close()
+
+	err := runResetTOTP([]string{"--username", "resetme", "--db", dbPath})
+	if err == nil {
+		t.Fatal("expected setup state write to fail")
+	}
+	if !strings.Contains(err.Error(), `mark setup complete: set config "initial_setup_completed":`) {
+		t.Fatalf("expected wrapped setup completion error, got %v", err)
+	}
+}
+
 func TestRunCreateAPIToken_RequiresUsername(t *testing.T) {
 	err := runCreateAPIToken([]string{"--name", "nightly"})
 	if err == nil || err.Error() != "--username is required" {
