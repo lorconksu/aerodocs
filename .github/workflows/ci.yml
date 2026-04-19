@@ -34,6 +34,9 @@ jobs:
       - name: Frontend tests with coverage
         run: cd web && npx vitest run --coverage
 
+      - name: Create frontend embed stub
+        run: mkdir -p hub/web/dist && touch hub/web/dist/index.html
+
       - name: Hub tests with coverage
         run: cd hub && go test ./internal/... -coverprofile=../coverage-hub.out -covermode=atomic
 
