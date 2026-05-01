@@ -231,3 +231,27 @@ func TestDiskPersistence(t *testing.T) {
 		}
 	}
 }
+
+func TestDiskPersistenceReloadsCerts(t *testing.T) {
+	dir := t.TempDir()
+	caCert, caKey := newTestCA(t)
+
+	s := NewStore(dir)
+	csrDER, err := s.GenerateCSR("disk-reload-test")
+	if err != nil {
+		t.Fatalf(testGenerateCSRFmt, err)
+	}
+
+	certDER := signCSR(t, csrDER, caCert, caKey, time.Now().Add(24*time.Hour))
+	if err := s.StoreCert(certDER, caCert.Raw); err != nil {
+		t.Fatalf(testStoreCertFmt, err)
+	}
+
+	reloaded := NewStore(dir)
+	if !reloaded.HasCert() {
+		t.Fatal("expected NewStore to load persisted client certificate and key")
+	}
+	if reloaded.TLSConfig() == nil {
+		t.Fatal("expected reloaded store to build a TLS config")
+	}
+}
