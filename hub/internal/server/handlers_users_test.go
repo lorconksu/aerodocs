@@ -353,6 +353,52 @@ func TestUpdateUserRole_InvalidJSON(t *testing.T) {
 	}
 }
 
+// TestUpdateUserRole_InvalidatesSessions verifies that demoting a user's role
+// also forces re-authentication by incrementing the user's token_generation,
+// so the existing access token cannot continue exercising the old role for the
+// remainder of its 15-minute TTL.
+func TestUpdateUserRole_InvalidatesSessions(t *testing.T) {
+	s := testServer(t)
+	token := registerAndGetAdminToken(t, s)
+
+	createBody, _ := json.Marshal(model.CreateUserRequest{
+		Username: "demoteme", Email: testViewerEmail, Role: model.RoleAdmin,
+	})
+	createReq := httptest.NewRequest("POST", testUsersPath, bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", testBearerPrefix+token)
+	createRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(createRec, createReq)
+
+	var createResp model.CreateUserResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode create user: %v", err)
+	}
+
+	before, err := s.store.GetUserByID(createResp.User.ID)
+	if err != nil {
+		t.Fatalf("get user before: %v", err)
+	}
+
+	body, _ := json.Marshal(model.UpdateRoleRequest{Role: model.RoleViewer})
+	req := httptest.NewRequest("PUT", testUsersPrefix+createResp.User.ID+"/role", bytes.NewReader(body))
+	req.Header.Set("Authorization", testBearerPrefix+token)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(testExpected200Body, rec.Code, rec.Body.String())
+	}
+
+	after, err := s.store.GetUserByID(createResp.User.ID)
+	if err != nil {
+		t.Fatalf("get user after: %v", err)
+	}
+	if after.TokenGeneration <= before.TokenGeneration {
+		t.Fatalf("expected token_generation to increase after role update, was %d, now %d",
+			before.TokenGeneration, after.TokenGeneration)
+	}
+}
+
 func TestViewerCannotAccessAdminEndpoints(t *testing.T) {
 	s := testServer(t)
 	adminToken := registerAndGetAdminToken(t, s)

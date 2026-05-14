@@ -124,6 +124,80 @@ func TestRunResetTOTP_Success(t *testing.T) {
 	}
 }
 
+// TestRunResetTOTP_InvalidatesCredentials verifies that the admin CLI break-glass
+// reset also invalidates the target user's existing refresh tokens (via
+// token_generation bump) and API tokens, so stolen sessions cannot survive the
+// reset.
+func TestRunResetTOTP_InvalidatesCredentials(t *testing.T) {
+	dbPath, st := newAdminTestStore(t)
+	secret := "totp-secret"
+	user := createAdminUser(t, st, "resetme", model.RoleAdmin, &secret, true)
+
+	beforeGen := user.TokenGeneration
+
+	_, tokenHash, tokenPrefix, err := auth.GenerateAPIToken()
+	if err != nil {
+		t.Fatalf("generate api token: %v", err)
+	}
+	apiTokenID := uuid.NewString()
+	if err := st.CreateAPIToken(&model.APIToken{
+		ID:          apiTokenID,
+		UserID:      user.ID,
+		Name:        "stale",
+		TokenHash:   tokenHash,
+		TokenPrefix: tokenPrefix,
+	}); err != nil {
+		t.Fatalf("create api token: %v", err)
+	}
+	st.Close()
+
+	captureStdout(t, func() {
+		if err := runResetTOTP([]string{"--username", "resetme", "--db", dbPath}); err != nil {
+			t.Fatalf("run reset-totp: %v", err)
+		}
+	})
+
+	verifyStore, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("re-open store: %v", err)
+	}
+	defer verifyStore.Close()
+
+	got, err := verifyStore.GetUserByUsername("resetme")
+	if err != nil {
+		t.Fatalf("fetch user: %v", err)
+	}
+	if got.TokenGeneration <= beforeGen {
+		t.Fatalf("expected token_generation to increase after reset-totp, was %d, now %d",
+			beforeGen, got.TokenGeneration)
+	}
+
+	tokens, err := verifyStore.ListAPITokensByUserID(user.ID)
+	if err != nil {
+		t.Fatalf("list api tokens: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].RevokedAt == nil {
+		t.Fatalf("expected pre-existing API token to be revoked after reset-totp, got %+v", tokens)
+	}
+
+	// reset-totp should also write an audit log entry so admin recovery is auditable.
+	entries, _, err := verifyStore.ListAuditLogs(model.AuditFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list audit entries: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Action == model.AuditUserTOTPReset {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected an audit entry for %q, got %d entries: %+v",
+			model.AuditUserTOTPReset, len(entries), entries)
+	}
+}
+
 func TestRunResetTOTP_MarkSetupCompleteFailure(t *testing.T) {
 	dbPath, st := newAdminTestStore(t)
 	secret := "totp-secret"
