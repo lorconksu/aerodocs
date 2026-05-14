@@ -30,6 +30,7 @@ type Handler struct {
 	connMgr     *connmgr.ConnManager
 	pending     *PendingRequests
 	logSessions *LogSessions
+	terminals   *TerminalSessions
 	hbCoalescer *HeartbeatCoalescer
 	caCert      *x509.Certificate
 	caKey       *ecdsa.PrivateKey
@@ -169,6 +170,9 @@ func (h *Handler) onAgentDisconnected(serverID string, stream pb.AgentService_Co
 			"server_id":   serverID,
 			"timestamp":   time.Now().UTC().Format(model.NotifyTimestampFormat),
 		})
+	}
+	if h.terminals != nil {
+		h.terminals.EndAll(serverID, -1, "agent disconnected")
 	}
 	log.Printf("agent disconnected: %s", serverID)
 }
@@ -352,6 +356,18 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 		}
 	case *pb.AgentMessage_CertRenewRequest:
 		h.handleCertRenewal(serverID, stream, p.CertRenewRequest)
+	case *pb.AgentMessage_TerminalOpenAck:
+		if h.pending != nil {
+			h.pending.Deliver(serverID, p.TerminalOpenAck.SessionId, p.TerminalOpenAck)
+		}
+	case *pb.AgentMessage_TerminalData:
+		if h.terminals != nil {
+			h.terminals.DeliverData(serverID, p.TerminalData.SessionId, p.TerminalData.Data)
+		}
+	case *pb.AgentMessage_TerminalExit:
+		if h.terminals != nil {
+			h.terminals.End(serverID, p.TerminalExit.SessionId, p.TerminalExit.ExitCode, p.TerminalExit.Error)
+		}
 	default:
 		log.Printf("unhandled message type from %s: %T", serverID, p)
 	}

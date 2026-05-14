@@ -21,6 +21,7 @@ type mockGRPCStream struct {
 	sent     []*pb.HubMessage
 	pending  *grpcserver.PendingRequests
 	serverID string
+	terms    *grpcserver.TerminalSessions
 }
 
 func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
@@ -56,6 +57,14 @@ func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
 					m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
 				}()
 			}
+		case *pb.HubMessage_TerminalOpenRequest:
+			go func() {
+				resp := &pb.TerminalOpenAck{SessionId: p.TerminalOpenRequest.SessionId, Success: true}
+				m.pending.Deliver(m.serverID, p.TerminalOpenRequest.SessionId, resp)
+				if m.terms != nil {
+					m.terms.DeliverData(m.serverID, p.TerminalOpenRequest.SessionId, []byte("mock$ "))
+				}
+			}()
 		}
 	}
 	return nil
@@ -68,10 +77,10 @@ func (m *mockGRPCStream) Context() context.Context {
 	}
 	return context.Background()
 }
-func (m *mockGRPCStream) SendMsg(msg interface{}) error  { return nil }
-func (m *mockGRPCStream) RecvMsg(msg interface{}) error  { return nil }
-func (m *mockGRPCStream) SetHeader(metadata.MD) error    { return nil }
-func (m *mockGRPCStream) SendHeader(metadata.MD) error   { return nil }
+func (m *mockGRPCStream) SendMsg(msg interface{}) error { return nil }
+func (m *mockGRPCStream) RecvMsg(msg interface{}) error { return nil }
+func (m *mockGRPCStream) SetHeader(metadata.MD) error   { return nil }
+func (m *mockGRPCStream) SendHeader(metadata.MD) error  { return nil }
 func (m *mockGRPCStream) SetTrailer(metadata.MD) {
 	// no-op: mock stub for testing
 }
@@ -95,19 +104,21 @@ func testServerWithAgent(t *testing.T) (s *Server, adminToken, serverID string) 
 	cm := connmgr.New()
 	pending := grpcserver.NewPendingRequests()
 	logSessions := grpcserver.NewLogSessions()
+	terminalSessions := grpcserver.NewTerminalSessions()
 
 	notifier := notify.New(st)
 	t.Cleanup(func() { notifier.Close() })
 
 	s = New(Config{
-		Addr:        ":0",
-		Store:       st,
-		JWTSecret:   jwtSecret,
-		IsDev:       true,
-		ConnMgr:     cm,
-		Pending:     pending,
-		LogSessions: logSessions,
-		Notifier:    notifier,
+		Addr:             ":0",
+		Store:            st,
+		JWTSecret:        jwtSecret,
+		IsDev:            true,
+		ConnMgr:          cm,
+		Pending:          pending,
+		LogSessions:      logSessions,
+		TerminalSessions: terminalSessions,
+		Notifier:         notifier,
 	})
 
 	// Create a server in the store
@@ -115,7 +126,7 @@ func testServerWithAgent(t *testing.T) (s *Server, adminToken, serverID string) 
 	serverID = createTestServer(t, s, adminToken, "agent-test-srv")
 
 	// Register a mock stream that auto-delivers responses
-	stream := &mockGRPCStream{pending: pending, serverID: serverID}
+	stream := &mockGRPCStream{pending: pending, serverID: serverID, terms: terminalSessions}
 	cm.Register(serverID, stream)
 	t.Cleanup(func() { cm.Unregister(serverID) })
 

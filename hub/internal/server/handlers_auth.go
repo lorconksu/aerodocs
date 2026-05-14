@@ -126,6 +126,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.store.GetUserByUsername(req.Username)
 	if err != nil {
+		if ldapUser, ldapErr := s.authenticateLDAPLogin(r.Context(), req.Username, req.Password); ldapErr == nil {
+			s.respondAfterPrimaryLogin(w, ldapUser)
+			return
+		}
 		// Dummy bcrypt compare to prevent username enumeration via timing
 		auth.ComparePassword("$2a$12$000000000000000000000000000000000000000000000000000000", "dummy")
 		ip := clientIP(r)
@@ -142,6 +146,29 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		respondError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	if user.AuthProvider == model.AuthProviderLDAP {
+		ldapUser, ldapErr := s.authenticateLDAPLogin(r.Context(), req.Username, req.Password)
+		if ldapErr != nil {
+			ip := clientIP(r)
+			s.auditLogRequest(r, model.AuditEntry{
+				ID:        uuid.NewString(),
+				UserID:    &user.ID,
+				Action:    model.AuditUserLoginFailed,
+				IPAddress: &ip,
+			})
+			if s.notifier != nil {
+				s.notifier.Notify(model.NotifyLoginFailed, map[string]string{
+					"username": req.Username, "ip": ip,
+					"timestamp": time.Now().UTC().Format(model.NotifyTimestampFormat),
+				})
+			}
+			respondError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+		s.respondAfterPrimaryLogin(w, ldapUser)
 		return
 	}
 
@@ -178,6 +205,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.respondAfterPrimaryLogin(w, user)
+}
+
+func (s *Server) respondAfterPrimaryLogin(w http.ResponseWriter, user *model.User) {
 	// If TOTP not set up yet, return setup token
 	if !user.TOTPEnabled {
 		setupToken, err := auth.GenerateSetupToken(s.jwtSecret, user.ID, string(user.Role))
