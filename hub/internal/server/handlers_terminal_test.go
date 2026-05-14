@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wyiu/aerodocs/hub/internal/auth"
 	"github.com/wyiu/aerodocs/hub/internal/model"
+	pb "github.com/wyiu/aerodocs/proto/aerodocs/v1"
 )
 
 const testTerminalSessionsSuffix = "/terminal/sessions"
@@ -94,6 +95,42 @@ func TestHandleCreateTerminalSession_ServiceUnavailable(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCreateTerminalSession_AgentFailure(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	conn := s.connMgr.GetConn(serverID)
+	stream := conn.Stream.(*mockGRPCStream)
+	stream.terminalOpenResponse = &pb.TerminalOpenAck{
+		SessionId: "ignored",
+		Success:   false,
+		Error:     "terminal cwd not available",
+	}
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix, mustJSON(t, map[string]interface{}{"cols": 80, "rows": 24}))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for cwd failure, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCreateTerminalSession_UnexpectedAgentResponse(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	conn := s.connMgr.GetConn(serverID)
+	stream := conn.Stream.(*mockGRPCStream)
+	stream.terminalOpenResponse = &pb.FileListResponse{RequestId: "unexpected"}
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix, mustJSON(t, map[string]interface{}{"cols": 80, "rows": 24}))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for unexpected terminal response, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

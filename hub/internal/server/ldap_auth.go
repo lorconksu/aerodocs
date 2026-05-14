@@ -46,8 +46,17 @@ type LDAPConfig struct {
 	AllowInsecure       bool
 }
 
+type ldapConnection interface {
+	Bind(username, password string) error
+	Search(searchRequest *ldap.SearchRequest) (*ldap.SearchResult, error)
+	Close() error
+	SetTimeout(timeout time.Duration)
+	StartTLS(config *tls.Config) error
+}
+
 type ldapBindAuthenticator struct {
-	cfg LDAPConfig
+	cfg  LDAPConfig
+	dial func(LDAPConfig) (ldapConnection, error)
 }
 
 var defaultLDAPRoleGroups = map[model.Role][]string{
@@ -198,16 +207,23 @@ func (a *ldapBindAuthenticator) Authenticate(_ context.Context, username, passwo
 	return identity, nil
 }
 
-func (a *ldapBindAuthenticator) connect() (*ldap.Conn, error) {
-	tlsConfig, err := buildLDAPTLSConfig(a.cfg)
+func (a *ldapBindAuthenticator) connect() (ldapConnection, error) {
+	if a.dial != nil {
+		return a.dial(a.cfg)
+	}
+	return dialLDAP(a.cfg)
+}
+
+func dialLDAP(cfg LDAPConfig) (ldapConnection, error) {
+	tlsConfig, err := buildLDAPTLSConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := ldap.DialURL(a.cfg.URL, ldap.DialWithTLSConfig(tlsConfig))
+	conn, err := ldap.DialURL(cfg.URL, ldap.DialWithTLSConfig(tlsConfig))
 	if err != nil {
 		return nil, err
 	}
-	if a.cfg.StartTLS {
+	if cfg.StartTLS {
 		if err := conn.StartTLS(tlsConfig); err != nil {
 			conn.Close()
 			return nil, err
@@ -258,7 +274,7 @@ func buildLDAPTLSConfig(cfg LDAPConfig) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func (a *ldapBindAuthenticator) findUser(conn *ldap.Conn, username string) (*ldap.Entry, error) {
+func (a *ldapBindAuthenticator) findUser(conn ldapConnection, username string) (*ldap.Entry, error) {
 	filter := renderLDAPFilter(a.cfg.UserSearchFilter, map[string]string{
 		"username": username,
 	})
@@ -283,7 +299,7 @@ func (a *ldapBindAuthenticator) findUser(conn *ldap.Conn, username string) (*lda
 	return result.Entries[0], nil
 }
 
-func (a *ldapBindAuthenticator) findGroups(conn *ldap.Conn, userDN, username string) []string {
+func (a *ldapBindAuthenticator) findGroups(conn ldapConnection, userDN, username string) []string {
 	if a.cfg.GroupBaseDN == "" {
 		return nil
 	}

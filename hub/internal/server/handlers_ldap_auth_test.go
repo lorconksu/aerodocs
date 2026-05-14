@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	ldap "github.com/go-ldap/ldap/v3"
 	"github.com/wyiu/aerodocs/hub/internal/model"
 )
 
@@ -18,6 +22,61 @@ type fakeLDAPAuthenticator struct {
 
 func (f fakeLDAPAuthenticator) Authenticate(_ context.Context, _, _ string) (LDAPIdentity, error) {
 	return f.identity, f.err
+}
+
+type fakeLDAPConn struct {
+	binds        []string
+	searches     []*ldap.SearchRequest
+	results      []*ldap.SearchResult
+	searchErr    error
+	searchErrs   []error
+	bindFailures map[string]error
+	closed       bool
+	timeout      time.Duration
+	startTLS     bool
+}
+
+func (f *fakeLDAPConn) Bind(username, password string) error {
+	key := username + "\x00" + password
+	f.binds = append(f.binds, key)
+	if err := f.bindFailures[key]; err != nil {
+		return err
+	}
+	return nil
+}
+
+func (f *fakeLDAPConn) Search(req *ldap.SearchRequest) (*ldap.SearchResult, error) {
+	f.searches = append(f.searches, req)
+	if len(f.searchErrs) > 0 {
+		err := f.searchErrs[0]
+		f.searchErrs = f.searchErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	if len(f.results) == 0 {
+		return &ldap.SearchResult{}, nil
+	}
+	result := f.results[0]
+	f.results = f.results[1:]
+	return result, nil
+}
+
+func (f *fakeLDAPConn) Close() error {
+	f.closed = true
+	return nil
+}
+
+func (f *fakeLDAPConn) SetTimeout(timeout time.Duration) {
+	f.timeout = timeout
+}
+
+func (f *fakeLDAPConn) StartTLS(*tls.Config) error {
+	f.startTLS = true
+	return nil
 }
 
 func TestHandleLogin_LDAPCreatesShadowUserAndRequiresTOTPSetup(t *testing.T) {
@@ -314,6 +373,162 @@ func TestLDAPBindAuthenticatorRejectsBlankCredentials(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), errInvalidLDAPCredentials) {
 			t.Fatalf("expected invalid credentials for %+v, got %v", tc, err)
 		}
+	}
+}
+
+func TestLDAPBindAuthenticatorAuthenticateSuccess(t *testing.T) {
+	conn := &fakeLDAPConn{
+		results: []*ldap.SearchResult{
+			{
+				Entries: []*ldap.Entry{
+					ldap.NewEntry("uid=alice,ou=people,dc=example,dc=com", map[string][]string{
+						"uid":       {"alice"},
+						"mail":      {"alice@example.com"},
+						"entryUUID": {"entry-alice"},
+					}),
+				},
+			},
+			{
+				Entries: []*ldap.Entry{
+					ldap.NewEntry("cn=aerodocs-admins,ou=groups,dc=example,dc=com", map[string][]string{"cn": {"aerodocs-admins"}}),
+					ldap.NewEntry("cn=aerodocs-terminal-users,ou=groups,dc=example,dc=com", map[string][]string{"cn": {"aerodocs-terminal-users"}}),
+				},
+			},
+		},
+	}
+	a := ldapBindAuthenticator{
+		cfg: LDAPConfig{
+			URL:                 "ldaps://ldap.example.com:636",
+			BindDN:              "uid=svc,dc=example,dc=com",
+			BindPassword:        "svc-secret",
+			UserBaseDN:          "ou=people,dc=example,dc=com",
+			GroupBaseDN:         "ou=groups,dc=example,dc=com",
+			UserSearchFilter:    "(uid={username})",
+			GroupSearchFilter:   "(|(member={dn})(memberUid={username}))",
+			UsernameAttribute:   "uid",
+			EmailAttribute:      "mail",
+			ExternalIDAttribute: "entryUUID",
+			GroupNameAttribute:  "cn",
+		},
+		dial: func(LDAPConfig) (ldapConnection, error) {
+			return conn, nil
+		},
+	}
+
+	identity, err := a.Authenticate(context.Background(), "alice", "alice-password")
+	if err != nil {
+		t.Fatalf("authenticate LDAP: %v", err)
+	}
+	if identity.Username != "alice" || identity.Email != "alice@example.com" || identity.ExternalID != "entry-alice" {
+		t.Fatalf("unexpected identity: %+v", identity)
+	}
+	if !hasAnyLDAPGroup(identity.Groups, []string{"aerodocs-admins"}) ||
+		!hasAnyLDAPGroup(identity.Groups, []string{"aerodocs-terminal-users"}) {
+		t.Fatalf("expected mapped groups, got %#v", identity.Groups)
+	}
+	if len(conn.binds) != 3 {
+		t.Fatalf("expected service bind, user bind, service rebind; got %#v", conn.binds)
+	}
+	if len(conn.searches) != 2 {
+		t.Fatalf("expected user and group searches, got %d", len(conn.searches))
+	}
+	if conn.timeout != 10*time.Second || !conn.closed {
+		t.Fatalf("expected timeout and close, timeout=%s closed=%v", conn.timeout, conn.closed)
+	}
+}
+
+func TestLDAPBindAuthenticatorAuthenticateInvalidUserBind(t *testing.T) {
+	conn := &fakeLDAPConn{
+		results: []*ldap.SearchResult{
+			{
+				Entries: []*ldap.Entry{
+					ldap.NewEntry("uid=alice,ou=people,dc=example,dc=com", map[string][]string{"uid": {"alice"}}),
+				},
+			},
+		},
+		bindFailures: map[string]error{
+			"uid=alice,ou=people,dc=example,dc=com\x00bad-password": fmt.Errorf("invalid credentials"),
+		},
+	}
+	a := ldapBindAuthenticator{
+		cfg: LDAPConfig{
+			URL:                 "ldaps://ldap.example.com:636",
+			UserBaseDN:          "ou=people,dc=example,dc=com",
+			UserSearchFilter:    "(uid={username})",
+			UsernameAttribute:   "uid",
+			EmailAttribute:      "mail",
+			ExternalIDAttribute: "entryUUID",
+		},
+		dial: func(LDAPConfig) (ldapConnection, error) {
+			return conn, nil
+		},
+	}
+
+	_, err := a.Authenticate(context.Background(), "alice", "bad-password")
+	if err == nil || !strings.Contains(err.Error(), errInvalidLDAPCredentials) {
+		t.Fatalf("expected invalid LDAP credentials, got %v", err)
+	}
+}
+
+func TestLDAPBindAuthenticatorAuthenticateSearchErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		conn    *fakeLDAPConn
+		wantErr string
+	}{
+		{
+			name:    "search failure",
+			conn:    &fakeLDAPConn{searchErr: fmt.Errorf("directory unavailable")},
+			wantErr: "search LDAP user",
+		},
+		{
+			name:    "no exact user",
+			conn:    &fakeLDAPConn{results: []*ldap.SearchResult{{}}},
+			wantErr: errInvalidLDAPCredentials,
+		},
+		{
+			name: "group search failure ignored",
+			conn: &fakeLDAPConn{
+				results: []*ldap.SearchResult{
+					{Entries: []*ldap.Entry{ldap.NewEntry("uid=alice,ou=people,dc=example,dc=com", map[string][]string{"uid": {"alice"}})}},
+				},
+				searchErrs: []error{nil, fmt.Errorf("group search unavailable")},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := ldapBindAuthenticator{
+				cfg: LDAPConfig{
+					URL:                 "ldaps://ldap.example.com:636",
+					UserBaseDN:          "ou=people,dc=example,dc=com",
+					GroupBaseDN:         "ou=groups,dc=example,dc=com",
+					UserSearchFilter:    "(uid={username})",
+					GroupSearchFilter:   "(member={dn})",
+					UsernameAttribute:   "uid",
+					EmailAttribute:      "mail",
+					ExternalIDAttribute: "entryUUID",
+					GroupNameAttribute:  "cn",
+				},
+				dial: func(LDAPConfig) (ldapConnection, error) {
+					return tt.conn, nil
+				},
+			}
+			identity, err := a.Authenticate(context.Background(), "alice", "password")
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("authenticate LDAP: %v", err)
+				}
+				if len(identity.Groups) != 0 {
+					t.Fatalf("expected group search failure/no groups to be ignored, got %#v", identity.Groups)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 

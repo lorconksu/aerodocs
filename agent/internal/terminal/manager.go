@@ -30,6 +30,7 @@ const (
 	terminalPath       = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 	getentPath         = "/usr/bin/getent"
 	idPath             = "/usr/bin/id"
+	errManagerStopped  = "terminal manager unavailable"
 )
 
 var ErrSessionNotFound = errors.New("terminal session not found")
@@ -75,7 +76,7 @@ func (m *Manager) Open(sessionID string, cols, rows uint32, cwd, runAsUser strin
 		return fmt.Errorf("session id is required")
 	}
 	if m.isStopped() {
-		return fmt.Errorf("terminal manager unavailable")
+		return fmt.Errorf(errManagerStopped)
 	}
 	if err := m.validateOpenSlot(sessionID); err != nil {
 		return err
@@ -125,7 +126,7 @@ func (m *Manager) validateOpenSlot(sessionID string) error {
 	defer m.mu.Unlock()
 
 	if m.isStopped() {
-		return fmt.Errorf("terminal manager unavailable")
+		return fmt.Errorf(errManagerStopped)
 	}
 	if _, exists := m.sessions[sessionID]; exists {
 		return fmt.Errorf("terminal session already exists")
@@ -141,7 +142,7 @@ func (m *Manager) register(sessionID string, s *session) error {
 	defer m.mu.Unlock()
 
 	if m.isStopped() {
-		return fmt.Errorf("terminal manager unavailable")
+		return fmt.Errorf(errManagerStopped)
 	}
 	if _, exists := m.sessions[sessionID]; exists {
 		return fmt.Errorf("terminal session already exists")

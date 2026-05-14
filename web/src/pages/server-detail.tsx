@@ -1765,7 +1765,7 @@ export function ServerDetailPage() {
   }, [currentMatch, effectiveSearchTerm, matchCount])
 
   const handleRefetchFile = useCallback(() => {
-    void refetchFile()
+    refetchFile().catch(() => undefined)
   }, [refetchFile])
 
   const handleToggleMarkdownView = useCallback(() => {

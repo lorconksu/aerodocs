@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -146,14 +147,7 @@ func TestOpenAfterCloseAllRejected(t *testing.T) {
 }
 
 func TestManagerOpenInputResizeAndExit(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("pty is not supported on windows")
-	}
-	shell, err := exec.LookPath("sh")
-	if err != nil {
-		t.Skip("sh is required for terminal lifecycle test")
-	}
-	t.Setenv("SHELL", shell)
+	t.Setenv("SHELL", requireShell(t))
 
 	sendCh := make(chan *pb.AgentMessage, 16)
 	m := NewManager(sendCh)
@@ -170,33 +164,37 @@ func TestManagerOpenInputResizeAndExit(t *testing.T) {
 		t.Fatalf("write terminal input: %v", err)
 	}
 
+	data := waitForTerminalExit(t, sendCh, "session-pty", 3*time.Second)
+	if !strings.Contains(data, "aerodocs-ready") {
+		t.Fatalf("expected command output, got %q", data)
+	}
+	if _, err := m.get("session-pty"); !errorsIsSessionNotFound(err) {
+		t.Fatalf("expected session cleanup after exit, got %v", err)
+	}
+}
+
+func waitForTerminalExit(t *testing.T, sendCh <-chan *pb.AgentMessage, sessionID string, timeout time.Duration) string {
+	t.Helper()
 	var data bytes.Buffer
-	sawExit := false
-	deadline := time.After(3 * time.Second)
-	for !sawExit {
+	deadline := time.After(timeout)
+	for {
 		select {
 		case msg := <-sendCh:
 			if payload := msg.GetTerminalData(); payload != nil {
 				data.Write(payload.Data)
 			}
 			if payload := msg.GetTerminalExit(); payload != nil {
-				if payload.SessionId != "session-pty" {
+				if payload.SessionId != sessionID {
 					t.Fatalf("exit session id = %q", payload.SessionId)
 				}
 				if payload.ExitCode != 0 {
 					t.Fatalf("exit code = %d, error = %q", payload.ExitCode, payload.Error)
 				}
-				sawExit = true
+				return data.String()
 			}
 		case <-deadline:
 			t.Fatalf("timed out waiting for terminal exit; output so far: %q", data.String())
 		}
-	}
-	if !strings.Contains(data.String(), "aerodocs-ready") {
-		t.Fatalf("expected command output, got %q", data.String())
-	}
-	if _, err := m.get("session-pty"); !errorsIsSessionNotFound(err) {
-		t.Fatalf("expected session cleanup after exit, got %v", err)
 	}
 }
 
@@ -218,14 +216,7 @@ func TestManagerOpenRejectsInvalidCwd(t *testing.T) {
 }
 
 func TestManagerOpenRejectsDuplicateSession(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("pty is not supported on windows")
-	}
-	shell, err := exec.LookPath("sh")
-	if err != nil {
-		t.Skip("sh is required for duplicate session test")
-	}
-	t.Setenv("SHELL", shell)
+	t.Setenv("SHELL", requireShell(t))
 
 	m := NewManager(make(chan *pb.AgentMessage, 16))
 	t.Cleanup(m.CloseAll)
@@ -234,6 +225,74 @@ func TestManagerOpenRejectsDuplicateSession(t *testing.T) {
 	}
 	if err := m.Open("duplicate", 80, 24, "", ""); err == nil || !strings.Contains(err.Error(), "terminal session already exists") {
 		t.Fatalf("expected duplicate session error, got %v", err)
+	}
+}
+
+func TestManagerCloseSignalsSession(t *testing.T) {
+	t.Setenv("SHELL", requireShell(t))
+
+	m := NewManager(make(chan *pb.AgentMessage, 16))
+	if err := m.Open("close-me", 80, 24, "", ""); err != nil {
+		t.Fatalf("open terminal: %v", err)
+	}
+	if err := m.Close("close-me"); err != nil {
+		t.Fatalf("close terminal: %v", err)
+	}
+	if _, err := m.get("close-me"); !errorsIsSessionNotFound(err) {
+		t.Fatalf("expected closed session cleanup, got %v", err)
+	}
+}
+
+func TestManagerOpenEnforcesMaxSessions(t *testing.T) {
+	t.Setenv("SHELL", requireShell(t))
+
+	m := NewManager(make(chan *pb.AgentMessage, 64))
+	t.Cleanup(m.CloseAll)
+	for i := 0; i < maxSessions; i++ {
+		if err := m.Open(fmt.Sprintf("session-%d", i), 80, 24, "", ""); err != nil {
+			t.Fatalf("open session %d: %v", i, err)
+		}
+	}
+	err := m.Open("one-too-many", 80, 24, "", "")
+	if err == nil || !strings.Contains(err.Error(), "too many active terminal sessions") {
+		t.Fatalf("expected max sessions error, got %v", err)
+	}
+}
+
+func TestApplyExecutionIdentitySetsCredentialAndHome(t *testing.T) {
+	cmd := exec.Command("sh")
+	applyExecutionIdentity(cmd, &executionIdentity{
+		credential: &syscall.Credential{Uid: 123, Gid: 456},
+		username:   "ldapuser",
+		homeDir:    "/home/ldapuser",
+	}, "")
+
+	if cmd.SysProcAttr == nil || cmd.SysProcAttr.Credential == nil {
+		t.Fatal("expected syscall credential")
+	}
+	if cmd.Dir != "/home/ldapuser" {
+		t.Fatalf("cmd.Dir = %q", cmd.Dir)
+	}
+}
+
+func TestLookupUserAndGroupsWithFixedCommandPaths(t *testing.T) {
+	current, err := osuser.Current()
+	if err != nil {
+		t.Skipf("current user unavailable: %v", err)
+	}
+	u, err := lookupUserWithGetent(current.Username)
+	if err != nil {
+		t.Skipf("getent unavailable for current user: %v", err)
+	}
+	if u.Username == "" || u.Uid == "" || u.Gid == "" {
+		t.Fatalf("unexpected getent user: %#v", u)
+	}
+	groups, err := lookupGroupIDsWithID(current.Username)
+	if err != nil {
+		t.Skipf("id unavailable for current user: %v", err)
+	}
+	if len(groups) == 0 {
+		t.Fatal("expected at least one group")
 	}
 }
 
@@ -312,6 +371,18 @@ func containsEnv(env []string, want string) bool {
 
 func errorsIsSessionNotFound(err error) bool {
 	return err == ErrSessionNotFound
+}
+
+func requireShell(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("pty is not supported on windows")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is required for terminal manager tests")
+	}
+	return shell
 }
 
 func TestParseGroupIDs(t *testing.T) {

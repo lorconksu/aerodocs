@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
 	"github.com/wyiu/aerodocs/hub/internal/grpcserver"
@@ -17,11 +18,12 @@ import (
 
 // mockGRPCStream implements pb.AgentService_ConnectServer for testing.
 type mockGRPCStream struct {
-	ctx      context.Context
-	sent     []*pb.HubMessage
-	pending  *grpcserver.PendingRequests
-	serverID string
-	terms    *grpcserver.TerminalSessions
+	ctx                  context.Context
+	sent                 []*pb.HubMessage
+	pending              *grpcserver.PendingRequests
+	serverID             string
+	terms                *grpcserver.TerminalSessions
+	terminalOpenResponse proto.Message
 }
 
 func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
@@ -59,9 +61,13 @@ func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
 			}
 		case *pb.HubMessage_TerminalOpenRequest:
 			go func() {
-				resp := &pb.TerminalOpenAck{SessionId: p.TerminalOpenRequest.SessionId, Success: true}
+				resp := m.terminalOpenResponse
+				if resp == nil {
+					resp = &pb.TerminalOpenAck{SessionId: p.TerminalOpenRequest.SessionId, Success: true}
+				}
 				m.pending.Deliver(m.serverID, p.TerminalOpenRequest.SessionId, resp)
-				if m.terms != nil {
+				ack, ok := resp.(*pb.TerminalOpenAck)
+				if ok && ack.Success && m.terms != nil {
 					m.terms.DeliverData(m.serverID, p.TerminalOpenRequest.SessionId, []byte("mock$ "))
 				}
 			}()
