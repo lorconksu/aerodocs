@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { OfflineTerminalState, ServerTerminal } from '../server-terminal'
@@ -159,6 +159,16 @@ const server: Server = {
   updated_at: '',
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => {
   mockApiFetch.mockReset()
   terminalMocks.terminalInstances.length = 0
@@ -179,6 +189,32 @@ afterEach(() => {
 })
 
 describe('ServerTerminal', () => {
+  it('shows the connecting state with host and shell fallbacks while a session is pending', async () => {
+    const created = deferred<{ session_id: string }>()
+    mockApiFetch.mockReturnValue(created.promise)
+
+    render(<ServerTerminal serverId="srv-1" server={{ ...server, hostname: '', os: '' }} />)
+
+    expect(await screen.findByText('Connecting')).toBeInTheDocument()
+    expect(screen.getByText('10.10.1.10')).toBeInTheDocument()
+    expect(screen.getByText(/Agent shell/)).toBeInTheDocument()
+    expect(screen.getByText('pending...')).toBeInTheDocument()
+
+    terminalMocks.terminalInstances[0].dataHandler?.('whoami\n')
+    terminalMocks.resizeObservers[0].fire()
+    expect(mockApiFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the server name when host fields are unavailable', async () => {
+    const created = deferred<{ session_id: string }>()
+    mockApiFetch.mockReturnValue(created.promise)
+
+    render(<ServerTerminal serverId="srv-1" server={{ ...server, hostname: '', ip_address: '' }} />)
+
+    expect(await screen.findByText('Connecting')).toBeInTheDocument()
+    expect(screen.getAllByText('bastion1').length).toBeGreaterThan(0)
+  })
+
   it('opens a terminal session, streams output, sends input, resizes, and handles clean exit', async () => {
     mockApiFetch.mockResolvedValue({ session_id: 'sess-1' })
 
@@ -219,6 +255,90 @@ describe('ServerTerminal', () => {
     expect(screen.getByText('Reconnect')).toBeInTheDocument()
     expect(terminalMocks.eventSources[0].closed).toBe(true)
     expect(terminalMocks.terminalInstances[0].writelnCalls).toContain('[session closed] Shell exited cleanly')
+
+    terminalMocks.eventSources[0].emitError()
+    expect(terminalMocks.terminalInstances[0].writelnCalls).not.toContain('[connection lost]')
+  })
+
+  it.each([
+    ['invalid JSON', 'not-json', '[session closed] Shell exited'],
+    ['null payload', 'null', '[session closed] Shell exited'],
+    ['unknown exit', JSON.stringify({}), '[session closed] Shell exited with code unknown'],
+    ['non-zero exit', JSON.stringify({ exit_code: 2 }), '[session closed] Shell exited with code 2'],
+    ['exit error', JSON.stringify({ error: 'permission denied' }), '[session closed] permission denied'],
+  ])('handles %s terminal exit payloads', async (_, payload, expectedLine) => {
+    mockApiFetch.mockResolvedValue({ session_id: 'sess-exit' })
+
+    render(<ServerTerminal serverId="srv-1" server={server} />)
+
+    await waitFor(() => {
+      expect(terminalMocks.eventSources).toHaveLength(1)
+    })
+    terminalMocks.eventSources[0].emitExit(payload)
+
+    expect(await screen.findByText('Closed')).toBeInTheDocument()
+    expect(terminalMocks.terminalInstances[0].writelnCalls).toContain(expectedLine)
+  })
+
+  it('handles non-message terminal exit events', async () => {
+    mockApiFetch.mockResolvedValue({ session_id: 'sess-event' })
+
+    render(<ServerTerminal serverId="srv-1" server={server} />)
+
+    await waitFor(() => {
+      expect(terminalMocks.eventSources).toHaveLength(1)
+    })
+    terminalMocks.eventSources[0].listeners.get('exit')?.(new Event('exit') as MessageEvent<string>)
+
+    expect(await screen.findByText('Closed')).toBeInTheDocument()
+    expect(terminalMocks.terminalInstances[0].writelnCalls).toContain('[session closed] Shell exited')
+  })
+
+  it('ignores terminal stream events after unmount', async () => {
+    mockApiFetch.mockResolvedValue({ session_id: 'sess-cancelled-stream' })
+
+    const { unmount } = render(<ServerTerminal serverId="srv-1" server={server} />)
+
+    await waitFor(() => {
+      expect(terminalMocks.eventSources).toHaveLength(1)
+    })
+    const stream = terminalMocks.eventSources[0]
+    const term = terminalMocks.terminalInstances[0]
+    unmount()
+
+    stream.emitMessage(globalThis.btoa('late\n'))
+    stream.emitExit(JSON.stringify({ exit_code: 0 }))
+    stream.emitError()
+
+    expect(term.writes).toHaveLength(0)
+    expect(term.writelnCalls).not.toContain('[session closed] Shell exited cleanly')
+    expect(term.writelnCalls).not.toContain('[connection lost]')
+  })
+
+  it('ignores transient input and resize failures', async () => {
+    mockApiFetch.mockResolvedValueOnce({ session_id: 'sess-io' })
+
+    render(<ServerTerminal serverId="srv-1" server={server} />)
+
+    await waitFor(() => {
+      expect(terminalMocks.eventSources).toHaveLength(1)
+    })
+
+    mockApiFetch.mockRejectedValueOnce(new Error('input failed'))
+    terminalMocks.terminalInstances[0].dataHandler?.('id\n')
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/servers/srv-1/terminal/sessions/sess-io/input', expect.objectContaining({
+        method: 'POST',
+      }))
+    })
+
+    mockApiFetch.mockRejectedValueOnce(new Error('resize failed'))
+    terminalMocks.resizeObservers[0].fire()
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/servers/srv-1/terminal/sessions/sess-io/resize', expect.objectContaining({
+        method: 'POST',
+      }))
+    })
   })
 
   it('shows an error when session creation fails and can reconnect', async () => {
@@ -237,6 +357,16 @@ describe('ServerTerminal', () => {
       expect(terminalMocks.eventSources).toHaveLength(1)
     })
     expect(terminalMocks.eventSources[0].url).toBe('/api/servers/srv-1/terminal/sessions/sess-2/stream')
+  })
+
+  it('shows the generic terminal error for non-error failures', async () => {
+    mockApiFetch.mockRejectedValueOnce('failed')
+
+    render(<ServerTerminal serverId="srv-1" server={server} />)
+
+    expect(await screen.findByText('Error')).toBeInTheDocument()
+    expect(screen.getByText(/unable to start terminal/i)).toBeInTheDocument()
+    expect(terminalMocks.terminalInstances[0].writelnCalls).toContain('[error] Unable to start terminal')
   })
 
   it('marks the session as failed when the stream errors', async () => {
@@ -271,6 +401,31 @@ describe('ServerTerminal', () => {
     })
     expect(terminalMocks.eventSources[0].closed).toBe(true)
     expect(terminalMocks.terminalInstances[0].disposed).toBe(true)
+  })
+
+  it('closes a session that finishes opening after unmount', async () => {
+    const created = deferred<{ session_id: string }>()
+    mockApiFetch
+      .mockReturnValueOnce(created.promise)
+      .mockResolvedValueOnce({})
+
+    const { unmount } = render(<ServerTerminal serverId="srv-1" server={server} />)
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/servers/srv-1/terminal/sessions', expect.anything())
+    })
+    unmount()
+
+    await act(async () => {
+      created.resolve({ session_id: 'sess-late' })
+      await created.promise
+    })
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/servers/srv-1/terminal/sessions/sess-late', expect.objectContaining({
+        method: 'DELETE',
+      }))
+    })
   })
 })
 

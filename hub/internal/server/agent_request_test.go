@@ -32,52 +32,59 @@ func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
 		return m.sendErr
 	}
 	m.sent = append(m.sent, msg)
-	// If we have a pending registry, auto-deliver responses
-	if m.pending != nil {
-		switch p := msg.Payload.(type) {
-		case *pb.HubMessage_FileListRequest:
-			go func() {
-				resp := &pb.FileListResponse{RequestId: p.FileListRequest.RequestId}
-				m.pending.Deliver(m.serverID, p.FileListRequest.RequestId, resp)
-			}()
-		case *pb.HubMessage_FileReadRequest:
-			go func() {
-				resp := &pb.FileReadResponse{RequestId: p.FileReadRequest.RequestId}
-				m.pending.Deliver(m.serverID, p.FileReadRequest.RequestId, resp)
-			}()
-		case *pb.HubMessage_FileDeleteRequest:
-			go func() {
-				resp := &pb.FileDeleteResponse{RequestId: p.FileDeleteRequest.RequestId, Success: true}
-				m.pending.Deliver(m.serverID, p.FileDeleteRequest.RequestId, resp)
-			}()
-		case *pb.HubMessage_UnregisterRequest:
-			go func() {
-				resp := &pb.UnregisterAck{RequestId: p.UnregisterRequest.RequestId}
-				m.pending.Deliver(m.serverID, p.UnregisterRequest.RequestId, resp)
-			}()
-		case *pb.HubMessage_FileUploadRequest:
-			// Only deliver ack on the final "done" chunk
-			if p.FileUploadRequest.Done {
-				go func() {
-					resp := &pb.FileUploadAck{RequestId: p.FileUploadRequest.RequestId, Success: true}
-					m.pending.Deliver(m.serverID, p.FileUploadRequest.RequestId, resp)
-				}()
-			}
-		case *pb.HubMessage_TerminalOpenRequest:
-			go func() {
-				resp := m.terminalOpenResponse
-				if resp == nil {
-					resp = &pb.TerminalOpenAck{SessionId: p.TerminalOpenRequest.SessionId, Success: true}
-				}
-				m.pending.Deliver(m.serverID, p.TerminalOpenRequest.SessionId, resp)
-				ack, ok := resp.(*pb.TerminalOpenAck)
-				if ok && ack.Success && m.terms != nil {
-					m.terms.DeliverData(m.serverID, p.TerminalOpenRequest.SessionId, []byte("mock$ "))
-				}
-			}()
-		}
+	if m.pending == nil {
+		return nil
 	}
+	m.deliverMockResponse(msg)
 	return nil
+}
+
+func (m *mockGRPCStream) deliverMockResponse(msg *pb.HubMessage) {
+	switch p := msg.Payload.(type) {
+	case *pb.HubMessage_FileListRequest:
+		m.deliverLater(p.FileListRequest.RequestId, &pb.FileListResponse{RequestId: p.FileListRequest.RequestId})
+	case *pb.HubMessage_FileReadRequest:
+		m.deliverLater(p.FileReadRequest.RequestId, &pb.FileReadResponse{RequestId: p.FileReadRequest.RequestId})
+	case *pb.HubMessage_FileDeleteRequest:
+		m.deliverLater(p.FileDeleteRequest.RequestId, &pb.FileDeleteResponse{RequestId: p.FileDeleteRequest.RequestId, Success: true})
+	case *pb.HubMessage_UnregisterRequest:
+		m.deliverLater(p.UnregisterRequest.RequestId, &pb.UnregisterAck{RequestId: p.UnregisterRequest.RequestId})
+	case *pb.HubMessage_FileUploadRequest:
+		m.deliverFileUploadAck(p.FileUploadRequest)
+	case *pb.HubMessage_TerminalOpenRequest:
+		m.deliverTerminalOpen(p.TerminalOpenRequest)
+	}
+}
+
+func (m *mockGRPCStream) deliverLater(requestID string, resp proto.Message) {
+	go func() {
+		m.pending.Deliver(m.serverID, requestID, resp)
+	}()
+}
+
+func (m *mockGRPCStream) deliverFileUploadAck(req *pb.FileUploadRequest) {
+	if !req.Done {
+		return
+	}
+	m.deliverLater(req.RequestId, &pb.FileUploadAck{RequestId: req.RequestId, Success: true})
+}
+
+func (m *mockGRPCStream) deliverTerminalOpen(req *pb.TerminalOpenRequest) {
+	go func() {
+		resp := m.terminalOpenResponse
+		if resp == nil {
+			resp = &pb.TerminalOpenAck{SessionId: req.SessionId, Success: true}
+		}
+		m.pending.Deliver(m.serverID, req.SessionId, resp)
+		if terminalOpenSucceeded(resp) && m.terms != nil {
+			m.terms.DeliverData(m.serverID, req.SessionId, []byte("mock$ "))
+		}
+	}()
+}
+
+func terminalOpenSucceeded(resp proto.Message) bool {
+	ack, ok := resp.(*pb.TerminalOpenAck)
+	return ok && ack.Success
 }
 
 func (m *mockGRPCStream) Recv() (*pb.AgentMessage, error) { return nil, nil }
