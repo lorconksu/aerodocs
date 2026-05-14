@@ -24,9 +24,13 @@ type mockGRPCStream struct {
 	serverID             string
 	terms                *grpcserver.TerminalSessions
 	terminalOpenResponse proto.Message
+	sendErr              error
 }
 
 func (m *mockGRPCStream) Send(msg *pb.HubMessage) error {
+	if m.sendErr != nil {
+		return m.sendErr
+	}
 	m.sent = append(m.sent, msg)
 	// If we have a pending registry, auto-deliver responses
 	if m.pending != nil {

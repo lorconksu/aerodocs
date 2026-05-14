@@ -499,36 +499,45 @@ func TestLDAPBindAuthenticatorAuthenticateSearchErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := ldapBindAuthenticator{
-				cfg: LDAPConfig{
-					URL:                 "ldaps://ldap.example.com:636",
-					UserBaseDN:          "ou=people,dc=example,dc=com",
-					GroupBaseDN:         "ou=groups,dc=example,dc=com",
-					UserSearchFilter:    "(uid={username})",
-					GroupSearchFilter:   "(member={dn})",
-					UsernameAttribute:   "uid",
-					EmailAttribute:      "mail",
-					ExternalIDAttribute: "entryUUID",
-					GroupNameAttribute:  "cn",
-				},
-				dial: func(LDAPConfig) (ldapConnection, error) {
-					return tt.conn, nil
-				},
-			}
-			identity, err := a.Authenticate(context.Background(), "alice", "password")
-			if tt.wantErr == "" {
-				if err != nil {
-					t.Fatalf("authenticate LDAP: %v", err)
-				}
-				if len(identity.Groups) != 0 {
-					t.Fatalf("expected group search failure/no groups to be ignored, got %#v", identity.Groups)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
-			}
+			assertLDAPSearchCase(t, tt.conn, tt.wantErr)
 		})
+	}
+}
+
+func assertLDAPSearchCase(t *testing.T, conn *fakeLDAPConn, wantErr string) {
+	t.Helper()
+	a := ldapSearchCaseAuthenticator(conn)
+	identity, err := a.Authenticate(context.Background(), "alice", "password")
+	if wantErr != "" {
+		if err == nil || !strings.Contains(err.Error(), wantErr) {
+			t.Fatalf("expected error containing %q, got %v", wantErr, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("authenticate LDAP: %v", err)
+	}
+	if len(identity.Groups) != 0 {
+		t.Fatalf("expected group search failure/no groups to be ignored, got %#v", identity.Groups)
+	}
+}
+
+func ldapSearchCaseAuthenticator(conn *fakeLDAPConn) ldapBindAuthenticator {
+	return ldapBindAuthenticator{
+		cfg: LDAPConfig{
+			URL:                 "ldaps://ldap.example.com:636",
+			UserBaseDN:          "ou=people,dc=example,dc=com",
+			GroupBaseDN:         "ou=groups,dc=example,dc=com",
+			UserSearchFilter:    "(uid={username})",
+			GroupSearchFilter:   "(member={dn})",
+			UsernameAttribute:   "uid",
+			EmailAttribute:      "mail",
+			ExternalIDAttribute: "entryUUID",
+			GroupNameAttribute:  "cn",
+		},
+		dial: func(LDAPConfig) (ldapConnection, error) {
+			return conn, nil
+		},
 	}
 }
 

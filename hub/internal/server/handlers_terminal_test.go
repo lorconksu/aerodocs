@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -84,6 +85,19 @@ func TestHandleCreateTerminalSession_InvalidCwd(t *testing.T) {
 	}
 }
 
+func TestHandleCreateTerminalSession_InvalidBody(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix, strings.NewReader("{"))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid create body, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleCreateTerminalSession_ServiceUnavailable(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 	s.terminalSessions = nil
@@ -115,6 +129,26 @@ func TestHandleCreateTerminalSession_AgentFailure(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for cwd failure, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCreateTerminalSession_AgentGatewayFailure(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	conn := s.connMgr.GetConn(serverID)
+	stream := conn.Stream.(*mockGRPCStream)
+	stream.terminalOpenResponse = &pb.TerminalOpenAck{
+		SessionId: "ignored",
+		Success:   false,
+		Error:     "shell unavailable",
+	}
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix, mustJSON(t, map[string]interface{}{"cols": 80, "rows": 24}))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for agent open failure, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -268,6 +302,30 @@ func TestHandleTerminalInputAndResize(t *testing.T) {
 	}
 }
 
+func TestHandleTerminalInputAndResize_SendFailures(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
+	conn := s.connMgr.GetConn(serverID)
+	stream := conn.Stream.(*mockGRPCStream)
+	stream.sendErr = errors.New("send failed")
+
+	inputReq := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/input", mustJSON(t, map[string]string{"data": "pwd\n"}))
+	inputReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	inputRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(inputRec, inputReq)
+	if inputRec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for input send failure, got %d: %s", inputRec.Code, inputRec.Body.String())
+	}
+
+	resizeReq := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/resize", mustJSON(t, map[string]int{"cols": 100, "rows": 32}))
+	resizeReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	resizeRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(resizeRec, resizeReq)
+	if resizeRec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for resize send failure, got %d: %s", resizeRec.Code, resizeRec.Body.String())
+	}
+}
+
 func TestHandleTerminalResize_RejectsClosedAndInvalidBody(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
@@ -289,6 +347,28 @@ func TestHandleTerminalResize_RejectsClosedAndInvalidBody(t *testing.T) {
 	s.routes().ServeHTTP(closedRec, closedReq)
 	if closedRec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 for closed resize, got %d: %s", closedRec.Code, closedRec.Body.String())
+	}
+}
+
+func TestHandleTerminalStream_ServiceUnavailableAndMissingSession(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	s.terminalSessions = nil
+
+	serviceReq := httptest.NewRequest("GET", testServersPrefix+serverID+testTerminalSessionsSuffix+"/missing/stream", nil)
+	serviceReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	serviceRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(serviceRec, serviceReq)
+	if serviceRec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for unavailable terminal stream service, got %d: %s", serviceRec.Code, serviceRec.Body.String())
+	}
+
+	s, adminToken, serverID = testServerWithAgent(t)
+	missingReq := httptest.NewRequest("GET", testServersPrefix+serverID+testTerminalSessionsSuffix+"/missing/stream", nil)
+	missingReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	missingRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing stream session, got %d: %s", missingRec.Code, missingRec.Body.String())
 	}
 }
 
@@ -335,6 +415,19 @@ func TestHandleTerminalStream_RejectsSecondAttach(t *testing.T) {
 
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 for second stream attach, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCloseTerminalSession_MissingSession(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+
+	req := httptest.NewRequest("DELETE", testServersPrefix+serverID+testTerminalSessionsSuffix+"/missing", bytes.NewReader(nil))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing close session, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

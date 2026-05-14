@@ -146,6 +146,34 @@ func TestOpenAfterCloseAllRejected(t *testing.T) {
 	}
 }
 
+func TestManagerOpenRejectsEmptySessionID(t *testing.T) {
+	m := NewManager(make(chan *pb.AgentMessage, 1))
+
+	err := m.Open("", 80, 24, "", "")
+	if err == nil || !strings.Contains(err.Error(), "session id is required") {
+		t.Fatalf("expected empty session id error, got %v", err)
+	}
+}
+
+func TestManagerSessionOperationsValidateSession(t *testing.T) {
+	m := NewManager(make(chan *pb.AgentMessage, 1))
+
+	if err := m.Input("missing", []byte("pwd\n")); !errorsIsSessionNotFound(err) {
+		t.Fatalf("expected missing input session error, got %v", err)
+	}
+	if err := m.Resize("missing", 80, 24); !errorsIsSessionNotFound(err) {
+		t.Fatalf("expected missing resize session error, got %v", err)
+	}
+	if err := m.Close("missing"); !errorsIsSessionNotFound(err) {
+		t.Fatalf("expected missing close session error, got %v", err)
+	}
+
+	m.sessions["empty-input"] = &session{id: "empty-input"}
+	if err := m.Input("empty-input", nil); err != nil {
+		t.Fatalf("empty input should be ignored, got %v", err)
+	}
+}
+
 func TestManagerOpenInputResizeAndExit(t *testing.T) {
 	t.Setenv("SHELL", requireShell(t))
 
@@ -296,6 +324,10 @@ func TestLookupUserAndGroupsWithFixedCommandPaths(t *testing.T) {
 	}
 }
 
+func TestSignalProcessGroupIgnoresInvalidPID(t *testing.T) {
+	signalProcessGroup(0, syscall.SIGHUP)
+}
+
 func TestNormalizedSizeBounds(t *testing.T) {
 	size := normalizedSize(0, 0)
 	if size.Cols != defaultCols || size.Rows != defaultRows {
@@ -357,6 +389,15 @@ func TestParseGetentPasswdLine(t *testing.T) {
 	}
 	if u.Username != "ldapuser" || u.Uid != "1545800010" || u.Gid != "1545800010" || u.Name != "LDAP User" || u.HomeDir != "/home/ldapuser" {
 		t.Fatalf("unexpected parsed user: %#v", u)
+	}
+}
+
+func TestParseHelpersRejectInvalidInput(t *testing.T) {
+	if _, err := parseGetentPasswdLine("invalid"); err == nil {
+		t.Fatal("expected invalid passwd entry error")
+	}
+	if _, err := parseGroupIDs(" \n"); err == nil {
+		t.Fatal("expected empty groups error")
 	}
 }
 
