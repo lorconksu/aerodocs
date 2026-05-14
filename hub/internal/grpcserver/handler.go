@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/wyiu/aerodocs/hub/internal/ca"
 	"github.com/wyiu/aerodocs/hub/internal/connmgr"
@@ -331,47 +332,53 @@ func (h *Handler) routeAgentMessage(serverID string, stream pb.AgentService_Conn
 	case *pb.AgentMessage_Heartbeat:
 		return h.handleStreamHeartbeat(serverID, stream)
 	case *pb.AgentMessage_FileListResponse:
-		if h.pending != nil {
-			h.pending.Deliver(serverID, p.FileListResponse.RequestId, p.FileListResponse)
-		}
+		h.deliverPending(serverID, p.FileListResponse.RequestId, p.FileListResponse)
 	case *pb.AgentMessage_FileReadResponse:
-		if h.pending != nil {
-			h.pending.Deliver(serverID, p.FileReadResponse.RequestId, p.FileReadResponse)
-		}
+		h.deliverPending(serverID, p.FileReadResponse.RequestId, p.FileReadResponse)
 	case *pb.AgentMessage_LogStreamChunk:
-		if h.logSessions != nil {
-			h.logSessions.Deliver(serverID, p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
-		}
+		h.deliverLogChunk(serverID, p.LogStreamChunk.RequestId, p.LogStreamChunk.Data)
 	case *pb.AgentMessage_FileUploadAck:
-		if h.pending != nil {
-			h.pending.Deliver(serverID, p.FileUploadAck.RequestId, p.FileUploadAck)
-		}
+		h.deliverPending(serverID, p.FileUploadAck.RequestId, p.FileUploadAck)
 	case *pb.AgentMessage_FileDeleteResponse:
-		if h.pending != nil {
-			h.pending.Deliver(serverID, p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
-		}
+		h.deliverPending(serverID, p.FileDeleteResponse.RequestId, p.FileDeleteResponse)
 	case *pb.AgentMessage_UnregisterAck:
-		if h.pending != nil {
-			h.pending.Deliver(serverID, p.UnregisterAck.RequestId, p.UnregisterAck)
-		}
+		h.deliverPending(serverID, p.UnregisterAck.RequestId, p.UnregisterAck)
 	case *pb.AgentMessage_CertRenewRequest:
 		h.handleCertRenewal(serverID, stream, p.CertRenewRequest)
 	case *pb.AgentMessage_TerminalOpenAck:
-		if h.pending != nil {
-			h.pending.Deliver(serverID, p.TerminalOpenAck.SessionId, p.TerminalOpenAck)
-		}
+		h.deliverPending(serverID, p.TerminalOpenAck.SessionId, p.TerminalOpenAck)
 	case *pb.AgentMessage_TerminalData:
-		if h.terminals != nil {
-			h.terminals.DeliverData(serverID, p.TerminalData.SessionId, p.TerminalData.Data)
-		}
+		h.deliverTerminalData(serverID, p.TerminalData.SessionId, p.TerminalData.Data)
 	case *pb.AgentMessage_TerminalExit:
-		if h.terminals != nil {
-			h.terminals.End(serverID, p.TerminalExit.SessionId, p.TerminalExit.ExitCode, p.TerminalExit.Error)
-		}
+		h.deliverTerminalExit(serverID, p.TerminalExit.SessionId, p.TerminalExit.ExitCode, p.TerminalExit.Error)
 	default:
 		log.Printf("unhandled message type from %s: %T", serverID, p)
 	}
 	return nil
+}
+
+func (h *Handler) deliverPending(serverID, requestID string, payload proto.Message) {
+	if h.pending != nil {
+		h.pending.Deliver(serverID, requestID, payload)
+	}
+}
+
+func (h *Handler) deliverLogChunk(serverID, requestID string, data []byte) {
+	if h.logSessions != nil {
+		h.logSessions.Deliver(serverID, requestID, data)
+	}
+}
+
+func (h *Handler) deliverTerminalData(serverID, sessionID string, data []byte) {
+	if h.terminals != nil {
+		h.terminals.DeliverData(serverID, sessionID, data)
+	}
+}
+
+func (h *Handler) deliverTerminalExit(serverID, sessionID string, exitCode int32, terminalError string) {
+	if h.terminals != nil {
+		h.terminals.End(serverID, sessionID, exitCode, terminalError)
+	}
 }
 
 // handleStreamHeartbeat processes an in-stream heartbeat, updates last-seen, and sends an ack.

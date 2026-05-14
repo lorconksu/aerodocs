@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, type MouseEvent as ReactMouseEvent, type RefObject } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -58,6 +58,22 @@ interface TreeNodeState {
 }
 
 type WorkspaceMode = 'files' | 'terminal'
+
+function workspaceToggleClass(active: boolean): string {
+  return active
+    ? 'bg-accent text-white shadow-sm'
+    : 'text-text-secondary hover:text-text-primary hover:bg-elevated/80'
+}
+
+function workspaceDescription(offline: boolean, terminalAvailable: boolean): string {
+  if (offline) {
+    return 'This node is offline. Terminal access unlocks as soon as the agent reconnects.'
+  }
+  if (terminalAvailable) {
+    return 'Switch between file browsing and terminal access.'
+  }
+  return 'File browsing is available for this server.'
+}
 
 // --- FileTreeNode Component ---
 
@@ -1095,7 +1111,7 @@ interface FileSearchBarProps {
   onNavigatePrev: () => void
   onNavigateNext: () => void
   onClose: () => void
-  inputRef: React.RefObject<HTMLInputElement | null>
+  inputRef: RefObject<HTMLInputElement | null>
 }
 
 function FileSearchBar({
@@ -1280,30 +1296,18 @@ function WorkspaceModeBar({
   offline: boolean
   terminalAvailable: boolean
 }>) {
-  function toggleClass(active: boolean): string {
-    return active
-      ? 'bg-accent text-white shadow-sm'
-      : 'text-text-secondary hover:text-text-primary hover:bg-elevated/80'
-  }
-
   return (
     <div className="flex items-center justify-between px-4 py-2.5 bg-surface/60 border-b border-border shrink-0">
       <div>
         <p className="text-sm font-medium text-text-primary">Workspace</p>
-        <p className="text-xs text-text-muted">
-          {offline
-            ? 'This node is offline. Terminal access unlocks as soon as the agent reconnects.'
-            : terminalAvailable
-              ? 'Switch between file browsing and terminal access.'
-              : 'File browsing is available for this server.'}
-        </p>
+        <p className="text-xs text-text-muted">{workspaceDescription(offline, terminalAvailable)}</p>
       </div>
       <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-elevated/40 p-1">
         <button
           type="button"
           onClick={() => onChange('files')}
           aria-pressed={workspaceMode === 'files'}
-          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${toggleClass(workspaceMode === 'files')}`}
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${workspaceToggleClass(workspaceMode === 'files')}`}
         >
           <Folder className="w-4 h-4" />
           Files
@@ -1313,7 +1317,7 @@ function WorkspaceModeBar({
             type="button"
             onClick={() => onChange('terminal')}
             aria-pressed={workspaceMode === 'terminal'}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${toggleClass(workspaceMode === 'terminal')}`}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${workspaceToggleClass(workspaceMode === 'terminal')}`}
           >
             <Terminal className="w-4 h-4" />
             Terminal
@@ -1334,6 +1338,173 @@ function OfflineFilesState() {
           This node is not online yet, so the explorer stays read-only. When it reconnects, the terminal tab opens a live shell over the agent stream.
         </p>
       </div>
+    </div>
+  )
+}
+
+interface ServerWorkspacePanelProps {
+  workspaceMode: WorkspaceMode
+  isOffline: boolean
+  isDragging: boolean
+  server: Server
+  serverId: string
+  sidebarCollapsed: boolean
+  sidebarWidth: number
+  treeRefreshing: boolean
+  pathsLoading: boolean
+  rootPaths: string[]
+  rootNodes: FileNode[]
+  selectedFile: FileNode | null
+  treeState: Record<string, TreeNodeState>
+  fileContent: FileReadResponse | undefined
+  fileLoading: boolean
+  fileError: Error | null
+  liveTailing: boolean
+  searchOpen: boolean
+  markdownView: 'raw' | 'rendered'
+  searchInput: string
+  matchCount: number
+  currentMatch: number
+  breadcrumbs: Array<{ name: string; path: string }>
+  decodedContent: string | null
+  effectiveSearchTerm: string
+  searchHighlightedHtml: string
+  highlightedHtml: string
+  searchInputRef: RefObject<HTMLInputElement | null>
+  onToggleSidebar: () => void
+  onRefreshTree: () => void
+  onToggleDir: (path: string) => void
+  onSelectFile: (node: FileNode) => void
+  onDragStart: (event: ReactMouseEvent) => void
+  onResetWidth: () => void
+  onRefetchFile: () => void
+  onToggleSearch: () => void
+  onToggleLiveTail: () => void
+  onToggleMarkdownView: () => void
+  onSearchChange: (value: string) => void
+  onNavigatePrev: () => void
+  onNavigateNext: () => void
+  onCloseSearch: () => void
+  onStopLiveTail: () => void
+}
+
+function ServerWorkspacePanel(props: Readonly<ServerWorkspacePanelProps>) {
+  const className = `flex flex-1${props.isDragging ? ' select-none' : ''}`
+
+  if (props.workspaceMode === 'terminal') {
+    return (
+      <div className={className} style={{ minHeight: 0 }}>
+        {props.isOffline ? (
+          <OfflineTerminalState server={props.server} />
+        ) : (
+          <ServerTerminal serverId={props.serverId} server={props.server} />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={className} style={{ minHeight: 0 }}>
+      {props.isOffline ? <OfflineFilesState /> : <FilesWorkspace {...props} />}
+    </div>
+  )
+}
+
+function FilesWorkspace(props: Readonly<ServerWorkspacePanelProps>) {
+  return (
+    <>
+      <FileExplorerSidebar
+        sidebarCollapsed={props.sidebarCollapsed}
+        sidebarWidth={props.sidebarWidth}
+        onToggleCollapse={props.onToggleSidebar}
+        onRefreshTree={props.onRefreshTree}
+        treeRefreshing={props.treeRefreshing}
+        pathsLoading={props.pathsLoading}
+        rootPaths={props.rootPaths}
+        rootNodes={props.rootNodes}
+        selectedFile={props.selectedFile}
+        treeState={props.treeState}
+        onToggleDir={props.onToggleDir}
+        onSelectFile={props.onSelectFile}
+      />
+
+      {!props.sidebarCollapsed && (
+        <button
+          type="button"
+          className="w-1 hover:w-1.5 bg-border hover:bg-accent/50 cursor-col-resize transition-colors shrink-0 p-0 border-0 rounded-none"
+          onMouseDown={props.onDragStart}
+          onDoubleClick={props.onResetWidth}
+          aria-label="Resize sidebar"
+          title="Drag to resize sidebar, double-click to reset"
+        />
+      )}
+
+      <FileWorkspaceContent {...props} />
+    </>
+  )
+}
+
+function FileWorkspaceContent(props: Readonly<ServerWorkspacePanelProps>) {
+  if (!props.selectedFile) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <File className="w-10 h-10 text-text-faint mx-auto mb-3" />
+          <p className="text-text-muted text-sm">Select a file to view its contents</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col min-w-0">
+      <FileViewerToolbar
+        selectedFile={props.selectedFile}
+        fileContent={props.fileContent}
+        fileLoading={props.fileLoading}
+        liveTailing={props.liveTailing}
+        searchOpen={props.searchOpen}
+        markdownView={props.markdownView}
+        onRefetch={props.onRefetchFile}
+        onToggleSearch={props.onToggleSearch}
+        onToggleLiveTail={props.onToggleLiveTail}
+        onToggleMarkdownView={props.onToggleMarkdownView}
+        breadcrumbs={props.breadcrumbs}
+      />
+
+      {props.searchOpen && !props.liveTailing && (
+        <FileSearchBar
+          searchInput={props.searchInput}
+          matchCount={props.matchCount}
+          currentMatch={props.currentMatch}
+          onSearchChange={props.onSearchChange}
+          onNavigatePrev={props.onNavigatePrev}
+          onNavigateNext={props.onNavigateNext}
+          onClose={props.onCloseSearch}
+          inputRef={props.searchInputRef}
+        />
+      )}
+
+      {props.liveTailing ? (
+        <LiveTail
+          serverId={props.serverId}
+          filePath={props.selectedFile.path}
+          onStop={props.onStopLiveTail}
+        />
+      ) : (
+        <FileViewerContent
+          fileLoading={props.fileLoading}
+          fileError={props.fileError}
+          decodedContent={props.decodedContent}
+          selectedFile={props.selectedFile}
+          markdownView={props.markdownView}
+          searchTerm={props.effectiveSearchTerm}
+          searchHighlightedHtml={props.searchHighlightedHtml}
+          highlightedHtml={props.highlightedHtml}
+          fileContent={props.fileContent}
+          onRefetch={props.onRefetchFile}
+        />
+      )}
     </div>
   )
 }
@@ -1524,7 +1695,7 @@ export function ServerDetailPage() {
 
   // Resizable sidebar drag handlers
   const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
+    (e: ReactMouseEvent) => {
       e.preventDefault()
       const startX = e.clientX
       const startWidth = sidebarWidth
@@ -1593,6 +1764,32 @@ export function ServerDetailPage() {
     }
   }, [currentMatch, effectiveSearchTerm, matchCount])
 
+  const handleRefetchFile = useCallback(() => {
+    void refetchFile()
+  }, [refetchFile])
+
+  const handleToggleMarkdownView = useCallback(() => {
+    setMarkdownView((v) => (v === 'raw' ? 'rendered' : 'raw'))
+  }, [])
+
+  const handleNavigatePrev = useCallback(() => {
+    setCurrentMatch((i) => (matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0))
+  }, [matchCount])
+
+  const handleNavigateNext = useCallback(() => {
+    setCurrentMatch((i) => (matchCount > 0 ? (i + 1) % matchCount : 0))
+  }, [matchCount])
+
+  const handleCloseSearch = useCallback(() => {
+    setSearchOpen(false)
+    setSearchInput('')
+    setCurrentMatch(0)
+  }, [])
+
+  const handleStopLiveTail = useCallback(() => {
+    setLiveTailing(false)
+  }, [])
+
   // --- Render ---
 
   if (serverLoading) {
@@ -1636,115 +1833,58 @@ export function ServerDetailPage() {
         </div>
       )}
 
-      <>
-        <WorkspaceModeBar
-          workspaceMode={effectiveWorkspaceMode}
-          onChange={setWorkspaceMode}
-          offline={isOffline}
-          terminalAvailable={canUseTerminalForServer}
-        />
+      <WorkspaceModeBar
+        workspaceMode={effectiveWorkspaceMode}
+        onChange={setWorkspaceMode}
+        offline={isOffline}
+        terminalAvailable={canUseTerminalForServer}
+      />
 
-        <div className={`flex flex-1${isDragging ? ' select-none' : ''}`} style={{ minHeight: 0 }}>
-          {effectiveWorkspaceMode === 'files' ? (
-            isOffline ? (
-              <OfflineFilesState />
-            ) : (
-              <>
-                <FileExplorerSidebar
-                  sidebarCollapsed={sidebarCollapsed}
-                  sidebarWidth={sidebarWidth}
-                  onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-                  onRefreshTree={handleRefreshTree}
-                  treeRefreshing={treeRefreshing}
-                  pathsLoading={pathsLoading}
-                  rootPaths={rootPaths}
-                  rootNodes={rootNodes}
-                  selectedFile={selectedFile}
-                  treeState={treeState}
-                  onToggleDir={handleToggleDir}
-                  onSelectFile={handleSelectFile}
-                />
-
-                {!sidebarCollapsed && (
-                  <button
-                    type="button"
-                    className="w-1 hover:w-1.5 bg-border hover:bg-accent/50 cursor-col-resize transition-colors shrink-0 p-0 border-0 rounded-none"
-                    onMouseDown={handleDragStart}
-                    onDoubleClick={handleResetWidth}
-                    aria-label="Resize sidebar"
-                    title="Drag to resize sidebar, double-click to reset"
-                  />
-                )}
-
-                <div className="flex-1 flex flex-col min-w-0">
-                  {selectedFile ? (
-                    <>
-                      <FileViewerToolbar
-                        selectedFile={selectedFile}
-                        fileContent={fileContent}
-                        fileLoading={fileLoading}
-                        liveTailing={liveTailing}
-                        searchOpen={searchOpen}
-                        markdownView={markdownView}
-                        onRefetch={() => refetchFile()}
-                        onToggleSearch={() => setSearchOpen((v) => !v)}
-                        onToggleLiveTail={() => setLiveTailing((v) => !v)}
-                        onToggleMarkdownView={() => setMarkdownView((v) => (v === 'raw' ? 'rendered' : 'raw'))}
-                        breadcrumbs={breadcrumbs}
-                      />
-
-                      {searchOpen && !liveTailing && (
-                        <FileSearchBar
-                          searchInput={searchInput}
-                          matchCount={matchCount}
-                          currentMatch={currentMatch}
-                          onSearchChange={setSearchInput}
-                          onNavigatePrev={() => setCurrentMatch((i) => (matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0))}
-                          onNavigateNext={() => setCurrentMatch((i) => (matchCount > 0 ? (i + 1) % matchCount : 0))}
-                          onClose={() => { setSearchOpen(false); setSearchInput(''); setCurrentMatch(0) }}
-                          inputRef={searchInputRef}
-                        />
-                      )}
-
-                      {liveTailing ? (
-                        <LiveTail
-                          serverId={serverId ?? ''}
-                          filePath={selectedFile.path}
-                          onStop={() => setLiveTailing(false)}
-                        />
-                      ) : (
-                        <FileViewerContent
-                          fileLoading={fileLoading}
-                          fileError={fileError}
-                          decodedContent={decodedContent}
-                          selectedFile={selectedFile}
-                          markdownView={markdownView}
-                          searchTerm={effectiveSearchTerm}
-                          searchHighlightedHtml={searchHighlightedHtml}
-                          highlightedHtml={highlightedHtml}
-                          fileContent={fileContent}
-                          onRefetch={() => refetchFile()}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center">
-                      <div className="text-center">
-                        <File className="w-10 h-10 text-text-faint mx-auto mb-3" />
-                        <p className="text-text-muted text-sm">Select a file to view its contents</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )
-          ) : isOffline ? (
-            <OfflineTerminalState server={server} />
-          ) : (
-            <ServerTerminal serverId={serverId ?? ''} server={server} />
-          )}
-        </div>
-      </>
+      <ServerWorkspacePanel
+        workspaceMode={effectiveWorkspaceMode}
+        isOffline={isOffline}
+        isDragging={isDragging}
+        server={server}
+        serverId={serverId ?? ''}
+        sidebarCollapsed={sidebarCollapsed}
+        sidebarWidth={sidebarWidth}
+        treeRefreshing={treeRefreshing}
+        pathsLoading={pathsLoading}
+        rootPaths={rootPaths}
+        rootNodes={rootNodes}
+        selectedFile={selectedFile}
+        treeState={treeState}
+        fileContent={fileContent}
+        fileLoading={fileLoading}
+        fileError={fileError}
+        liveTailing={liveTailing}
+        searchOpen={searchOpen}
+        markdownView={markdownView}
+        searchInput={searchInput}
+        matchCount={matchCount}
+        currentMatch={currentMatch}
+        breadcrumbs={breadcrumbs}
+        decodedContent={decodedContent}
+        effectiveSearchTerm={effectiveSearchTerm}
+        searchHighlightedHtml={searchHighlightedHtml}
+        highlightedHtml={highlightedHtml}
+        searchInputRef={searchInputRef}
+        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+        onRefreshTree={handleRefreshTree}
+        onToggleDir={handleToggleDir}
+        onSelectFile={handleSelectFile}
+        onDragStart={handleDragStart}
+        onResetWidth={handleResetWidth}
+        onRefetchFile={handleRefetchFile}
+        onToggleSearch={() => setSearchOpen((v) => !v)}
+        onToggleLiveTail={() => setLiveTailing((v) => !v)}
+        onToggleMarkdownView={handleToggleMarkdownView}
+        onSearchChange={setSearchInput}
+        onNavigatePrev={handleNavigatePrev}
+        onNavigateNext={handleNavigateNext}
+        onCloseSearch={handleCloseSearch}
+        onStopLiveTail={handleStopLiveTail}
+      />
 
       {isAdmin && (
         <div className="shrink-0 border-t border-border p-4 bg-surface/30 space-y-3">

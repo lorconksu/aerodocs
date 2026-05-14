@@ -28,6 +28,8 @@ const (
 	maxSessions        = 8
 	terminalBufferSize = 4096
 	terminalPath       = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	getentPath         = "/usr/bin/getent"
+	idPath             = "/usr/bin/id"
 )
 
 var ErrSessionNotFound = errors.New("terminal session not found")
@@ -75,17 +77,9 @@ func (m *Manager) Open(sessionID string, cols, rows uint32, cwd, runAsUser strin
 	if m.isStopped() {
 		return fmt.Errorf("terminal manager unavailable")
 	}
-
-	m.mu.Lock()
-	if _, exists := m.sessions[sessionID]; exists {
-		m.mu.Unlock()
-		return fmt.Errorf("terminal session already exists")
+	if err := m.validateOpenSlot(sessionID); err != nil {
+		return err
 	}
-	if len(m.sessions) >= maxSessions {
-		m.mu.Unlock()
-		return fmt.Errorf("too many active terminal sessions")
-	}
-	m.mu.Unlock()
 
 	shell, err := resolveShell()
 	if err != nil {
@@ -98,28 +92,10 @@ func (m *Manager) Open(sessionID string, cols, rows uint32, cwd, runAsUser strin
 
 	cmd := exec.Command(shell, "-i")
 	cmd.Env = buildTerminalEnv(shell, identity)
-	if identity != nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: identity.credential}
-		if identity.homeDir != "" {
-			if cwd == "" {
-				cmd.Dir = identity.homeDir
-			}
-		}
-	}
+	applyExecutionIdentity(cmd, identity, cwd)
 
-	if cwd != "" {
-		cleaned := filepath.Clean(cwd)
-		if !filepath.IsAbs(cleaned) {
-			return fmt.Errorf("terminal cwd must be absolute")
-		}
-		info, err := os.Stat(cleaned)
-		if err != nil {
-			return fmt.Errorf("terminal cwd not available")
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("terminal cwd must be a directory")
-		}
-		cmd.Dir = cleaned
+	if err := applyWorkingDirectory(cmd, cwd); err != nil {
+		return err
 	}
 
 	ptmx, err := pty.StartWithSize(cmd, normalizedSize(cols, rows))
@@ -133,28 +109,76 @@ func (m *Manager) Open(sessionID string, cols, rows uint32, cwd, runAsUser strin
 		tty: ptmx,
 	}
 
-	m.mu.Lock()
-	if m.isStopped() {
-		m.mu.Unlock()
+	if err := m.register(sessionID, s); err != nil {
 		m.closeSession(s, true)
-		return fmt.Errorf("terminal manager unavailable")
+		return err
 	}
-	if _, exists := m.sessions[sessionID]; exists {
-		m.mu.Unlock()
-		m.closeSession(s, true)
-		return fmt.Errorf("terminal session already exists")
-	}
-	if len(m.sessions) >= maxSessions {
-		m.mu.Unlock()
-		m.closeSession(s, true)
-		return fmt.Errorf("too many active terminal sessions")
-	}
-	m.sessions[sessionID] = s
-	m.mu.Unlock()
 
 	go m.readLoop(s)
 	go m.waitLoop(s)
 
+	return nil
+}
+
+func (m *Manager) validateOpenSlot(sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isStopped() {
+		return fmt.Errorf("terminal manager unavailable")
+	}
+	if _, exists := m.sessions[sessionID]; exists {
+		return fmt.Errorf("terminal session already exists")
+	}
+	if len(m.sessions) >= maxSessions {
+		return fmt.Errorf("too many active terminal sessions")
+	}
+	return nil
+}
+
+func (m *Manager) register(sessionID string, s *session) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isStopped() {
+		return fmt.Errorf("terminal manager unavailable")
+	}
+	if _, exists := m.sessions[sessionID]; exists {
+		return fmt.Errorf("terminal session already exists")
+	}
+	if len(m.sessions) >= maxSessions {
+		return fmt.Errorf("too many active terminal sessions")
+	}
+	m.sessions[sessionID] = s
+	return nil
+}
+
+func applyExecutionIdentity(cmd *exec.Cmd, identity *executionIdentity, cwd string) {
+	if identity == nil {
+		return
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: identity.credential}
+	if identity.homeDir != "" && cwd == "" {
+		cmd.Dir = identity.homeDir
+	}
+}
+
+func applyWorkingDirectory(cmd *exec.Cmd, cwd string) error {
+	if cwd == "" {
+		return nil
+	}
+	cleaned := filepath.Clean(cwd)
+	if !filepath.IsAbs(cleaned) {
+		return fmt.Errorf("terminal cwd must be absolute")
+	}
+	info, err := os.Stat(cleaned)
+	if err != nil {
+		return fmt.Errorf("terminal cwd not available")
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("terminal cwd must be a directory")
+	}
+	cmd.Dir = cleaned
 	return nil
 }
 
@@ -426,7 +450,7 @@ func lookupRunAsIdentity(runAsUser string) (*osuser.User, []string, error) {
 }
 
 func lookupUserWithGetent(username string) (*osuser.User, error) {
-	output, err := exec.Command("getent", "passwd", username).Output()
+	output, err := exec.Command(getentPath, "passwd", username).Output()
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +476,7 @@ func parseGetentPasswdLine(line string) (*osuser.User, error) {
 }
 
 func lookupGroupIDsWithID(username string) ([]string, error) {
-	output, err := exec.Command("id", "-G", "--", username).Output()
+	output, err := exec.Command(idPath, "-G", "--", username).Output()
 	if err != nil {
 		return nil, err
 	}

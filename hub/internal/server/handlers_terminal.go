@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	maxTerminalInputBytes     = 8192
-	terminalStreamAttachDelay = 30 * time.Second
+	maxTerminalInputBytes         = 8192
+	terminalStreamAttachDelay     = 30 * time.Second
+	errTerminalServiceUnavailable = "terminal service unavailable"
+	errTerminalSessionNotFound    = "terminal session not found"
 )
 
 type createTerminalSessionRequest struct {
@@ -40,7 +42,7 @@ func (s *Server) handleCreateTerminalSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if s.terminalSessions == nil {
-		respondError(w, http.StatusInternalServerError, "terminal service unavailable")
+		respondError(w, http.StatusInternalServerError, errTerminalServiceUnavailable)
 		return
 	}
 
@@ -127,7 +129,7 @@ func (s *Server) handleTerminalStream(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("id")
 	sessionID := r.PathValue("sessionId")
 	if s.terminalSessions == nil {
-		respondError(w, http.StatusInternalServerError, "terminal service unavailable")
+		respondError(w, http.StatusInternalServerError, errTerminalServiceUnavailable)
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -137,7 +139,7 @@ func (s *Server) handleTerminalStream(w http.ResponseWriter, r *http.Request) {
 	}
 	info, exists, attached := s.terminalSessions.AttachStream(serverID, sessionID, UserIDFromContext(r.Context()))
 	if !exists {
-		respondError(w, http.StatusNotFound, "terminal session not found")
+		respondError(w, http.StatusNotFound, errTerminalSessionNotFound)
 		return
 	}
 	if !attached {
@@ -339,16 +341,16 @@ func ldapExecutionUsername(user *model.User) string {
 
 func (s *Server) requireTerminalSession(w http.ResponseWriter, r *http.Request, serverID, sessionID string) (grpcserver.TerminalSessionInfo, bool) {
 	if s.terminalSessions == nil {
-		respondError(w, http.StatusInternalServerError, "terminal service unavailable")
+		respondError(w, http.StatusInternalServerError, errTerminalServiceUnavailable)
 		return grpcserver.TerminalSessionInfo{}, false
 	}
 	info, ok := s.terminalSessions.Get(serverID, sessionID)
 	if !ok {
-		respondError(w, http.StatusNotFound, "terminal session not found")
+		respondError(w, http.StatusNotFound, errTerminalSessionNotFound)
 		return grpcserver.TerminalSessionInfo{}, false
 	}
 	if info.UserID != UserIDFromContext(r.Context()) {
-		respondError(w, http.StatusNotFound, "terminal session not found")
+		respondError(w, http.StatusNotFound, errTerminalSessionNotFound)
 		return grpcserver.TerminalSessionInfo{}, false
 	}
 	return info, true

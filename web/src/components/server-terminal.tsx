@@ -18,7 +18,7 @@ function decodeBase64Chunk(encoded: string): Uint8Array {
   const binary = globalThis.atob(encoded)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i)
+    bytes[i] = binary.codePointAt(i) ?? 0
   }
   return bytes
 }
@@ -46,6 +46,29 @@ function statusClass(status: TerminalStatus): string {
       return 'border border-[#ff9b8a]/25 bg-[#ff9b8a]/10 text-[#ffb2a5]'
     default:
       return 'border border-[#8fc6ff]/25 bg-[#8fc6ff]/10 text-[#8fc6ff]'
+  }
+}
+
+function parseTerminalExitPayload(event: Event): TerminalExitPayload {
+  if (!(event instanceof MessageEvent) || typeof event.data !== 'string') {
+    return { error: 'Shell exited' }
+  }
+  try {
+    const payload: unknown = JSON.parse(event.data)
+    return typeof payload === 'object' && payload !== null ? payload : { error: 'Shell exited' }
+  } catch {
+    return { error: 'Shell exited' }
+  }
+}
+
+function TerminalStatusIcon({ status }: Readonly<{ status: TerminalStatus }>) {
+  switch (status) {
+    case 'connected':
+      return <CheckCircle className="w-3.5 h-3.5" />
+    case 'connecting':
+      return <Loader2 className="w-3.5 h-3.5 animate-spin" />
+    default:
+      return <AlertTriangle className="w-3.5 h-3.5" />
   }
 }
 
@@ -284,12 +307,7 @@ export function ServerTerminal({
 
         stream.addEventListener('exit', (event) => {
           if (cancelled) return
-          let payload: TerminalExitPayload = {}
-          try {
-            payload = JSON.parse((event as MessageEvent).data) as TerminalExitPayload
-          } catch {
-            payload = { error: 'Shell exited' }
-          }
+          const payload = parseTerminalExitPayload(event)
           stream.close()
           streamRef.current = null
           sessionIdRef.current = null
@@ -322,11 +340,11 @@ export function ServerTerminal({
       }
     }
 
-    void start()
+    start().catch(() => undefined)
 
     return () => {
       cancelled = true
-      void closeSession()
+      closeSession().catch(() => undefined)
     }
   }, [closeSession, restartNonce, server.name, serverId, setTerminalStatus, terminalReady])
 
@@ -361,13 +379,7 @@ export function ServerTerminal({
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${statusClass(status)}`}>
-            {status === 'connected' ? (
-              <CheckCircle className="w-3.5 h-3.5" />
-            ) : status === 'connecting' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <AlertTriangle className="w-3.5 h-3.5" />
-            )}
+            <TerminalStatusIcon status={status} />
             {statusLabel(status)}
           </span>
           {(status === 'closed' || status === 'error') && (

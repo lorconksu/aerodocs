@@ -63,6 +63,40 @@ func TestHandleCreateTerminalSession(t *testing.T) {
 	}
 }
 
+func TestHandleCreateTerminalSession_InvalidCwd(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix, mustJSON(t, map[string]interface{}{
+		"cols": 80,
+		"rows": 24,
+		"cwd":  "relative/path",
+	}))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "absolute") {
+		t.Fatalf("expected cwd validation error, got %s", rec.Body.String())
+	}
+}
+
+func TestHandleCreateTerminalSession_ServiceUnavailable(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	s.terminalSessions = nil
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix, mustJSON(t, map[string]interface{}{"cols": 80, "rows": 24}))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleCreateTerminalSession_ViewerDenied(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 	viewerToken := createViewerAndGetToken(t, s, adminToken)
@@ -104,6 +138,54 @@ func TestHandleCreateTerminalSession_APITokenDenied(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleTerminalInput_RejectsClosedAndLargeInput(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
+
+	if !s.terminalSessions.End(serverID, sessionID, 0, "") {
+		t.Fatal("expected terminal session end")
+	}
+	closedReq := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/input", mustJSON(t, map[string]string{"data": "pwd\n"}))
+	closedReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	closedRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(closedRec, closedReq)
+	if closedRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for closed terminal input, got %d: %s", closedRec.Code, closedRec.Body.String())
+	}
+
+	openSessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
+	largeReq := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+openSessionID+"/input", mustJSON(t, map[string]string{
+		"data": strings.Repeat("x", maxTerminalInputBytes+1),
+	}))
+	largeReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	largeRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(largeRec, largeReq)
+	if largeRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for large terminal input, got %d: %s", largeRec.Code, largeRec.Body.String())
+	}
+}
+
+func TestHandleTerminalInput_InvalidBodyAndMissingSession(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+
+	badBodyReq := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/missing/input", strings.NewReader("{"))
+	badBodyReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	badBodyRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(badBodyRec, badBodyReq)
+	if badBodyRec.Code != http.StatusNotFound {
+		t.Fatalf("missing session should be checked before body parsing, got %d: %s", badBodyRec.Code, badBodyRec.Body.String())
+	}
+
+	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/input", strings.NewReader("{"))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid input body, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -149,6 +231,30 @@ func TestHandleTerminalInputAndResize(t *testing.T) {
 	}
 }
 
+func TestHandleTerminalResize_RejectsClosedAndInvalidBody(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
+
+	req := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/resize", strings.NewReader("{"))
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid resize body, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if !s.terminalSessions.End(serverID, sessionID, 0, "") {
+		t.Fatal("expected terminal session end")
+	}
+	closedReq := httptest.NewRequest("POST", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/resize", mustJSON(t, map[string]int{"cols": 80, "rows": 24}))
+	closedReq.Header.Set("Authorization", testBearerPrefix+adminToken)
+	closedRec := httptest.NewRecorder()
+	s.routes().ServeHTTP(closedRec, closedReq)
+	if closedRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for closed resize, got %d: %s", closedRec.Code, closedRec.Body.String())
+	}
+}
+
 func TestHandleTerminalStream(t *testing.T) {
 	s, adminToken, serverID := testServerWithAgent(t)
 	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
@@ -171,6 +277,27 @@ func TestHandleTerminalStream(t *testing.T) {
 	}
 	if !strings.Contains(body, "event: exit") {
 		t.Fatalf("expected exit event in stream, got %q", body)
+	}
+}
+
+func TestHandleTerminalStream_RejectsSecondAttach(t *testing.T) {
+	s, adminToken, serverID := testServerWithAgent(t)
+	sessionID := createTerminalSessionForTest(t, s, adminToken, serverID)
+	admin, err := s.store.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatalf("get admin: %v", err)
+	}
+	if _, exists, attached := s.terminalSessions.AttachStream(serverID, sessionID, admin.ID); !exists || !attached {
+		t.Fatalf("expected manual stream attachment, exists=%v attached=%v", exists, attached)
+	}
+
+	req := httptest.NewRequest("GET", testServersPrefix+serverID+testTerminalSessionsSuffix+"/"+sessionID+"/stream", nil)
+	req.Header.Set("Authorization", testBearerPrefix+adminToken)
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for second stream attach, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

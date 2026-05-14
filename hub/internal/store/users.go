@@ -63,11 +63,34 @@ func (s *Store) GetUserByExternalIdentity(provider model.AuthProvider, externalI
 }
 
 func (s *Store) UpsertLDAPUser(u *model.User) (*model.User, error) {
+	if err := normalizeLDAPUser(u); err != nil {
+		return nil, err
+	}
+	existing, err := s.findExistingLDAPUser(u)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		if err := s.CreateUser(u); err != nil {
+			return nil, err
+		}
+		return s.GetUserByID(u.ID)
+	}
+	if err := prepareLDAPUserUpdate(existing, u); err != nil {
+		return nil, err
+	}
+	if err := s.updateLDAPUser(existing.ID, u); err != nil {
+		return nil, err
+	}
+	return s.GetUserByID(existing.ID)
+}
+
+func normalizeLDAPUser(u *model.User) error {
 	if u.ID == "" {
 		u.ID = uuid.NewString()
 	}
 	if u.Username == "" {
-		return nil, fmt.Errorf("username is required")
+		return fmt.Errorf("username is required")
 	}
 	if u.Email == "" {
 		u.Email = u.Username + "@ldap.local"
@@ -79,51 +102,55 @@ func (s *Store) UpsertLDAPUser(u *model.User) (*model.User, error) {
 	}
 	now := time.Now().UTC()
 	u.LDAPLastSyncAt = &now
+	return nil
+}
 
-	var existing *model.User
-	var err error
+func (s *Store) findExistingLDAPUser(u *model.User) (*model.User, error) {
 	if u.ExternalID != "" {
-		existing, err = s.GetUserByExternalIdentity(model.AuthProviderLDAP, u.ExternalID)
-		if err != nil && !strings.Contains(err.Error(), errUserNotFound) {
-			return nil, err
+		user, err := s.GetUserByExternalIdentity(model.AuthProviderLDAP, u.ExternalID)
+		if err == nil || !isUserNotFound(err) {
+			return user, err
 		}
 	}
-	if existing == nil {
-		existing, err = s.GetUserByUsername(u.Username)
-		if err != nil && !strings.Contains(err.Error(), errUserNotFound) {
-			return nil, err
-		}
+	user, err := s.GetUserByUsername(u.Username)
+	if err != nil && !isUserNotFound(err) {
+		return nil, err
 	}
-	if existing == nil {
-		if err := s.CreateUser(u); err != nil {
-			return nil, err
-		}
-		return s.GetUserByID(u.ID)
-	}
+	return user, nil
+}
+
+func prepareLDAPUserUpdate(existing, u *model.User) error {
 	if existing.AuthProvider != model.AuthProviderLDAP {
-		return nil, fmt.Errorf("username is reserved by a local user")
+		return fmt.Errorf("username is reserved by a local user")
 	}
 	if existing.ExternalID != "" && u.ExternalID != "" && existing.ExternalID != u.ExternalID {
-		return nil, fmt.Errorf("LDAP external identity mismatch")
+		return fmt.Errorf("LDAP external identity mismatch")
 	}
 	if u.ExternalID == "" {
 		u.ExternalID = existing.ExternalID
 	}
+	return nil
+}
 
-	_, err = s.db.Exec(
+func (s *Store) updateLDAPUser(userID string, u *model.User) error {
+	_, err := s.db.Exec(
 		`UPDATE users
-		 SET username = ?, email = ?, role = ?, auth_provider = ?, external_id = ?,
-		     ldap_dn = ?, ldap_username = ?, ldap_last_sync_at = ?, terminal_access = ?,
-		     updated_at = datetime('now')
-		 WHERE id = ?`,
+				 SET username = ?, email = ?, role = ?, auth_provider = ?, external_id = ?,
+				     ldap_dn = ?, ldap_username = ?, ldap_last_sync_at = ?, terminal_access = ?,
+			     updated_at = datetime('now')
+			 WHERE id = ?`,
 		u.Username, u.Email, u.Role, model.AuthProviderLDAP, u.ExternalID,
 		u.LDAPDN, u.LDAPUsername, sqliteTimePtr(u.LDAPLastSyncAt), u.TerminalAccess,
-		existing.ID,
+		userID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("update ldap user: %w", err)
+		return fmt.Errorf("update ldap user: %w", err)
 	}
-	return s.GetUserByID(existing.ID)
+	return nil
+}
+
+func isUserNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), errUserNotFound)
 }
 
 func (s *Store) UserCount() (int, error) {

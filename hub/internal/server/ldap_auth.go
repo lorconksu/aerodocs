@@ -58,6 +58,8 @@ var defaultLDAPRoleGroups = map[model.Role][]string{
 
 var defaultLDAPTerminalGroups = []string{"aerodocs-terminal-users"}
 
+const errInvalidLDAPCredentials = "invalid LDAP credentials"
+
 func (s *Server) authenticateLDAPLogin(ctx context.Context, username, password string) (*model.User, error) {
 	authenticator := s.ldapAuthenticator
 	if authenticator == nil {
@@ -156,7 +158,7 @@ func (s *Server) configBool(key string) bool {
 
 func (a *ldapBindAuthenticator) Authenticate(_ context.Context, username, password string) (LDAPIdentity, error) {
 	if strings.TrimSpace(username) == "" || password == "" {
-		return LDAPIdentity{}, fmt.Errorf("invalid LDAP credentials")
+		return LDAPIdentity{}, fmt.Errorf(errInvalidLDAPCredentials)
 	}
 
 	conn, err := a.connect()
@@ -177,7 +179,7 @@ func (a *ldapBindAuthenticator) Authenticate(_ context.Context, username, passwo
 		return LDAPIdentity{}, err
 	}
 	if err := conn.Bind(userEntry.DN, password); err != nil {
-		return LDAPIdentity{}, fmt.Errorf("invalid LDAP credentials")
+		return LDAPIdentity{}, fmt.Errorf(errInvalidLDAPCredentials)
 	}
 	if a.cfg.BindDN != "" {
 		if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
@@ -276,7 +278,7 @@ func (a *ldapBindAuthenticator) findUser(conn *ldap.Conn, username string) (*lda
 		return nil, fmt.Errorf("search LDAP user: %w", err)
 	}
 	if len(result.Entries) != 1 {
-		return nil, fmt.Errorf("invalid LDAP credentials")
+		return nil, fmt.Errorf(errInvalidLDAPCredentials)
 	}
 	return result.Entries[0], nil
 }
