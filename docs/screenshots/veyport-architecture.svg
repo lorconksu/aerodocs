@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Veyport architecture</title>
+  <desc id="desc">Hub-and-spoke architecture showing browser access, optional reverse proxy, Veyport Hub, LDAP identity provider, SQLite storage, and outbound mTLS agent streams for files, logs, uploads, terminal, and certificate renewal.</desc>
+  <defs>
+    <linearGradient id="hubGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f2747"/>
+      <stop offset="0.55" stop-color="#183a63"/>
+      <stop offset="1" stop-color="#244f82"/>
+    </linearGradient>
+    <linearGradient id="cardGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef4fb"/>
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b6cb0"/>
+      <stop offset="1" stop-color="#1f2937"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#0f172a" flood-opacity="0.16"/>
+    </filter>
+    <filter id="smallShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#17324f"/>
+    </marker>
+    <marker id="arrowLight" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#356d9f"/>
+    </marker>
+    <style>
+      text { font-family: "DejaVu Sans", Arial, sans-serif; }
+      .title { font-size: 44px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-size: 20px; font-weight: 500; fill: #475569; }
+      .h2 { font-size: 28px; font-weight: 700; fill: #10233f; }
+      .h2-light { font-size: 27px; font-weight: 700; fill: #f8fafc; }
+      .h3 { font-size: 20px; font-weight: 700; fill: #10233f; }
+      .body { font-size: 17px; font-weight: 500; fill: #334155; }
+      .small { font-size: 14px; font-weight: 500; fill: #475569; }
+      .small-light { font-size: 14px; font-weight: 500; fill: #d8e6f5; }
+      .label { font-size: 18px; font-weight: 700; fill: #17324f; }
+      .port { font-size: 16px; font-weight: 700; fill: #285f94; }
+      .chip { font-size: 13px; font-weight: 700; fill: #e7f2ff; }
+      .line { stroke: #17324f; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+      .line-both { stroke: #17324f; stroke-width: 4; fill: none; marker-start: url(#arrow); marker-end: url(#arrow); }
+      .line-light { stroke: #356d9f; stroke-width: 3; fill: none; marker-end: url(#arrowLight); }
+      .dashed { stroke-dasharray: 10 10; }
+    </style>
+  </defs>
+
+  <rect width="1536" height="1024" fill="#f8fafc"/>
+  <path d="M 86 832 C 280 780, 380 886, 560 828 S 880 765, 1040 834 S 1280 910, 1460 824" fill="none" stroke="#e2e8f0" stroke-width="26" opacity="0.7"/>
+
+  <text x="768" y="72" text-anchor="middle" class="title">Veyport Architecture</text>
+  <text x="768" y="107" text-anchor="middle" class="subtitle">Self-hosted Hub, outbound agents, browser-based file, log, upload, and terminal workflows</text>
+
+  <!-- Browser -->
+  <g filter="url(#smallShadow)">
+    <rect x="66" y="386" width="214" height="188" rx="12" fill="url(#cardGradient)" stroke="#c9d4e2" stroke-width="2"/>
+    <rect x="112" y="420" width="118" height="78" rx="7" fill="#f8fbff" stroke="#26384f" stroke-width="7"/>
+    <rect x="96" y="505" width="150" height="10" rx="4" fill="#26384f"/>
+    <path d="M 82 520 H 260 L 244 535 H 98 Z" fill="#43566e"/>
+    <path d="M 151 451 C 171 425, 194 425, 214 451 C 194 477, 171 477, 151 451 Z" fill="none" stroke="#2b6cb0" stroke-width="5"/>
+    <circle cx="183" cy="451" r="9" fill="#2b6cb0"/>
+    <text x="173" y="610" text-anchor="middle" class="h3">Browser</text>
+    <text x="173" y="636" text-anchor="middle" class="body">React SPA</text>
+  </g>
+
+  <!-- Optional reverse proxy -->
+  <g filter="url(#smallShadow)">
+    <rect x="344" y="374" width="226" height="210" rx="12" fill="url(#cardGradient)" stroke="#c9d4e2" stroke-width="2"/>
+    <path d="M 457 408 L 512 432 L 503 496 C 498 529, 475 553, 457 562 C 439 553, 416 529, 411 496 L 402 432 Z" fill="url(#accentGradient)" stroke="#17324f" stroke-width="2"/>
+    <path d="M 457 431 L 457 529 M 428 485 L 457 431 L 486 485" stroke="#f8fafc" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="457" y="626" text-anchor="middle" class="h3">Reverse Proxy</text>
+    <text x="457" y="650" text-anchor="middle" class="body">optional TLS edge</text>
+  </g>
+
+  <!-- LDAP -->
+  <g filter="url(#smallShadow)">
+    <rect x="606" y="144" width="338" height="106" rx="12" fill="#ffffff" stroke="#c9d4e2" stroke-width="2"/>
+    <circle cx="654" cy="198" r="26" fill="#e7f2ff" stroke="#2b6cb0" stroke-width="3"/>
+    <circle cx="654" cy="190" r="8" fill="#2b6cb0"/>
+    <path d="M 633 219 C 638 207, 670 207, 675 219" fill="none" stroke="#2b6cb0" stroke-width="5" stroke-linecap="round"/>
+    <text x="700" y="188" class="h3">LDAP / FreeIPA</text>
+    <text x="700" y="214" class="body">bind auth + group mapping</text>
+  </g>
+
+  <!-- Hub -->
+  <g filter="url(#softShadow)">
+    <rect x="618" y="292" width="388" height="442" rx="14" fill="#ffffff" stroke="#c9d4e2" stroke-width="2"/>
+    <rect x="627" y="301" width="370" height="424" rx="9" fill="url(#hubGradient)"/>
+
+    <path d="M 680 334 L 724 356 L 724 404 L 680 426 L 636 404 L 636 356 Z" fill="#10233f" stroke="#7bb7ec" stroke-width="2"/>
+    <path d="M 655 379 L 680 352 L 705 379 M 680 352 V 405" fill="none" stroke="#f8fafc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="748" y="378" class="h2-light">Veyport Hub</text>
+    <text x="748" y="407" class="small-light">single Go binary + embedded UI</text>
+
+    <rect x="660" y="452" width="306" height="52" rx="9" fill="#ffffff" opacity="0.1" stroke="#7ba7ce" stroke-width="1"/>
+    <text x="682" y="474" class="chip">Web UI + REST API + SSE</text>
+    <text x="682" y="494" class="small-light">auth, fleet, files, logs, terminal streams</text>
+
+    <rect x="660" y="522" width="306" height="52" rx="9" fill="#ffffff" opacity="0.1" stroke="#7ba7ce" stroke-width="1"/>
+    <text x="682" y="544" class="chip">Authentication + Authorization</text>
+    <text x="682" y="564" class="small-light">local/LDAP, TOTP, RBAC, path gates</text>
+
+    <rect x="660" y="592" width="306" height="52" rx="9" fill="#ffffff" opacity="0.1" stroke="#7ba7ce" stroke-width="1"/>
+    <text x="682" y="614" class="chip">Agent Operation Broker</text>
+    <text x="682" y="634" class="small-light">file browser, log tail, upload, PTY terminal</text>
+
+    <ellipse cx="718" cy="673" rx="43" ry="13" fill="#f8fafc" stroke="#d7e7f8" stroke-width="2"/>
+    <path d="M 675 673 V 714 C 675 721, 694 727, 718 727 C 742 727, 761 721, 761 714 V 673" fill="#e8f1fb" stroke="#d7e7f8" stroke-width="2"/>
+    <ellipse cx="718" cy="714" rx="43" ry="13" fill="#f8fafc" stroke="#d7e7f8" stroke-width="2"/>
+    <text x="782" y="681" class="chip">SQLite Database</text>
+    <text x="782" y="705" class="small-light">users, servers, permissions, audit</text>
+  </g>
+
+  <!-- Agents -->
+  <g filter="url(#smallShadow)">
+    <rect x="1136" y="266" width="314" height="112" rx="10" fill="url(#cardGradient)" stroke="#c9d4e2" stroke-width="2"/>
+    <rect x="1168" y="296" width="66" height="52" rx="5" fill="#4b5d70" stroke="#26384f" stroke-width="2"/>
+    <rect x="1178" y="307" width="13" height="10" fill="#9fb3c8"/><rect x="1204" y="307" width="19" height="8" fill="#9fb3c8"/>
+    <rect x="1178" y="331" width="13" height="10" fill="#9fb3c8"/><rect x="1204" y="331" width="19" height="8" fill="#9fb3c8"/>
+    <text x="1260" y="310" class="h3">Agent</text>
+    <text x="1260" y="335" class="body">Server 1</text>
+    <text x="1260" y="357" class="small">PTY, files, logs, uploads</text>
+  </g>
+  <g filter="url(#smallShadow)">
+    <rect x="1136" y="456" width="314" height="112" rx="10" fill="url(#cardGradient)" stroke="#c9d4e2" stroke-width="2"/>
+    <rect x="1168" y="486" width="66" height="52" rx="5" fill="#4b5d70" stroke="#26384f" stroke-width="2"/>
+    <rect x="1178" y="497" width="13" height="10" fill="#9fb3c8"/><rect x="1204" y="497" width="19" height="8" fill="#9fb3c8"/>
+    <rect x="1178" y="521" width="13" height="10" fill="#9fb3c8"/><rect x="1204" y="521" width="19" height="8" fill="#9fb3c8"/>
+    <text x="1260" y="500" class="h3">Agent</text>
+    <text x="1260" y="525" class="body">Server 2</text>
+    <text x="1260" y="547" class="small">outbound connection only</text>
+  </g>
+  <g filter="url(#smallShadow)">
+    <rect x="1136" y="646" width="314" height="112" rx="10" fill="url(#cardGradient)" stroke="#c9d4e2" stroke-width="2"/>
+    <rect x="1168" y="676" width="66" height="52" rx="5" fill="#4b5d70" stroke="#26384f" stroke-width="2"/>
+    <rect x="1178" y="687" width="13" height="10" fill="#9fb3c8"/><rect x="1204" y="687" width="19" height="8" fill="#9fb3c8"/>
+    <rect x="1178" y="711" width="13" height="10" fill="#9fb3c8"/><rect x="1204" y="711" width="19" height="8" fill="#9fb3c8"/>
+    <text x="1260" y="690" class="h3">Agent</text>
+    <text x="1260" y="715" class="body">Server N</text>
+    <text x="1260" y="737" class="small">no inbound management port</text>
+  </g>
+
+  <!-- Data flows -->
+  <path d="M 280 480 H 344" class="line"/>
+  <text x="312" y="457" text-anchor="middle" class="label">HTTPS</text>
+  <text x="312" y="477" text-anchor="middle" class="port">443</text>
+
+  <path d="M 570 456 H 618" class="line"/>
+  <text x="594" y="421" text-anchor="middle" class="label">HTTP(S)</text>
+  <text x="594" y="443" text-anchor="middle" class="port">REST + SSE :8081</text>
+
+  <path d="M 252 566 C 350 720, 508 796, 618 692" class="line dashed"/>
+  <text x="414" y="746" text-anchor="middle" class="small">direct browser to Hub also supported</text>
+
+  <path d="M 775 250 V 292" class="line-light"/>
+  <text x="798" y="274" class="small">identity lookup</text>
+
+  <path d="M 1006 326 H 1136" class="line-both"/>
+  <path d="M 1006 512 H 1136" class="line-both"/>
+  <path d="M 1006 698 H 1136" class="line-both"/>
+  <text x="1218" y="222" text-anchor="middle" class="label">gRPC mTLS stream</text>
+  <text x="1218" y="246" text-anchor="middle" class="port">:9090, agents dial out</text>
+  <text x="1218" y="267" text-anchor="middle" class="small">certificates renew in-stream</text>
+
+  <!-- Footer note -->
+  <g filter="url(#smallShadow)">
+    <rect x="180" y="842" width="1176" height="104" rx="14" fill="#ffffff" stroke="#c9d4e2" stroke-width="2"/>
+    <text x="768" y="876" text-anchor="middle" class="h3">Security boundary</text>
+    <text x="768" y="905" text-anchor="middle" class="body">The Hub enforces TOTP, RBAC, LDAP terminal eligibility, per-server/path permissions, and immutable audit logging.</text>
+    <text x="768" y="929" text-anchor="middle" class="body">Agents dial out over mTLS; managed hosts do not expose inbound Veyport management ports.</text>
+  </g>
+</svg>
