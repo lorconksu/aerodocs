@@ -4,7 +4,7 @@ Veyport is a web-based control panel for managing your servers. Instead of openi
 
 Everything you do in Veyport is tracked. There is a permanent record of who logged in, who added or removed servers, and who changed account settings. This makes Veyport suitable for teams where accountability matters.
 
-![Fleet Dashboard](screenshots/dashboard.png)
+![Fleet Dashboard](screenshots/dashboard-veyport.png)
 
 ## What Veyport Does
 
