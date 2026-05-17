@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/veyport-readme-logo.png" alt="Veyport" width="430" />
+  <img src="web/public/veyport-dark-vertical.png" alt="Veyport" width="180" />
 </p>
 
 <p align="center">
