@@ -86,7 +86,7 @@ Below the QR code there is a manual entry key (a long string of letters and numb
 
 After verifying your TOTP code, you will be taken to the Fleet Dashboard.
 
-![Fleet Dashboard](screenshots/dashboard.png)
+![Fleet Dashboard](screenshots/dashboard-veyport.png)
 
 From here you can start adding servers, creating user accounts, and exploring the rest of Veyport.
 

@@ -2,7 +2,7 @@
 
 The Fleet Dashboard is the main screen of Veyport. It shows all the servers that have been registered with your Hub.
 
-![Fleet Dashboard](screenshots/dashboard.png)
+![Fleet Dashboard](screenshots/dashboard-veyport.png)
 
 > **Admin vs Viewer:** All users can view the Fleet Dashboard, search/filter servers, and click into server details. Only admins can add, edit, or unregister servers.
 
