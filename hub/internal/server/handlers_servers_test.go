@@ -295,6 +295,20 @@ func TestEnvPublicBaseURL(t *testing.T) {
 			t.Fatalf("envPublicBaseURL() = %q, want legacy.example", got)
 		}
 	})
+	t.Run("deprecation warning fires at most once", func(t *testing.T) {
+		t.Setenv("VEYPORT_PUBLIC_BASE_URL", "")
+		t.Setenv("AERODOCS_PUBLIC_BASE_URL", "https://legacy.example")
+		legacyPublicBaseURLWarn.Store(false)
+		// First call should flip the sentinel to true (CompareAndSwap returns true).
+		_ = envPublicBaseURL()
+		if !legacyPublicBaseURLWarn.Load() {
+			t.Fatal("expected warn sentinel to be true after first call")
+		}
+		// Second call hits the CompareAndSwap-returns-false branch (no re-log).
+		if got := envPublicBaseURL(); got != "https://legacy.example" {
+			t.Fatalf("envPublicBaseURL() = %q on repeat call, want legacy.example", got)
+		}
+	})
 	t.Run("returns empty when both unset", func(t *testing.T) {
 		t.Setenv("VEYPORT_PUBLIC_BASE_URL", "")
 		t.Setenv("AERODOCS_PUBLIC_BASE_URL", "")
