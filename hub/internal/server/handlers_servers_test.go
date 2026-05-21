@@ -318,6 +318,45 @@ func TestEnvPublicBaseURL(t *testing.T) {
 	})
 }
 
+func TestResolvePublicBaseURL_ErrorPaths(t *testing.T) {
+	// Make sure neither env var is set so we exercise the lower fallback
+	// branches in resolvePublicBaseURL.
+	t.Setenv("VEYPORT_PUBLIC_BASE_URL", "")
+	t.Setenv("AERODOCS_PUBLIC_BASE_URL", "")
+
+	t.Run("invalid request Host header rejected", func(t *testing.T) {
+		s := testServer(t)
+		req := httptest.NewRequest("GET", "http://localhost/", nil)
+		// A host containing a forbidden character (space) should fail hostPattern.
+		req.Host = "bad host"
+		if _, err := s.resolvePublicBaseURL(req); err == nil {
+			t.Fatal("expected an error for hostile request Host header")
+		}
+	})
+
+	t.Run("no request and no config returns error in prod mode", func(t *testing.T) {
+		// In dev mode we'd return the localhost default; force prod mode and
+		// provide neither a request Host nor a configured grpc-external-addr.
+		s := testServer(t)
+		s.isDev = false
+		s.grpcAddr = ""
+		s.grpcExternalAddr = ""
+		if _, err := s.resolvePublicBaseURL(nil); err == nil {
+			t.Fatal("expected an error when no public hub address is configured")
+		}
+	})
+
+	t.Run("malformed grpc-derived host rejected", func(t *testing.T) {
+		s := testServer(t)
+		s.isDev = false
+		// Inject a grpc target whose host won't match hostPattern (contains a space).
+		s.grpcExternalAddr = "bad host:9443"
+		if _, err := s.resolvePublicBaseURL(nil); err == nil {
+			t.Fatal("expected an error when grpc-derived host is malformed")
+		}
+	})
+}
+
 func TestCreateServer_InvalidDBStoredPublicBaseURLRejected(t *testing.T) {
 	s := testServer(t)
 	if err := s.store.SetConfig("public_base_url", "not a url"); err != nil {
